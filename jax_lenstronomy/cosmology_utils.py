@@ -40,7 +40,7 @@ from typing import Mapping, Optional, Tuple, Union
 import jax
 import jax.numpy as jnp
 
-from third_party.google_research.google_research.jaxstronomy import power_spectrum
+from jaxstronomy import power_spectrum
 
 SPEED_OF_LIGHT = 2.99792458e8
 # Linear density threshold for collapse.

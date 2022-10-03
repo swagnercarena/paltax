@@ -37,12 +37,12 @@ from immutabledict import immutabledict
 import jax
 import jax.numpy as jnp
 import numpy as np
-from third_party.google_research.google_research.jaxstronomy import cosmology_utils
-from third_party.google_research.google_research.jaxstronomy import image_simulation
-from third_party.google_research.google_research.jaxstronomy import lens_models
-from third_party.google_research.google_research.jaxstronomy import psf_models
-from third_party.google_research.google_research.jaxstronomy import source_models
-from third_party.google_research.google_research.jaxstronomy import utils
+from jaxstronomy import cosmology_utils
+from jaxstronomy import image_simulation
+from jaxstronomy import lens_models
+from jaxstronomy import psf_models
+from jaxstronomy import source_models
+from jaxstronomy import utils
 
 COSMOLOGY_PARAMS_LENSTRONOMY = immutabledict({
     'omega_m_zero': 0.30966,
