@@ -40,7 +40,7 @@ import chex
 import jax
 import jax.numpy as jnp
 import numpy as np
-from third_party.google_research.google_research.jaxstronomy import source_models
+from jaxstronomy import source_models
 
 
 def _prepare_x_y():
