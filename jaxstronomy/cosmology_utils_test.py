@@ -39,7 +39,7 @@ from immutabledict import immutabledict
 import jax
 import jax.numpy as jnp
 import numpy as np
-from third_party.google_research.google_research.jaxstronomy import cosmology_utils
+from jaxstronomy import cosmology_utils
 
 # Using immutabledict is good practice, although we will have to cast to dict
 # everywhere because jax does not accept immutabledict.

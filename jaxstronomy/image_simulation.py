@@ -40,11 +40,11 @@ from typing import Mapping, Sequence, Tuple, Union
 import jax
 import jax.numpy as jnp
 
-from third_party.google_research.google_research.jaxstronomy import cosmology_utils
-from third_party.google_research.google_research.jaxstronomy import lens_models
-from third_party.google_research.google_research.jaxstronomy import psf_models
-from third_party.google_research.google_research.jaxstronomy import source_models
-from third_party.google_research.google_research.jaxstronomy import utils
+from jaxstronomy import cosmology_utils
+from jaxstronomy import lens_models
+from jaxstronomy import psf_models
+from jaxstronomy import source_models
+from jaxstronomy import utils
 
 LENS_MODELS = tuple(
     [lens_models.__getattribute__(model) for model in lens_models.__all__])

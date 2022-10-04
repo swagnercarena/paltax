@@ -38,7 +38,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from scipy import signal
-from third_party.google_research.google_research.jaxstronomy import psf_models
+from jaxstronomy import psf_models
 
 
 def _prepare_image():

@@ -1,0 +1,5 @@
+#absl-py  # jax already depends on it
+chex
+dm-pix
+immutabledict
+jax
