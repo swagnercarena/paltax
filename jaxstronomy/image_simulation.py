@@ -46,21 +46,22 @@ from jaxstronomy import psf_models
 from jaxstronomy import source_models
 from jaxstronomy import utils
 
-LENS_MODELS = tuple(
-    [lens_models.__getattribute__(model) for model in lens_models.__all__])
-LENS_MODEL_PARAMETERS = tuple([model.parameters for model in LENS_MODELS])
-ALL_LENS_MODEL_PARAMETERS = tuple(
-    sorted(set(itertools.chain(*LENS_MODEL_PARAMETERS))))
-SOURCE_MODELS = tuple(
-    [source_models.__getattribute__(model) for model in source_models.__all__])
-SOURCE_MODEL_PARAMETERS = tuple([model.parameters for model in SOURCE_MODELS])
-ALL_SOURCE_MODEL_PARAMETERS = tuple(
-    sorted(set(itertools.chain(*SOURCE_MODEL_PARAMETERS))))
-PSF_MODELS = tuple(
-    [psf_models.__getattribute__(model) for model in psf_models.__all__])
-PSF_MODEL_PARAMETERS = tuple([model.parameters for model in PSF_MODELS])
-ALL_PSF_MODEL_PARAMETERS = tuple(
-    sorted(set(itertools.chain(*PSF_MODEL_PARAMETERS))))
+
+def _model_and_params(module):
+  """Return tuple of models and parameters from module
+  
+  Args:
+    module: jaxstronomy submodule containing model classes
+  """
+  models = tuple([getattr(module, model) for model in module.__all__])
+  params = tuple(
+    sorted(set(itertools.chain(*[model.parameters for model in models]))))
+  return models, params
+
+ALL_LENS_MODELS, ALL_LENS_MODEL_PARAMETERS = _model_and_params(lens_models)
+ALL_SOURCE_MODELS, ALL_SOURCE_MODEL_PARAMETERS = _model_and_params(
+  source_models)
+ALL_PSF_MODELS, ALL_PSF_MODEL_PARAMETERS = _model_and_params(psf_models)
 
 
 def generate_image(
@@ -74,6 +75,9 @@ def generate_image(
     z_lens_array,
     z_source,
     kwargs_detector,
+    lens_models=ALL_LENS_MODELS,
+    source_models=ALL_SOURCE_MODELS,
+    psf_models=ALL_PSF_MODELS
 ):
   """Generate an image given the source, lens light, and mass profiles.
 
@@ -104,6 +108,9 @@ def generate_image(
     z_lens_array: Redshifts for each lens model.
     z_source: Redshift of the source.
     kwargs_detector: Keyword arguments defining the detector configuration.
+    lens_models: tuple of lens models to use for model_index lookup.
+    source_models: tuple of source models to use for model_index lookup.
+    psf_models: tuple of PSF models to use for model_index lookup.
 
   Returns:
     Image after gravitational lensing at supersampling resolution. For
@@ -114,37 +121,43 @@ def generate_image(
     kwargs_detector must be passed in through functools.partial or equivalent if
     you want to jit compile this function.
   """
-  image_array = source_surface_brightness(grid_x, grid_y, kwargs_lens_all,
-                                          kwargs_source_slice, kwargs_detector,
-                                          cosmology_params, z_lens_array,
-                                          z_source)
+  image_array = source_surface_brightness(
+    grid_x, grid_y, kwargs_lens_all,
+    kwargs_source_slice, kwargs_detector,
+    cosmology_params, 
+    z_lens_array, z_source, 
+    lens_models=lens_models,
+    source_models=source_models)
   image_array += lens_light_surface_brightness(grid_x, grid_y,
                                                kwargs_lens_light_slice,
-                                               kwargs_detector)
+                                               kwargs_detector,
+                                               source_models=source_models)
   image = jnp.reshape(
       image_array,
       (kwargs_detector['n_x'] * kwargs_detector['supersampling_factor'],
        kwargs_detector['n_y'] * kwargs_detector['supersampling_factor']))
 
-  return psf_convolution(image, kwargs_psf)
+  return psf_convolution(image, kwargs_psf, psf_models=psf_models)
 
 
 def psf_convolution(
     image,
     kwargs_psf,
+    psf_models=ALL_PSF_MODELS,
 ):
   """Convolve image with the point spread function.
 
   Args:
     image: Image to convolve
     kwargs_psf: Keyword arguments defining the point spread function.
+    psf_models: tuple of PSF models to use for model_index lookup.
 
   Returns:
     Convolved image.
   """
   # Psf not accounting for supersampling by default is prone to user error.
   # Consider changing.
-  psf_functions = [model.convolve for model in PSF_MODELS]
+  psf_functions = [model.convolve for model in psf_models]
   return jax.lax.switch(kwargs_psf['model_index'], psf_functions, image,
                         kwargs_psf)
 
@@ -190,7 +203,8 @@ def noise_realization(
 def lens_light_surface_brightness(
     theta_x, theta_y,
     kwargs_lens_light_slice,
-    kwargs_detector):
+    kwargs_detector,
+    source_models=ALL_SOURCE_MODELS):
   """Return the lens light surface brightness.
 
   Args:
@@ -201,12 +215,15 @@ def lens_light_surface_brightness(
       (due to use of `jax.lax.switch`) and `model_index` which defines the model
       to pass the parameters to.
     kwargs_detector: Keyword arguments defining the detector configuration.
+    source_models: tuple of source models to use for model_index lookup.
 
   Returns:
     Surface brightness of lens light as 1D array.
   """
-  lens_light_flux = _surface_brightness(theta_x, theta_y,
-                                        kwargs_lens_light_slice)
+  lens_light_flux = _surface_brightness(
+    theta_x, theta_y,
+    kwargs_lens_light_slice,
+    source_models=source_models)
   return lens_light_flux * kwargs_detector['pixel_width']**2
 
 
@@ -219,6 +236,8 @@ def source_surface_brightness(
     cosmology_params,
     z_lens_array,
     z_source,
+    lens_models=ALL_LENS_MODELS,
+    source_models=ALL_SOURCE_MODELS,
 ):
   """Return the lensed source surface brightness.
 
@@ -243,13 +262,20 @@ def source_surface_brightness(
       expansion.
     z_lens_array: Redshifts for each lens model.
     z_source: Redshift of the source.
+    lens_models: tuple of lens models to use for model_index lookup.
+    psf_models: tuple of PSF models to use for model_index lookup.
 
   Returns:
     Lensed source surface brightness as 1D array.
   """
-  image_flux_array = _image_flux(alpha_x, alpha_y, kwargs_lens_all,
-                                 kwargs_source_slice, cosmology_params,
-                                 z_lens_array, z_source)
+  image_flux_array = _image_flux(
+    alpha_x, alpha_y, 
+    kwargs_lens_all,
+    kwargs_source_slice, 
+    cosmology_params,
+    z_lens_array, z_source, 
+    lens_models=lens_models,
+    source_models=source_models)
   # Scale by pixel area to go from flux to surface brightness.
   return image_flux_array * kwargs_detector['pixel_width']**2
 
@@ -258,7 +284,9 @@ def _image_flux(alpha_x, alpha_y,
                 kwargs_lens_all,
                 kwargs_source_slice,
                 cosmology_params,
-                z_lens_array, z_source):
+                z_lens_array, z_source,
+                lens_models=ALL_LENS_MODELS,
+                source_models=ALL_SOURCE_MODELS):
   """Calculate image flux after ray tracing onto the source.
 
   Args:
@@ -284,6 +312,8 @@ def _image_flux(alpha_x, alpha_y,
       expansion.
     z_lens_array: Redshifts for each lens model.
     z_source: Redshift of the source.
+    lens_models: tuple of lens models to use for model_index lookup.
+    psf_models: tuple of PSF models to use for model_index lookup.
 
   Returns:
     Image flux.
@@ -291,10 +321,14 @@ def _image_flux(alpha_x, alpha_y,
   x_source_comv, y_source_comv = _ray_shooting(alpha_x, alpha_y,
                                                kwargs_lens_all,
                                                cosmology_params, z_lens_array,
-                                               z_source)
+                                               z_source,
+                                               lens_models=lens_models)
   x_source, y_source = cosmology_utils.comoving_to_angle(
       x_source_comv, y_source_comv, cosmology_params, z_source)
-  return _surface_brightness(x_source, y_source, kwargs_source_slice)
+  return _surface_brightness(
+    x_source, y_source, 
+    kwargs_source_slice,
+    source_models=source_models)
 
 
 def _ray_shooting(
@@ -304,6 +338,7 @@ def _ray_shooting(
     cosmology_params,
     z_lens_array,
     z_source,
+    lens_models=ALL_LENS_MODELS
 ):
   """Ray shoot over all of the redshift slices between observer and source.
 
@@ -322,6 +357,7 @@ def _ray_shooting(
       expansion.
     z_lens_array: Redshifts for each lens model.
     z_source: Redshift of the source.
+    lens_models: tuple of lens models to use for model_index lookup.
 
   Returns:
     Comoving x- and y-coordinate after ray shooting.
@@ -336,7 +372,8 @@ def _ray_shooting(
   state = (comv_x, comv_y, alpha_x, alpha_y, z_lens_last)
 
   ray_shooting_step = functools.partial(
-      _ray_shooting_step, cosmology_params=cosmology_params, z_source=z_source)
+      _ray_shooting_step, cosmology_params=cosmology_params, z_source=z_source,
+      lens_models=lens_models)
 
   # Scan over all of the lens models in our system to calculate deflection and
   # ray shoot between lens models.
@@ -360,6 +397,7 @@ def _ray_shooting_step(
     kwargs_z_lens,
     cosmology_params,
     z_source,
+    lens_models=ALL_LENS_MODELS
 ):
   """Conduct ray shooting between two lens models.
 
@@ -375,6 +413,7 @@ def _ray_shooting_step(
     cosmology_params: Cosmological parameters that define the universe's
       expansion.
     z_source: Redshift of the source.
+    lens_models: tuple of lens models to use for model_index lookup.
 
   Returns:
     Two copies of the new state, which is a tuple of new comoving positions, new
@@ -393,7 +432,8 @@ def _ray_shooting_step(
   alpha_x, alpha_y = _add_deflection(comv_x, comv_y, alpha_x, alpha_y,
                                      kwargs_z_lens['kwargs_lens'],
                                      cosmology_params, kwargs_z_lens['z_lens'],
-                                     z_source)
+                                     z_source,
+                                     lens_models=lens_models)
 
   new_state = (comv_x, comv_y, alpha_x, alpha_y, kwargs_z_lens['z_lens'])
 
@@ -424,7 +464,8 @@ def _add_deflection(comv_x, comv_y,
                     kwargs_lens,
                     cosmology_params,
                     z_lens,
-                    z_source):
+                    z_source,
+                    lens_models=ALL_LENS_MODELS):
   """Calculate the deflection for a specific lens model.
 
   Args:
@@ -441,6 +482,7 @@ def _add_deflection(comv_x, comv_y,
       expansion.
     z_lens: Redshift of the slice (i.e. current redshift).
     z_source: Redshift of the source.
+    lens_models: tuple of lens models to use for model_index lookup.
 
   Returns:
     New x- and y-component of the deflection at each specified position.
@@ -450,7 +492,7 @@ def _add_deflection(comv_x, comv_y,
 
   # All of our derivatives are defined in reduced coordinates.
   alpha_x_reduced, alpha_y_reduced = _calculate_derivatives(
-      kwargs_lens, theta_x, theta_y)
+      kwargs_lens, theta_x, theta_y, lens_models=lens_models)
 
   alpha_x_update = cosmology_utils.reduced_to_physical(alpha_x_reduced,
                                                        cosmology_params, z_lens,
@@ -466,6 +508,7 @@ def _calculate_derivatives(
     kwargs_lens,
     theta_x,
     theta_y,
+    lens_models=ALL_LENS_MODELS,
 ):
   """Calculate the derivatives for the specified lens model.
 
@@ -477,6 +520,7 @@ def _calculate_derivatives(
       `model_index` of -1 indicates that the previous total should be returned.
     theta_x: X-coordinate at which to evaluate the derivative.
     theta_y: Y-coordinate at which to evaluate the derivative.
+    lens_models: tuple of lens models to use for model_index lookup.
 
   Returns:
     Change in x- and y-component of derivative caused by lens model. X- and
@@ -486,9 +530,8 @@ def _calculate_derivatives(
   # same inputs. We accomplish this using our wrapper and picking out only the
   # parameters required for that model.
   derivative_functions = [
-      utils.unpack_parameters_xy(LENS_MODELS[model_index].derivatives,
-                                 LENS_MODEL_PARAMETERS[model_index])
-      for model_index in range(len(LENS_MODELS))
+      utils.unpack_parameters_xy(model.derivatives, model.parameters)
+      for model in lens_models
   ]
 
   # Condition on model_index to allow for padding.
@@ -507,7 +550,8 @@ def _calculate_derivatives(
 
 def _surface_brightness(
     theta_x, theta_y,
-    kwargs_source_slice):
+    kwargs_source_slice,
+    source_models=ALL_SOURCE_MODELS):
   """Return the surface brightness for a slice of light models.
 
   Args:
@@ -521,12 +565,15 @@ def _surface_brightness(
       equal to the total number of light models in the slice. For more detailed
       discussion see documentation of `jax.lax.scan`, which is used to iterate
       over the models.
+    source_models: tuple of source models to use for model_index lookup.
 
   Returns:
     Surface brightness summed over all sources.
   """
   add_surface_brightness = functools.partial(
-      _add_surface_brightness, theta_x=theta_x, theta_y=theta_y)
+      _add_surface_brightness, 
+      theta_x=theta_x, theta_y=theta_y,
+      source_models=source_models)
   brightness_total = jnp.zeros_like(theta_x)
   brightness_total, _ = jax.lax.scan(add_surface_brightness, brightness_total,
                                      kwargs_source_slice)
@@ -536,7 +583,8 @@ def _surface_brightness(
 def _add_surface_brightness(prev_brightness,
                             kwargs_source,
                             theta_x,
-                            theta_y):
+                            theta_y,
+                            source_models=ALL_SOURCE_MODELS):
   """Return the surface brightness for a single light model.
 
   Args:
@@ -544,14 +592,14 @@ def _add_surface_brightness(prev_brightness,
     kwargs_source: Kwargs to evaluate the source surface brightness.
     theta_x: X-coordinate at which to evaluate the surface brightness.
     theta_y: Y-coordinate at which to evaluate the surface brightness.
+    source_models: tuple of source models to use for model_index lookup.
 
   Returns:
     Surface brightness of the source at given coordinates.
   """
   source_functions = [
-      utils.unpack_parameters_xy(SOURCE_MODELS[model_index].function,
-                                 SOURCE_MODEL_PARAMETERS[model_index])
-      for model_index in range(len(SOURCE_MODELS))
+      utils.unpack_parameters_xy(model.function, model.parameters)
+      for model in source_models
   ]
   brightness = jax.lax.switch(kwargs_source['model_index'], source_functions,
                               theta_x, theta_y, kwargs_source)

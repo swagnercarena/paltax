@@ -221,14 +221,51 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         functools.partial(
             image_simulation.generate_image, kwargs_detector=kwargs_detector))
 
-    np.testing.assert_allclose(
-        utils.downsample(
-            g_image(grid_x, grid_y, kwargs_lens_all, kwargs_source_slice,
-                    kwargs_lens_light_slice, kwargs_psf, cosmology_params,
-                    z_lens_array, z_source),
-            kwargs_detector['supersampling_factor']),
-        expected,
-        rtol=1e-3)
+    result = utils.downsample(
+      g_image(grid_x, grid_y, kwargs_lens_all, kwargs_source_slice,
+              kwargs_lens_light_slice, kwargs_psf, cosmology_params,
+              z_lens_array, z_source),
+      kwargs_detector['supersampling_factor'])
+    np.testing.assert_allclose(result, expected, rtol=1e-3)
+
+    # Now try a subset / different order of models
+    selected_lens_models = [lens_models.TNFW, lens_models.NFW, lens_models.Shear]
+    selected_source_models = [source_models.SersicElliptic, source_models.Interpol]
+    selected_psf_models = [psf_models.Pixel, psf_models.Gaussian]
+
+    # We have to change the various model_index fields to match the subset
+    for kwargs_dict, selected_models, all_models in [
+        (kwargs_lens_all, selected_lens_models, image_simulation.ALL_LENS_MODELS),
+        (kwargs_source_slice, selected_source_models, image_simulation.ALL_SOURCE_MODELS),
+        (kwargs_psf, selected_psf_models, image_simulation.ALL_PSF_MODELS),
+        # Lens light models are source models
+        (kwargs_lens_light_slice, selected_source_models, image_simulation.ALL_SOURCE_MODELS),
+    ]:
+      def _new_index(old_index):
+        if old_index == -1:
+          return old_index
+        return selected_models.index(all_models[old_index])
+      if isinstance(kwargs_dict['model_index'], int):
+        kwargs_dict['model_index'] = _new_index(kwargs_dict['model_index'])
+      else:
+        kwargs_dict['model_index'] = jnp.array([
+          _new_index(i) for i in kwargs_dict['model_index']])
+
+    # Generate the image using only the selected models
+    g_image_2 = self.variant(
+        functools.partial(
+            image_simulation.generate_image, 
+            kwargs_detector=kwargs_detector,
+            lens_models=selected_lens_models,
+            source_models=selected_source_models,
+            psf_models=selected_psf_models))
+    result_2 = utils.downsample(
+      g_image_2(grid_x, grid_y, kwargs_lens_all, kwargs_source_slice,
+              kwargs_lens_light_slice, kwargs_psf, cosmology_params,
+              z_lens_array, z_source),
+      kwargs_detector['supersampling_factor'])
+    # The result should be identical, since we didn't include noise
+    np.testing.assert_allclose(result, result_2)
 
   @chex.all_variants
   def test_psf_convolution(self):
