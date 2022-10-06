@@ -70,7 +70,7 @@ class Gaussian():
 class Pixel():
   """Implementation of Pixel point spread function."""
 
-  parameters = ('kernel_point_source')
+  parameters = ('kernel_point_source',)
 
   @staticmethod
   def convolve(

@@ -98,31 +98,32 @@ class GaussianTest(chex.TestCase, parameterized.TestCase):
             channel_axis=0)[0],
         rtol=1e-5)
 
-  class PixelTest(chex.TestCase, parameterized.TestCase):
-    """Runs tests of Pixel derivative functions."""
 
-    def test_parameters(self):
-      annotated_parameters = sorted(psf_models.Pixel.parameters)
-      correct_parameters = sorted(_prepare_pixel_parameters().keys())
-      self.assertListEqual(annotated_parameters, correct_parameters)
+class PixelTest(chex.TestCase, parameterized.TestCase):
+  """Runs tests of Pixel derivative functions."""
 
-    @chex.all_variants
-    def test_convolve(self):
-      image = _prepare_image()
-      parameters = _prepare_pixel_parameters()
+  def test_parameters(self):
+    annotated_parameters = sorted(psf_models.Pixel.parameters)
+    correct_parameters = sorted(_prepare_pixel_parameters().keys())
+    self.assertListEqual(annotated_parameters, correct_parameters)
 
-      convolve = self.variant(psf_models.Pixel.convolve)
+  @chex.all_variants
+  def test_convolve(self):
+    image = _prepare_image()
+    parameters = _prepare_pixel_parameters()
 
-      # Not much to test here other than parameters being passed through
-      # correctly / matching non-jax scipy.
-      np.testing.assert_allclose(
-          convolve(image, parameters),
-          signal.convolve(
-              image,
-              parameters['kernel_point_source'] /
-              jnp.sum(parameters['kernel_point_source']),
-              mode='same'),
-          rtol=1e-6)
+    convolve = self.variant(psf_models.Pixel.convolve)
+
+    # Not much to test here other than parameters being passed through
+    # correctly / matching non-jax scipy.
+    np.testing.assert_allclose(
+        convolve(image, parameters),
+        signal.convolve(
+            image,
+            parameters['kernel_point_source'] /
+            jnp.sum(parameters['kernel_point_source']),
+            mode='same'),
+        rtol=1e-5)
 
 
 if __name__ == '__main__':
