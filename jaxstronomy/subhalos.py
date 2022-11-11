@@ -161,7 +161,7 @@ def sample_cored_nfw(main_deflector_params: Mapping[str, float],
     TODO
     """
 
-    rng_host, rng_pos = jax.random.split(rng)
+    rng_host, rng_radii, rng_pos = jax.random.split(rng, 3)
 
     # Extract the relevant host properties
     host_mass = main_deflector_params['mass']
@@ -182,7 +182,7 @@ def sample_cored_nfw(main_deflector_params: Mapping[str, float],
 
     # Draw coordinates up to the sampling pad length.
     radial_coord = nfw_functions.cored_nfw_draws(host_r_two_hund / 2,
-        host_rho_nfw, host_r_scale, r_max, sampling_pad_length)
+        host_rho_nfw, host_r_scale, r_max, rng_radii, sampling_pad_length)
     is_inside, cart_pos = rejection_sampling(radial_coord, host_r_two_hund,
         radius_e_three, rng_pos)
 
@@ -253,7 +253,7 @@ def convert_to_lensing(main_deflector_params: Mapping[str, float],
         'scale_radius': subhalos_r_scale_ang, 'alpha_rs': subhlos_alpha_rs,
         'trunc_radius': subhalos_r_trunc_ang,
         'center_x': subhalos_cart_pos_ang[:,0],
-        'center_x': subhalos_cart_pos_ang[:,1]}
+        'center_y': subhalos_cart_pos_ang[:,1]}
 
     return z_subhalos, subhalos_kwargs
 

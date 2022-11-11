@@ -43,6 +43,9 @@ import jax.numpy as jnp
 from jaxstronomy import power_spectrum
 
 SPEED_OF_LIGHT = 2.99792458e8
+GRAVITATIONAL_CONSTANT = 6.67384e-11
+MEGAPARSEC_METERS = 3.0856775800000002e+22
+MASS_SUN = 1.9891000000000002e+30
 # Linear density threshold for collapse.
 DELTA_COLLAPSE_UNCORRECTED = 1.68647
 # Critical density of the universe at redshift 0 in units of
@@ -576,3 +579,40 @@ def peak_height(cosmology_params, mass, z):
   lagrangian_r = lagrangian_radius(cosmology_params, mass)
   sigma = sigma_tophat(cosmology_params, lagrangian_r, z)
   return collapse_overdensity(cosmology_params, z) / sigma
+
+
+def rho_crit(cosmology_params, z):
+  """Critical density of the universe at redshift z.
+
+  Args:
+    cosmology_params: Cosmological parameters that define the universe's
+      expansion.
+    z: Redshift at which to calculate critical density.
+
+  Returns:
+    Critical density of the universe at redshift z.
+  """
+  return RHO_CRIT_0 * _e_z(cosmology_params, z) ** 2
+
+
+def calculate_sigma_crit(cosmology_params, z, z_source):
+  """Calculate the critical surface density for the lensing configuration.
+
+  Args:
+    cosmology_params: Cosmological parameters that define the universe's
+      expansion.
+    z: Redshift at which to calculate critical surface density.
+    z_source: Redshift of the source.
+
+  Returns:
+    The critical surface density in units of M_sun/kpc^2
+  """
+  # Normalization factor for sigma_crit
+  norm = (SPEED_OF_LIGHT ** 2 / (4 * jnp.pi * GRAVITATIONAL_CONSTANT) *
+    MEGAPARSEC_METERS / MASS_SUN)
+  # Get our three angular diameter distances
+  mpc_to_kpc = 1e3
+  dd = angular_diameter_distance(cosmology_params, z)
+  ds = angular_diameter_distance(cosmology_params, z_source)
+  dds = angular_diameter_distance_between(cosmology_params, z, z_source)
+  return ds / (dd * dds) * norm / mpc_to_kpc ** 2
