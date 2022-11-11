@@ -489,5 +489,23 @@ class CosmologyUtilsTest(chex.TestCase, parameterized.TestCase):
         derivative_log_sigma_log_r(cosmology_params, r, z), expected, places=2)
 
 
+  @chex.all_variants
+  @parameterized.named_parameters([
+    (f'_m_{np.log10(m):.0f}_z_{z}', m, z, expected) for m, z, expected in zip(
+      [1e6, 1e7, 1e8], [0.1, 0.2, 0.3],
+      [0.22125715469476553, 0.2727592115385218, 0.3426138949041374])
+  ])
+  def test_peak_height(self, m, z, expected):
+    # Figure out what lagrangian radius we need for the peak height calculation.
+    cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT, z, z)
+    r = cosmology_utils.lagrangian_radius(cosmology_params, m)
+    cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT, z, z,
+      1e-3, r, 2)
+    peak_height = self.variant(cosmology_utils.peak_height)
+
+    self.assertAlmostEqual(peak_height(cosmology_params, m, z), expected,
+      places=2)
+
+
 if __name__ == '__main__':
   absltest.main()
