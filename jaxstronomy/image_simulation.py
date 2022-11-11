@@ -31,7 +31,7 @@ from jaxstronomy import utils
 def generate_image(
     grid_x: jnp.ndarray,
     grid_y: jnp.ndarray,
-    kwargs_lens_all: Mapping[str, Mapping[str, jnp.ndarray]],
+    kwargs_lens_all: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     kwargs_source_slice: Mapping[str, jnp.ndarray],
     kwargs_lens_light_slice: Mapping[str, jnp.ndarray],
     kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
@@ -182,7 +182,7 @@ def lens_light_surface_brightness(
 def source_surface_brightness(
     alpha_x: jnp.ndarray,
     alpha_y: jnp.ndarray,
-    kwargs_lens_all: Mapping[str, Mapping[str, jnp.ndarray]],
+    kwargs_lens_all: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     kwargs_source_slice: Mapping[str, jnp.ndarray],
     kwargs_detector: Mapping[str, jnp.ndarray],
     cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
@@ -221,7 +221,7 @@ def source_surface_brightness(
 def _image_flux(
     alpha_x: jnp.ndarray,
     alpha_y: jnp.ndarray,
-    kwargs_lens_all:  Mapping[str, Mapping[str, jnp.ndarray]],
+    kwargs_lens_all: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     kwargs_source_slice: Mapping[str, jnp.ndarray],
     cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
     z_source: float,
@@ -268,7 +268,7 @@ def _image_flux(
 def _ray_shooting(
     alpha_x: jnp.ndarray,
     alpha_y: jnp.ndarray,
-    kwargs_lens_all:  Mapping[str, Mapping[str, jnp.ndarray]],
+    kwargs_lens_all:  Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
     z_source: float,
     all_models: Mapping[str, Sequence[Any]]
@@ -365,7 +365,7 @@ def _ray_shooting(
 
 def _ray_shooting_step(
     state: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, float],
-    kwargs_z_lens: Tuple[Mapping[str, jnp.ndarray]],
+    kwargs_z_lens: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
     z_source: float,
     all_lens_models: Sequence[Any]

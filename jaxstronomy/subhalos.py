@@ -17,7 +17,7 @@ This module containts the functions needed to draw subhalos for an underlying
 distribution as defined in https://arxiv.org/pdf/1909.02573.pdf.
 """
 
-from typing import Mapping, Sequence, Tuple, Union
+from typing import Mapping, Optional, Sequence, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -136,7 +136,7 @@ def rejection_sampling(radial_coord: jnp.ndarray, r_two_hund: float,
     rng_theta, rng_phi = jax.random.split(rng)
     theta = jax.random.uniform(rng_theta, shape=radial_coord.shape)
     theta *= 2 * jnp.pi
-    phi = jnp.arccos(1 - 2 * jnp.random.uniform(rng_phi,
+    phi = jnp.arccos(1 - 2 * jax.random.uniform(rng_phi,
         shape=radial_coord.shape))
 
     # Get each of the cartesian coordinates
@@ -171,8 +171,7 @@ def sample_cored_nfw(main_deflector_params: Mapping[str, float],
     host_r_two_hund = nfw_functions.r_two_hund_from_m(cosmology_params,
         host_mass, z_lens)
     host_r_scale = host_r_two_hund / host_c
-    host_rho_nfw = nfw_functions.rho_nfw_from_c(cosmology_params, host_mass,
-        host_c)
+    host_rho_nfw = nfw_functions.rho_nfw_from_c(cosmology_params, host_c)
 
     kpa = cosmology_utils.kpc_per_arcsecond(cosmology_params, z_lens)
     radius_e_three = kpa * main_deflector_params['theta_e'] * 3
@@ -191,5 +190,93 @@ def sample_cored_nfw(main_deflector_params: Mapping[str, float],
     # the bounds and only return n_sub coordinates. This does not guarantee
     # that all the samples returned will be within the boudns, but for
     # large enough sampling_pad_length, nearly all of them will be.
-    return cart_pos[jnp.flip(jnp.argsort(is_inside))[:n_subs]]
+    return cart_pos[jnp.argsort(~is_inside)[:n_subs]]
 
+
+def get_truncation_radius(subhalos_mass: jnp.ndarray,
+    subhalos_radii: jnp.ndarray, m_pivot: Optional[float] = 1e7,
+    r_pivot: Optional[float] = 50) -> jnp.ndarray:
+    """Return truncation radius for the subhalos.
+
+    Args:
+        TODO
+    """
+    return (1.4 * (subhalos_mass / m_pivot) ** (1 / 3) *
+        (subhalos_radii / r_pivot) ** (2 / 3))
+
+
+def convert_to_lensing(main_deflector_params: Mapping[str, float],
+    source_params: Mapping[str, Union[int, float]],
+    subhalo_params: Mapping[str, float],
+    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    subhalos_mass: jnp.ndarray, subhalos_cart_pos: jnp.ndarray,
+    rng: Sequence[int]) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
+    """Convert subhalo masses and positions in lensing quantities.
+
+    Args:
+        TODO
+    """
+    # Extract the redshifts we need
+    z_lens = main_deflector_params['z_lens']
+    z_source = source_params['z_source']
+
+    # All the subhalos are at the main deflector redshift
+    z_subhalos = jnp.full(subhalos_mass.shape, z_lens)
+
+    # Calculate the concentration and radial position of the subhalos
+    subhalos_c = mass_concentration(subhalo_params, cosmology_params,
+        subhalos_mass, z_lens, rng)
+    subhalos_radii = jnp.sqrt(jnp.sum(subhalos_cart_pos ** 2, axis=-1))
+
+    # Concert from masses and concentrations to nfw parameters
+    subhalos_r_two_hund = nfw_functions.r_two_hund_from_m(cosmology_params,
+        subhalos_mass, z_lens)
+    subhalos_r_scale = subhalos_r_two_hund / subhalos_c
+    subhalos_rho_nfw = nfw_functions.rho_nfw_from_c(cosmology_params,
+        subhalos_c)
+    subhalos_r_trunc = get_truncation_radius(subhalos_mass, subhalos_radii)
+
+    # Convert to lensing units
+    lq_tuple = nfw_functions.convert_to_lensing_tnfw(cosmology_params,
+        subhalos_r_scale, z_subhalos, subhalos_rho_nfw, subhalos_r_trunc,
+        z_source)
+    subhalos_r_scale_ang, subhlos_alpha_rs, subhalos_r_trunc_ang = lq_tuple
+    kpa = cosmology_utils.kpc_per_arcsecond(cosmology_params, z_lens)
+    subhalos_cart_pos_ang = subhalos_cart_pos / kpa
+
+    # There is only one model, the tNFW. Subhalos with mass 0 are treated
+    # as padding models.
+    subhalos_model_index = (jnp.full(subhalos_mass.shape, -1 ) *
+        subhalos_mass > 0)
+
+    subhalos_kwargs = {'model_index': subhalos_model_index,
+        'scale_radius': subhalos_r_scale_ang, 'alpha_rs': subhlos_alpha_rs,
+        'trunc_radius': subhalos_r_trunc_ang,
+        'center_x': subhalos_cart_pos_ang[:,0],
+        'center_x': subhalos_cart_pos_ang[:,1]}
+
+    return z_subhalos, subhalos_kwargs
+
+
+def draw_subhalos(main_deflector_params: Mapping[str, float],
+    source_params: Mapping[str, Union[int, float]],
+    subhalo_params: Mapping[str, float],
+    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    rng: Sequence[int], subhalos_pad_length: int, sampling_pad_length: int):
+    """ Draw subhalos with redshift and lensing quantities.
+
+    Args:
+        TODO
+    """
+    rng_masses, rng_pos, rng_convert = jax.random.split(rng, 3)
+
+    # Draw the masses and positions for our subhalos up to the pad.
+    subhalos_mass = draw_nfw_masses(main_deflector_params, subhalo_params,
+        cosmology_params, rng_masses, subhalos_pad_length)
+    subhalos_cart_pos = sample_cored_nfw(main_deflector_params, subhalo_params,
+        cosmology_params, rng_pos, subhalos_pad_length, sampling_pad_length)
+
+    # Return our lensing keyword dictionary and array of redshifts.
+    return convert_to_lensing(main_deflector_params, source_params,
+        subhalo_params, cosmology_params, subhalos_mass, subhalos_cart_pos,
+        rng_convert)
