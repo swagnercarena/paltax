@@ -474,7 +474,7 @@ def lagrangian_radius(cosmology_params,
   Args:
     cosmology_params: Cosmological parameters that define the universe's
       expansion.
-    mass: Masses at which to calculate the lagrangian radius in units M_sun / h.
+    mass: Mass at which to calculate the lagrangian radius in units M_sun / h.
 
   Returns:
     Lagrangian radius in units of comoving Mpc / h.
@@ -559,3 +559,20 @@ def derivative_log_sigma_log_r(
 
   sigma = sigma_tophat(cosmology_params, lagrangian_r, z)
   return derivative * lagrangian_r / sigma
+
+
+def peak_height(cosmology_params, mass, z):
+  """Peak height for a specific mass and redshift
+
+  Args:
+    cosmology_params: Cosmological parameters that define the universe's
+      expansion.
+    mass: Mass at which to calculate the lagrangian radius in units M_sun / h.
+    z: Redshift of the halo.
+
+  Returns:
+    Peak height.
+  """
+  lagrangian_r = lagrangian_radius(cosmology_params, mass)
+  sigma = sigma_tophat(cosmology_params, lagrangian_r, z)
+  return collapse_overdensity(cosmology_params, z) / sigma
