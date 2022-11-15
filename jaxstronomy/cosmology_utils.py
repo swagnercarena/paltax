@@ -590,9 +590,11 @@ def rho_crit(cosmology_params, z):
     z: Redshift at which to calculate critical density.
 
   Returns:
-    Critical density of the universe at redshift z.
+    Critical density of the universe at redshift z in units M_sun * h ** 2 /
+      kpc ** 3.
   """
-  return RHO_CRIT_0 * _e_z(cosmology_params, z) ** 2
+  kpc_to_mpc = 1e-3
+  return RHO_CRIT_0 * _e_z(cosmology_params, z) ** 2 * kpc_to_Mpc ** 3
 
 
 def calculate_sigma_crit(cosmology_params, z, z_source):

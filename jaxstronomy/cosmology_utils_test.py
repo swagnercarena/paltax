@@ -506,6 +506,33 @@ class CosmologyUtilsTest(chex.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(peak_height(cosmology_params, m, z), expected,
       places=2)
 
+  @chex.all_variants
+  @parameterized.named_parameters([
+    (f'_z_{z}', z, expected) for z, expected in zip(
+      [0.1, 0.2, 0.3],
+      [305.92535270755224, 339.97600749243884, 380.20367635428045])
+  ])
+  def test_rho_crit(self, z, expected):
+    # Test a few reference values of the critical overdensity.
+    cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT, z, z)
+    rho_crit = self.variant(cosmology_utils.rho_crit)
+    self.assertAlmostEqual(rho_crit(cosmology_params, z), expected, places=4)
+
+  @chex.all_variants
+  @parameterized.named_parameters([
+    (f'_z_{z}_zs_{z_source}', z, z_source, expected) for
+      z, z_source, expected in zip([0.1, 0.2, 0.3], [0.2, 0.4, 0.6],
+        [8684081395.9067, 5004482667.430436, 3832776963.481256])
+  ])
+  def test_rho_crit(self, z, z_source, expected):
+    # Test a few reference values of the critical surface overdensity.
+    cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT,
+      z_source, 0.1)
+    calculate_sigma_crit = self.variant(cosmology_utils.calculate_sigma_crit)
+    self.assertAlmostEqual(
+      calculate_sigma_crit(cosmology_params, z, z_source) / 1e9, expected / 1e9,
+      places=3)
+
 
 if __name__ == '__main__':
   absltest.main()

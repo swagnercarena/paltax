@@ -101,13 +101,13 @@ def mass_concentration(subhalo_params: Mapping[str, float],
     zeta = subhalo_params['conc_zeta']
     beta = subhalo_params['conc_beta']
     m_ref = subhalo_params['conc_m_ref']
-    dex_scatter = subhalo_params['conc_m_scatter']
+    dex_scatter = subhalo_params['conc_dex_scatter']
 
     # Use peak heights to calculate concentrations
     h = cosmology_params['hubble_constant'] / 100
-    peak_heights = jax.vmap(cosmology_params.peak_height,
+    peak_heights = jax.vmap(cosmology_utils.peak_height,
         in_axes=[None, 0, None])(cosmology_params, masses * h, z)
-    peak_height_ref = cosmology_params.peak_height(cosmology_params, m_ref * h,
+    peak_height_ref = cosmology_utils.peak_height(cosmology_params, m_ref * h,
         0.0)
     concentrations = (c_zero * (1+z) ** zeta *
         (peak_heights / peak_height_ref) ** (-beta))
@@ -171,7 +171,8 @@ def sample_cored_nfw(main_deflector_params: Mapping[str, float],
     host_r_two_hund = nfw_functions.r_two_hund_from_m(cosmology_params,
         host_mass, z_lens)
     host_r_scale = host_r_two_hund / host_c
-    host_rho_nfw = nfw_functions.rho_nfw_from_c(cosmology_params, host_c)
+    host_rho_nfw = nfw_functions.rho_nfw_from_c(cosmology_params, host_c,
+        z_lens)
 
     kpa = cosmology_utils.kpc_per_arcsecond(cosmology_params, z_lens)
     radius_e_three = kpa * main_deflector_params['theta_e'] * 3
@@ -233,7 +234,7 @@ def convert_to_lensing(main_deflector_params: Mapping[str, float],
         subhalos_mass, z_lens)
     subhalos_r_scale = subhalos_r_two_hund / subhalos_c
     subhalos_rho_nfw = nfw_functions.rho_nfw_from_c(cosmology_params,
-        subhalos_c)
+        subhalos_c, z_lens)
     subhalos_r_trunc = get_truncation_radius(subhalos_mass, subhalos_radii)
 
     # Convert to lensing units
@@ -246,8 +247,8 @@ def convert_to_lensing(main_deflector_params: Mapping[str, float],
 
     # There is only one model, the tNFW. Subhalos with mass 0 are treated
     # as padding models.
-    subhalos_model_index = (jnp.full(subhalos_mass.shape, -1 ) *
-        subhalos_mass > 0)
+    subhalos_model_index = (jnp.full(subhalos_mass.shape, -1) *
+        jnp.int32(subhalos_mass == 0))
 
     subhalos_kwargs = {'model_index': subhalos_model_index,
         'scale_radius': subhalos_r_scale_ang, 'alpha_rs': subhlos_alpha_rs,

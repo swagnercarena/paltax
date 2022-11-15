@@ -31,7 +31,13 @@ def r_two_hund_from_m(
     """Calculate the two-hundred radial overdensity from the mass.
 
     Args:
-        TODO
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        masses: Mass values to calculate the overdensity radius for.
+        z: Redshift at which to conduct the calculation.
+
+    Returns:
+        The overdensity radius corresponding to each provided mass.
     """
     # Calculate the radius using the critical density at the given redshift.
     h = cosmology_params['hubble_constant'] / 100.0
@@ -41,7 +47,7 @@ def r_two_hund_from_m(
 
 def rho_nfw_from_c(
     cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
-    c: Union[jnp.ndarray, float]):
+    c: Union[jnp.ndarray, float], z: float):
     """Calculate the amplitude of the NFW profile.
 
     Args:
