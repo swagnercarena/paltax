@@ -51,12 +51,18 @@ def rho_nfw_from_c(
     """Calculate the amplitude of the NFW profile.
 
     Args:
-        TODO
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        c: Concentration of the NFW.
+        z: Redshift at which to define the amplitude
+
+    Returns:
+        Amplitude of the NFW
     """
     # Calculate the radius using the critical density at the given redshift.
     h = cosmology_params['hubble_constant'] / 100.0
     rho_crit = cosmology_utils.rho_crit(cosmology_params, z) * h ** 2
-    return (rho_crit * 200) / (3 * (jnp.log(1 + c) - c / (1+c)))
+    return (c ** 3 * rho_crit * 200) / (3 * (jnp.log(1 + c) - c / (1+c)))
 
 
 def _cored_nfw_integral(r_tidal: float, rho_nfw: float, r_scale: float,
@@ -98,7 +104,15 @@ def cored_nfw_draws(r_tidal: float, rho_nfw: float, r_scale: float,
     """Return radial samples from a cored nfw profile.
 
     Args:
-        TODO
+        r_tidal: Tidal radius of the NFW
+        rho_nfw: Amplitude of the NFW
+        r_scale: Scale radius of the NFW
+        r_max: Maximum radius to draw halos within
+        rng: Jax PRNG key.
+        n_draws: Number of positions to draw.
+
+    Returns:
+        Radial position draws.
     """
     # Default to 1000 values for the inverse cdf interpolation.
     r_values = jnp.linspace(0, r_max, 1000)
