@@ -398,8 +398,8 @@ class CosmologyUtilsTest(chex.TestCase, parameterized.TestCase):
             for z_lens, z_source in zip([0.1, 0.5, 0.5], [0.5, 1.0, 2.0])
     ])
     def test_reduced_to_physical(self, z_lens, z_source):
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_LENSTRONOMY,
-                                                                                                 z_source, z_lens)
+        cosmology_params = _prepare_cosmology_params(
+                COSMOLOGY_PARAMS_LENSTRONOMY, z_source, z_lens)
         reduced, _ = _prepare_alpha_x_alpha_y()
         expected = _prepare_reduced_to_physical_expected(z_lens, z_source)
 
@@ -415,8 +415,8 @@ class CosmologyUtilsTest(chex.TestCase, parameterized.TestCase):
     @chex.all_variants
     @parameterized.named_parameters([
             (f'_omega_m_{omega_m_zero}_z_{z}', omega_m_zero, z, expected)
-            for omega_m_zero, z, expected in zip([0.2, 0.3, 0.4], [0.2, 0.4, 1.2],
-                                                                                     [95.917, 228.468, 1182.084])
+            for omega_m_zero, z, expected in zip([0.2, 0.3, 0.4],
+                [0.2, 0.4, 1.2], [95.917, 228.468, 1182.084])
     ])
     def test_rho_matter(self, omega_m_zero, z, expected):
         rho_matter = self.variant(cosmology_utils.rho_matter)
@@ -443,7 +443,7 @@ class CosmologyUtilsTest(chex.TestCase, parameterized.TestCase):
     ])
     def test_lagrangian_radius(self, m_log10, expected):
         cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT, 0.1,
-                                                                                                 0.1)
+                0.1)
         lagrangian_radius = self.variant(cosmology_utils.lagrangian_radius)
 
         self.assertAlmostEqual(
@@ -457,8 +457,8 @@ class CosmologyUtilsTest(chex.TestCase, parameterized.TestCase):
     ])
     def test_sigma_tophat(self, r, z, expected):
         # Minimal lookup tables to reproduce desired results.
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT, z, z,
-                                                                                                 1e-3, r, 2)
+        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT, z,
+                z, 1e-3, r, 2)
 
         sigma_tophat = self.variant(cosmology_utils.sigma_tophat)
 
@@ -474,33 +474,36 @@ class CosmologyUtilsTest(chex.TestCase, parameterized.TestCase):
     @parameterized.named_parameters([
             (f'_r_{r}_z_{z}', r, z, expected) for r, z, expected in zip(
                     [1e-2, 1e-1, 1e0], [0.1, 0.2, 0.3],
-                    [-0.1840887668734233, -0.26100267465205956, -0.4077157354139687])
+                    [-0.1840887668734233, -0.26100267465205956,
+                        -0.4077157354139687])
     ])
     def test_derivative_log_sigma_log_r(self, r, z, expected):
         # Minimal lookup tables to reproduce desired results.
         dr = 1e-4
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT, z, z,
-                                                                                                 r - 2 * dr, r + 2 * dr, 5)
+        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT, z,
+                z, r - 2 * dr, r + 2 * dr, 5)
 
         derivative_log_sigma_log_r = self.variant(
                 cosmology_utils.derivative_log_sigma_log_r)
 
         self.assertAlmostEqual(
-                derivative_log_sigma_log_r(cosmology_params, r, z), expected, places=2)
+                derivative_log_sigma_log_r(cosmology_params, r, z), expected,
+                        places=2)
 
 
     @chex.all_variants
     @parameterized.named_parameters([
-        (f'_m_{np.log10(m):.0f}_z_{z}', m, z, expected) for m, z, expected in zip(
-            [1e6, 1e7, 1e8], [0.1, 0.2, 0.3],
-            [0.22125715469476553, 0.2727592115385218, 0.3426138949041374])
+        (f'_m_{np.log10(m):.0f}_z_{z}', m, z, expected) for m, z, expected in
+        zip([1e6, 1e7, 1e8], [0.1, 0.2, 0.3],
+                [0.22125715469476553, 0.2727592115385218, 0.3426138949041374])
     ])
     def test_peak_height(self, m, z, expected):
         # Figure out what lagrangian radius we need for the peak height calculation.
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT, z, z)
+        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT, z,
+                z)
         r = cosmology_utils.lagrangian_radius(cosmology_params, m)
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT, z, z,
-            1e-3, r, 2)
+        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT, z,
+                z, 1e-3, r, 2)
         peak_height = self.variant(cosmology_utils.peak_height)
 
         self.assertAlmostEqual(peak_height(cosmology_params, m, z), expected,
@@ -514,9 +517,11 @@ class CosmologyUtilsTest(chex.TestCase, parameterized.TestCase):
     ])
     def test_rho_crit(self, z, expected):
         # Test a few reference values of the critical overdensity.
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT, z, z)
+        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT, z,
+                z)
         rho_crit = self.variant(cosmology_utils.rho_crit)
-        self.assertAlmostEqual(rho_crit(cosmology_params, z), expected, places=4)
+        self.assertAlmostEqual(rho_crit(cosmology_params, z), expected,
+                places=4)
 
     @chex.all_variants
     @parameterized.named_parameters([
@@ -528,10 +533,11 @@ class CosmologyUtilsTest(chex.TestCase, parameterized.TestCase):
         # Test a few reference values of the critical surface overdensity.
         cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT,
             z_source, 0.1)
-        calculate_sigma_crit = self.variant(cosmology_utils.calculate_sigma_crit)
+        calculate_sigma_crit = self.variant(
+                cosmology_utils.calculate_sigma_crit)
         self.assertAlmostEqual(
-            calculate_sigma_crit(cosmology_params, z, z_source) / 1e9, expected / 1e9,
-            places=3)
+            calculate_sigma_crit(cosmology_params, z, z_source) / 1e9,
+                expected / 1e9, places=3)
 
 
 if __name__ == '__main__':

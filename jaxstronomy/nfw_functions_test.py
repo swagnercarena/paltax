@@ -27,6 +27,7 @@ from scipy.integrate import quad
 from jaxstronomy import cosmology_utils
 from jaxstronomy import nfw_functions
 
+
 COSMOLOGY_PARAMS_INIT = immutabledict({
     'omega_m_zero': 0.3089,
     'omega_b_zero': 0.0486,
@@ -41,13 +42,13 @@ COSMOLOGY_PARAMS_INIT = immutabledict({
 
 def _prepare_cosmology_params(cosmology_params_init, z_lookup_max, dz,
     r_min=1e-4, r_max=1e3, n_r_bins=2):
-  # Only generate a lookup table for values we need.
-  # When 0,0 is specified for the two z values, need to select a small non-zero
-  # values to generate a non-empty table.
-  z_lookup_max = max(z_lookup_max, 1e-7)
-  dz = max(dz, 1e-7)
-  return cosmology_utils.add_lookup_tables_to_cosmology_params(
-      dict(cosmology_params_init), z_lookup_max, dz, r_min, r_max, n_r_bins)
+    # Only generate a lookup table for values we need.
+    # When 0,0 is specified for the two z values, need to select a small non-zero
+    # values to generate a non-empty table.
+    z_lookup_max = max(z_lookup_max, 1e-7)
+    dz = max(dz, 1e-7)
+    return cosmology_utils.add_lookup_tables_to_cosmology_params(
+        dict(cosmology_params_init), z_lookup_max, dz, r_min, r_max, n_r_bins)
 
 
 class NfwFuntionsTests(chex.TestCase, parameterized.TestCase):
@@ -146,12 +147,12 @@ class NfwFuntionsTests(chex.TestCase, parameterized.TestCase):
 
     @chex.all_variants
     @parameterized.named_parameters([
-        (f'_rs_{rs}_rho_{rho}', rs, rho, e1, e2) for rs, rho, e1, e2 in
+        (f'_rs_{rs}_rho_{rho}', rs, rho, eo, et) for rs, rho, eo, et in
         zip([0.1, 1.5, 12.2], [1e13, 2e13, 3e13],
             [0.015902785701266995, 0.23854178551900487, 1.940139855554573],
             [6.503977420097886, 2926.7898390440478, 290415.5997622107])
     ])
-    def test_convert_to_lensing_nfw(self, rs, rho, e1, e2):
+    def test_convert_to_lensing_nfw(self, rs, rho, eo, et):
         # Compare to expected distributions.
         z = 0.5
         z_source = 1.0
@@ -163,8 +164,8 @@ class NfwFuntionsTests(chex.TestCase, parameterized.TestCase):
 
         r_s_ang, alpha_rs = convert_to_lensing_nfw(cosmology_params, rs, z, rho,
             z_source)
-        self.assertAlmostEqual(r_s_ang, e1, places=4)
-        self.assertAlmostEqual(1.0, e2 / alpha_rs, places=4)
+        self.assertAlmostEqual(r_s_ang, eo, places=4)
+        self.assertAlmostEqual(1.0, et / alpha_rs, places=4)
 
     @chex.all_variants
     @parameterized.named_parameters([

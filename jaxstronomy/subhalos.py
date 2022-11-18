@@ -52,7 +52,12 @@ def draw_nfw_masses(main_deflector_params: Mapping[str, float],
     """Draw from the subhalo mass function and return the masses.
 
     Args:
-        TODO
+        main_deflector_params: Parameters of the main deflector.
+        subhalo_parms: Parameters of the subhalo distribution.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        rng: Jax PRNG key.
+        pad_length: Length to pad mass draw to.
 
     Returns:
         Masses of the drawn halos in units of M_sun.
@@ -91,7 +96,12 @@ def mass_concentration(subhalo_params: Mapping[str, float],
     """Return the concentration of halos at a given mass and redshift.
 
     Args:
-        TODO
+        subhalo_parms: Parameters of the subhalo distribution.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        masses: Masses to pull concentrations for. In units of M_sun.
+        z: Redshift of the halos.
+        rng: Jax PRNG key.
 
     Returns:
         Concentration for each halo.

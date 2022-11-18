@@ -134,7 +134,16 @@ def convert_to_lensing_nfw(
     """Convert physical NFW parameters to lensing parameters.
 
     Args:
-        TODO
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        r_scale: Scale radius of the NFW.
+        z: Redshift of the NFW.
+        rho_nfw: Amplitude of the NFW.
+        z_source: Redshift of the source.
+
+    Returns:
+        The lensing scale radius and the deflection strength at the scale
+            radius.
     """
     kpa = cosmology_utils.kpc_per_arcsecond(cosmology_params, z)
 
@@ -157,7 +166,17 @@ def convert_to_lensing_tnfw(
     """Convert physical tNFW parameters to lensing parameters.
 
     Args:
-        TODO
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        r_scale: Scale radius of the tNFW.
+        z: Redshift of the tNFW.
+        rho_nfw: Amplitude of the tNFW.
+        r_trunc: Truncation radius of the tNFW.
+        z_source: Redshift of the source.
+
+    Returns:
+        The lensing scale radius, the deflection strength at the scale
+            radius, and the truncation radius.
     """
     kpa = cosmology_utils.kpc_per_arcsecond(cosmology_params, z)
 
