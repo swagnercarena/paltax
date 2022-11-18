@@ -149,6 +149,33 @@ class SubhalosTests(chex.TestCase, parameterized.TestCase):
         # Check the scatter does something
         subhalo_params['conc_dex_scatter'] = 0.1
         conc = mass_concentration(subhalo_params, cosmology_params,
-            jnp.full((1000,), m), z, rng)
+            jnp.full((10000,), m), z, rng)
         scatter = jnp.log10(conc) - expected
         self.assertAlmostEqual(jnp.std(scatter), 0.1, places=2)
+
+    @chex.all_variants
+    def test_rejection_sampling(self):
+        # Test that the distributions are respected and that the keep
+        # calculation is correct
+        rng = jax.random.PRNGKey(0)
+        radial_coord = jax.random.uniform(rng, (int(1e6),))
+        r_two_hund = 0.5
+        r_bound = 0.7
+
+        rejection_sampling = self.variant(subhalos.rejection_sampling)
+
+        is_inside, cart_pos = rejection_sampling(radial_coord, r_two_hund,
+            r_bound, rng)
+
+        np.testing.assert_array_almost_equal(jnp.sqrt(jnp.sum(cart_pos ** 2,
+            axis = -1)), radial_coord)
+        phi = jnp.arccos(cart_pos[:, 2] / radial_coord)
+        theta = jnp.arctan(cart_pos[:, 1] / cart_pos[:, 0])
+        self.assertAlmostEqual(jnp.mean(phi), jnp.pi/2, places=2)
+        self.assertAlmostEqual(jnp.mean(theta), 0.0, places=2)
+
+        # Manually confirm bounds
+        self.assertEqual(
+            jnp.sum(is_inside[radial_coord * jnp.sin(phi) > r_bound]), 0.0)
+        self.assertEqual(
+            jnp.sum(is_inside[radial_coord * jnp.cos(phi) > r_two_hund]), 0.0)
