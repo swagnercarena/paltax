@@ -493,8 +493,8 @@ def draw_los(main_deflector_params: Mapping[str, float],
     los_before_cart_pos = draw_positions(main_deflector_params, source_params,
         los_params, cosmology_params, los_before_z, rng_before_pos)
     los_before_tuple = convert_to_lensing(main_deflector_params, source_params,
-        cosmology_params, los_before_masses, los_before_z, los_before_cart_pos,
-        rng_before_convert)
+        los_params, cosmology_params, los_before_masses, los_before_z, 
+        los_before_cart_pos, rng_before_convert)
 
     # Draw the redshifts, masses and positions for our los halos up to the pad
     # after the main deflector.
@@ -507,7 +507,7 @@ def draw_los(main_deflector_params: Mapping[str, float],
     los_before_cart_pos = draw_positions(main_deflector_params, source_params,
         los_params, cosmology_params, los_before_z, rng_after_pos)
     los_after_tuple = convert_to_lensing(main_deflector_params, source_params,
-        cosmology_params, los_before_masses, los_before_z, los_before_cart_pos,
-        rng_after_convert)
+        los_params, cosmology_params, los_before_masses, los_before_z, 
+        los_before_cart_pos, rng_after_convert)
 
     return los_before_tuple, los_after_tuple
