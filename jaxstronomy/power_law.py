@@ -68,8 +68,9 @@ def power_law_draw(p_min: float, p_max: float, slope: float, norm:float,
     # Get the positions in the cdf we want to draw from a uniform and then
     # convert that to values in the pdf
     cdf = jax.random.uniform(rng_cdf, shape=(pad_length,))
-    s1 = slope + 1
-    draws = (cdf*(p_max**s1-p_min**s1)+p_min**s1)**(1/s1)
+    s_one = slope + 1
+    draws = (cdf * (p_max ** s_one - p_min ** s_one) + 
+        p_min ** s_one) ** (1 / s_one)
 
     # Pad the draws
     indices = jnp.arange(pad_length)

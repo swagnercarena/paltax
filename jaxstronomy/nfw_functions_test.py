@@ -51,6 +51,18 @@ def _prepare_cosmology_params(cosmology_params_init, z_lookup_max, dz,
         dict(cosmology_params_init), z_lookup_max, dz, r_min, r_max, n_r_bins)
 
 
+def _prepare_main_deflector_params():
+    main_deflector_params = {'mass': 1e13, 'z_lens': 0.5, 'theta_e': 2.38,
+        'center_x': 0.0, 'center_y': 0.0}
+    return main_deflector_params
+
+
+def _prepare_substructure_params():
+    substructure_params = {'c_zero': 18, 'conc_zeta': -0.2, 'conc_beta': 0.8, 
+        'conc_m_ref': 1e8, 'conc_dex_scatter': 0.0}
+    return substructure_params
+
+
 class NfwFuntionsTests(chex.TestCase, parameterized.TestCase):
     """Runs tests of image simulation functions."""
 
@@ -187,6 +199,41 @@ class NfwFuntionsTests(chex.TestCase, parameterized.TestCase):
             z_source)
         self.assertAlmostEqual(rt_ang, expected, places=4)
 
+    @chex.all_variants(without_device=False)
+    @parameterized.named_parameters([
+        (f'_m_{m}_z_{z}', m, z, expected) for m, z, expected in zip(
+            [1e9, 1e10], [0.2, 0.3], [13.7, 10.8])
+    ])
+    def test_mass_concentration(self, m, z, expected):
+        # Test that the mass draws follow the desired distribution.
+        main_deflector_params = _prepare_main_deflector_params()
+        subhalo_params = _prepare_substructure_params()
+        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT,
+            main_deflector_params['z_lens'], main_deflector_params['z_lens'])
+        h = cosmology_params['hubble_constant'] / 100
+        r_min = cosmology_utils.lagrangian_radius(cosmology_params,
+            subhalo_params['conc_m_ref'] * h)
+        r_max = cosmology_utils.lagrangian_radius(cosmology_params, m * h)
+        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT,
+            main_deflector_params['z_lens'], main_deflector_params['z_lens'],
+            r_min, r_max)
+
+        mass_concentration = self.variant(nfw_functions.mass_concentration)
+
+        rng = jax.random.PRNGKey(0)
+        subhalo_params['conc_dex_scatter'] = 0.0
+        conc = mass_concentration(subhalo_params, cosmology_params,
+            jnp.full((10,), m), z, rng)
+        # Peak height is the limit on the precision of this comparison.
+        np.testing.assert_array_almost_equal(conc, jnp.full((10,), expected),
+            decimal=0)
+
+        # Check the scatter does something
+        subhalo_params['conc_dex_scatter'] = 0.1
+        conc = mass_concentration(subhalo_params, cosmology_params,
+            jnp.full((10000,), m), z, rng)
+        scatter = jnp.log10(conc) - expected
+        self.assertAlmostEqual(jnp.std(scatter), 0.1, places=2)
 
 if __name__ == '__main__':
     absltest.main()

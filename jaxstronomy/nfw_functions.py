@@ -188,3 +188,42 @@ def convert_to_lensing_tnfw(
     r_trunc_ang = r_trunc / kpa
 
     return r_scale_ang, alpha_rs, r_trunc_ang
+
+
+def mass_concentration(substructure_params: Mapping[str, float],
+    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    masses: Union[float, jnp.ndarray], z: float,
+    rng: Sequence[int]) -> jnp.ndarray:
+    """Return the concentration of halos at a given mass and redshift.
+
+    Args:
+        substructure_params: Parameters of the substructure distribution.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        masses: Masses to pull concentrations for. In units of M_sun.
+        z: Redshift of the halos.
+        rng: Jax PRNG key.
+
+    Returns:
+        Concentration for each halo.
+    """
+    # Pull out the mass-concentration parameters we need.
+    c_zero = substructure_params['c_zero']
+    zeta = substructure_params['conc_zeta']
+    beta = substructure_params['conc_beta']
+    m_ref = substructure_params['conc_m_ref']
+    dex_scatter = substructure_params['conc_dex_scatter']
+
+    # Use peak heights to calculate concentrations
+    h = cosmology_params['hubble_constant'] / 100
+    peak_heights = jax.vmap(cosmology_utils.peak_height,
+        in_axes=[None, 0, None])(cosmology_params, masses * h, z)
+    peak_height_ref = cosmology_utils.peak_height(cosmology_params, m_ref * h,
+        0.0)
+    concentrations = (c_zero * (1+z) ** zeta *
+        (peak_heights / peak_height_ref) ** (-beta))
+
+    # Add scatter and return concentrations
+    conc_scatter = jax.random.normal(rng, shape=concentrations.shape)
+    conc_scatter *= dex_scatter
+    return 10**(jnp.log10(concentrations) + conc_scatter)

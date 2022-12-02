@@ -22,9 +22,9 @@ from typing import Mapping, Optional, Sequence, Tuple, Union
 import jax
 import jax.numpy as jnp
 
-from jaxstronomy import power_law
 from jaxstronomy import cosmology_utils
 from jaxstronomy import nfw_functions
+from jaxstronomy import power_law
 
 
 def host_scaling_function(host_mass: float, z_lens: float, k_one: float,
@@ -89,45 +89,6 @@ def draw_nfw_masses(main_deflector_params: Mapping[str, float],
         pad_length)
 
 
-def mass_concentration(subhalo_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
-    masses: Union[float, jnp.ndarray], z: float,
-    rng: Sequence[int]) -> jnp.ndarray:
-    """Return the concentration of halos at a given mass and redshift.
-
-    Args:
-        subhalo_parms: Parameters of the subhalo distribution.
-        cosmology_params: Cosmological parameters that define the universe's
-            expansion.
-        masses: Masses to pull concentrations for. In units of M_sun.
-        z: Redshift of the halos.
-        rng: Jax PRNG key.
-
-    Returns:
-        Concentration for each halo.
-    """
-    # Pull out the mass-concentration parameters we need.
-    c_zero = subhalo_params['c_zero']
-    zeta = subhalo_params['conc_zeta']
-    beta = subhalo_params['conc_beta']
-    m_ref = subhalo_params['conc_m_ref']
-    dex_scatter = subhalo_params['conc_dex_scatter']
-
-    # Use peak heights to calculate concentrations
-    h = cosmology_params['hubble_constant'] / 100
-    peak_heights = jax.vmap(cosmology_utils.peak_height,
-        in_axes=[None, 0, None])(cosmology_params, masses * h, z)
-    peak_height_ref = cosmology_utils.peak_height(cosmology_params, m_ref * h,
-        0.0)
-    concentrations = (c_zero * (1+z) ** zeta *
-        (peak_heights / peak_height_ref) ** (-beta))
-
-    # Add scatter and return concentrations
-    conc_scatter = jax.random.normal(rng, shape=concentrations.shape)
-    conc_scatter *= dex_scatter
-    return 10**(jnp.log10(concentrations) + conc_scatter)
-
-
 def rejection_sampling(radial_coord: jnp.ndarray, r_two_hund: float,
     r_bound: float, rng: Sequence[int]) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Return three-dimensional sampling of the halo positions with rejection.
@@ -176,7 +137,7 @@ def sample_cored_nfw(main_deflector_params: Mapping[str, float],
     # Extract the relevant host properties
     host_mass = main_deflector_params['mass']
     z_lens = main_deflector_params['z_lens']
-    host_c = mass_concentration(subhalo_params, cosmology_params,
+    host_c = nfw_functions.mass_concentration(subhalo_params, cosmology_params,
         jnp.array([host_mass]), z_lens, rng_host)
     host_r_two_hund = nfw_functions.r_two_hund_from_m(cosmology_params,
         host_mass, z_lens)
@@ -220,9 +181,9 @@ def convert_to_lensing(main_deflector_params: Mapping[str, float],
     source_params: Mapping[str, Union[int, float]],
     subhalo_params: Mapping[str, float],
     cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
-    subhalos_mass: jnp.ndarray, subhalos_cart_pos: jnp.ndarray,
+    subhalos_masses: jnp.ndarray, subhalos_cart_pos: jnp.ndarray,
     rng: Sequence[int]) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
-    """Convert subhalo masses and positions in lensing quantities.
+    """Convert subhalo masses and positions into lensing quantities.
 
     Args:
         TODO
@@ -232,24 +193,24 @@ def convert_to_lensing(main_deflector_params: Mapping[str, float],
     z_source = source_params['z_source']
 
     # All the subhalos are at the main deflector redshift
-    z_subhalos = jnp.full(subhalos_mass.shape, z_lens)
+    subhalos_z = jnp.full(subhalos_masses.shape, z_lens)
 
     # Calculate the concentration and radial position of the subhalos
-    subhalos_c = mass_concentration(subhalo_params, cosmology_params,
-        subhalos_mass, z_lens, rng)
+    subhalos_c = nfw_functions.mass_concentration(subhalo_params, cosmology_params,
+        subhalos_masses, z_lens, rng)
     subhalos_radii = jnp.sqrt(jnp.sum(subhalos_cart_pos ** 2, axis=-1))
 
-    # Concert from masses and concentrations to nfw parameters
+    # Convert from masses and concentrations to nfw parameters
     subhalos_r_two_hund = nfw_functions.r_two_hund_from_m(cosmology_params,
-        subhalos_mass, z_lens)
+        subhalos_masses, z_lens)
     subhalos_r_scale = subhalos_r_two_hund / subhalos_c
     subhalos_rho_nfw = nfw_functions.rho_nfw_from_c(cosmology_params,
         subhalos_c, z_lens)
-    subhalos_r_trunc = get_truncation_radius(subhalos_mass, subhalos_radii)
+    subhalos_r_trunc = get_truncation_radius(subhalos_masses, subhalos_radii)
 
     # Convert to lensing units
     lq_tuple = nfw_functions.convert_to_lensing_tnfw(cosmology_params,
-        subhalos_r_scale, z_subhalos, subhalos_rho_nfw, subhalos_r_trunc,
+        subhalos_r_scale, subhalos_z, subhalos_rho_nfw, subhalos_r_trunc,
         z_source)
     subhalos_r_scale_ang, subhlos_alpha_rs, subhalos_r_trunc_ang = lq_tuple
     kpa = cosmology_utils.kpc_per_arcsecond(cosmology_params, z_lens)
@@ -257,8 +218,8 @@ def convert_to_lensing(main_deflector_params: Mapping[str, float],
 
     # There is only one model, the tNFW. Subhalos with mass 0 are treated
     # as padding models.
-    subhalos_model_index = (jnp.full(subhalos_mass.shape, -1) *
-        jnp.int32(subhalos_mass == 0))
+    subhalos_model_index = (jnp.full(subhalos_masses.shape, -1) *
+        jnp.int32(subhalos_masses == 0))
 
     subhalos_kwargs = {'model_index': subhalos_model_index,
         'scale_radius': subhalos_r_scale_ang, 'alpha_rs': subhlos_alpha_rs,
@@ -266,14 +227,15 @@ def convert_to_lensing(main_deflector_params: Mapping[str, float],
         'center_x': subhalos_cart_pos_ang[:,0],
         'center_y': subhalos_cart_pos_ang[:,1]}
 
-    return z_subhalos, subhalos_kwargs
+    return subhalos_z, subhalos_kwargs
 
 
 def draw_subhalos(main_deflector_params: Mapping[str, float],
     source_params: Mapping[str, Union[int, float]],
     subhalo_params: Mapping[str, float],
     cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
-    rng: Sequence[int], subhalos_pad_length: int, sampling_pad_length: int):
+    rng: Sequence[int], subhalos_pad_length: int, sampling_pad_length: int,
+) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """ Draw subhalos with redshift and lensing quantities.
 
     Args:
