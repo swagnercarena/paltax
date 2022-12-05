@@ -324,7 +324,7 @@ def draw_redshifts(main_deflector_params: Mapping[str, float],
     indices = jnp.arange(pad_length)
     is_pad = indices >= num_los
 
-    return z_samples * ~is_pad - is_pad
+    return z_draws * ~is_pad - is_pad
 
 
 def draw_masses(los_params: Mapping[str, float],
