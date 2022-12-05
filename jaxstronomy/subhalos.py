@@ -236,7 +236,7 @@ def draw_subhalos(main_deflector_params: Mapping[str, float],
     cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
     rng: Sequence[int], subhalos_pad_length: int, sampling_pad_length: int,
 ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
-    """ Draw subhalos with redshift and lensing quantities.
+    """Draw subhalos with redshift and lensing quantities.
 
     Args:
         TODO

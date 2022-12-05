@@ -618,3 +618,11 @@ def calculate_sigma_crit(
     ds = angular_diameter_distance(cosmology_params, z_source)
     dds = angular_diameter_distance_between(cosmology_params, z, z_source)
     return ds / (dd * dds) * norm / mpc_to_kpc ** 2
+
+
+def correlation_function(cosmology_params, comoving_r, z_lens):
+    return 0.0
+
+
+def halo_bias(cosmology_params, mass, z_lens):
+    return 0.0
