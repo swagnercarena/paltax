@@ -11,11 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for nfw_functions.py."""
+"""Tests for subhalos.py."""
 
 import functools
 
-from absl.testing import absltest
 from absl.testing import parameterized
 import chex
 from immutabledict import immutabledict
@@ -70,7 +69,7 @@ class SubhalosTests(chex.TestCase, parameterized.TestCase):
 
     @chex.all_variants
     @parameterized.named_parameters([
-        (f'_m_{m}_z_{z}_ko_{ko}_kt_{kt}', m, z, ko, kt, expected) for
+        (f'_m_{m}_z_{z}_ko_{ko}_kt_{kt}', m, z, ko, kt, expected) for 
             m, z, ko, kt, expected in zip([1e13, 2e13, 1e13], [0.1, 0.2, 0.3],
                 [0.0, 0.5, 1.0], [0.0, 0.5, 1.0], [1.0, 1.183215956619923, 0.8])
     ])

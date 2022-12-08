@@ -34,7 +34,6 @@ https://github.com/lenstronomy/lenstronomy.
 
 import inspect
 
-from absl.testing import absltest
 from absl.testing import parameterized
 import chex
 import jax
@@ -340,6 +339,3 @@ class TNFWTest(chex.TestCase, parameterized.TestCase):
     np.testing.assert_allclose(
         nfw_function(reduced_radius), expected, rtol=1e-5)
 
-
-if __name__ == '__main__':
-  absltest.main()
