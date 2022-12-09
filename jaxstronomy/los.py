@@ -84,7 +84,7 @@ def mass_function_exact(
     return (-1 / 3 * nu_function_eval * rho_matter / masses ** 2 *
         derivative_sigma)
 
-def mass_function_power_law(
+def _mass_function_power_law_numerical(
     cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]], z: float,
     m_min: float, m_max: float) -> Tuple[float, float]:
     """Return the best fit power law parameters for the mass function.
@@ -120,6 +120,79 @@ def mass_function_power_law(
         jnp.sum(log_mass_function - slope_estimate * log_masses))
 
     return slope_estimate, norm_estimate
+
+
+def add_los_lookup_tables_to_cosmology_params(
+    los_params: Mapping[str, float],
+    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    z_lookup_max: float
+) -> Mapping[str, Union[float, int, jnp.ndarray]]:
+    """Add lookup tables for los mass function calculation to cosmology params.
+
+    Args:
+        los_parms: Parameters of the los distribution.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        z_lookup_max: The maximum redshift to consider in the lookup table.
+
+    Returns:
+        Cosmological parameters with los lookup table.
+    """
+    # Jitted function for faster computation.
+    mass_function_power_law_numerical = jax.jit(
+        _mass_function_power_law_numerical)
+    m_min = los_params['m_min']
+    m_max = los_params['m_max']
+    dz = los_params['dz']
+
+    z_range = jnp.arange(0, z_lookup_max + dz / 2, dz / 2)
+
+    lookup_tables = jax.vmap(mass_function_power_law_numerical,
+        in_axes=[None, 0, None, None])(cosmology_params, z_range, m_min, m_max)
+
+    cosmology_params_lookup = {
+        'los_z_lookup_max': z_lookup_max,
+        'mass_function_slope_lookup_table': lookup_tables[0],
+        'mass_function_norm_lookup_table': lookup_tables[1]
+    }
+    cosmology_params_lookup.update(cosmology_params)
+
+    return cosmology_params_lookup
+
+
+def mass_function_power_law(
+    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    z: float) -> Tuple[float, float]:
+    """Return the best fit power law parameters from lookup table.
+
+    Args:
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion. Must inlcude los lookup table.
+        z: Redhist at which to estimate mass function.
+
+    Returns:
+        Power law slope and norm that best approximates the exact mass function.
+    """
+    # Interpolate between the two nearest binds to the query.
+    lookup_unrounded = z / cosmology_params['dz'] * 2
+    frac = lookup_unrounded % 1
+
+    lookup_upper = jax.lax.min(
+        jnp.ceil(lookup_unrounded).astype(int),
+        len(cosmology_params['mass_function_slope_lookup_table']) - 1
+    )
+    lookup_lower = jax.lax.max(jnp.floor(lookup_unrounded).astype(int), 0)
+
+    slope_interpolated = (frac *
+        cosmology_params['mass_function_slope_lookup_table'][lookup_upper] +
+        (1 - frac) *
+            cosmology_params['mass_function_slope_lookup_table'][lookup_lower])
+    norm_interpolated = (frac *
+        cosmology_params['mass_function_norm_lookup_table'][lookup_upper] +
+        (1 - frac) *
+            cosmology_params['mass_function_norm_lookup_table'][lookup_lower])
+
+    return slope_interpolated, norm_interpolated
 
 
 def two_halo_boost(main_deflector_params: Mapping[str, float],
@@ -268,8 +341,7 @@ def expected_num_halos(main_deflector_params: Mapping[str, float],
     m_max = los_params['m_max']
     delta_los = los_params['delta_los']
 
-    slope_pl, norm_pl = mass_function_power_law(cosmology_params, z, m_min,
-        m_max)
+    slope_pl, norm_pl = mass_function_power_law(cosmology_params, z)
     norm_pl *= volume_element(main_deflector_params, source_params,
         los_params, cosmology_params, z)
     norm_pl *= two_halo_boost(main_deflector_params, los_params,
@@ -373,8 +445,8 @@ def draw_masses(los_params: Mapping[str, float],
         return (cdf_draw * (m_max ** s_one - m_min ** s_one) +
             m_min ** s_one) ** (1 / s_one)
 
-    slopes_pl, _ = jax.vmap(mass_function_power_law,
-        in_axes=[None, 0, None, None])(cosmology_params, z_values, m_min, m_max)
+    slopes_pl, _ = jax.vmap(mass_function_power_law, in_axes=[None, 0])(
+        cosmology_params, z_values)
     return jax.vmap(draw_from_pl_cdf, in_axes=[None, None, 0, 0])(m_min, m_max,
         slopes_pl, cdf_draws)
 
@@ -503,7 +575,6 @@ def draw_los(main_deflector_params: Mapping[str, float],
     # Draw the redshifts, masses and positions for our los halos up to the pad
     # before the main deflector.
     z_lens = main_deflector_params['z_lens']
-    dz = los_params['dz']
     los_before_z = draw_redshifts(main_deflector_params, source_params,
         los_params, cosmology_params, 0.0, z_lens, rng_before_z,
         num_z_bins, los_pad_length)

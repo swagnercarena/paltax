@@ -24,8 +24,8 @@ import jax.numpy as jnp
 import numpy as np
 
 from jaxstronomy import cosmology_utils
-from jaxstronomy import power_law
 from jaxstronomy import los
+from jaxstronomy import power_law
 
 
 COSMOLOGY_PARAMS_INIT = immutabledict({
@@ -49,6 +49,14 @@ def _prepare_cosmology_params(cosmology_params_init, z_lookup_max, dz,
     dz = max(dz, 1e-7)
     return cosmology_utils.add_lookup_tables_to_cosmology_params(
         dict(cosmology_params_init), z_lookup_max, dz, r_min, r_max, n_r_bins)
+
+
+def _prepare_cosmology_params_los(los_params, cosmology_params_init,
+    z_lookup_max, dz, r_min=1e-4, r_max=1e3, n_r_bins=2):
+    cosmology_params = _prepare_cosmology_params(cosmology_params_init,
+        z_lookup_max, dz, r_min, r_max, n_r_bins)
+    return los.add_los_lookup_tables_to_cosmology_params(los_params,
+        cosmology_params, z_lookup_max)
 
 
 def _prepare_main_deflector_params():
@@ -130,7 +138,7 @@ class LosTests(chex.TestCase, parameterized.TestCase):
 
     @chex.all_variants(without_device=False)
     @parameterized.named_parameters([(f'_z_{z}', z) for z in [0.1, 0.2, 0.3]])
-    def test_mass_function_power_law(self, z):
+    def test__mass_function_power_law_numerical(self, z):
         # Make sure that the power law fit is in decent agreement with the los
         # values.
         m_min = 1e6
@@ -145,12 +153,88 @@ class LosTests(chex.TestCase, parameterized.TestCase):
         mass_function_exact = los.mass_function_exact(cosmology_params, masses,
             z)
 
-        slope, norm = self.variant(los.mass_function_power_law)(
+        slope, norm = self.variant(los._mass_function_power_law_numerical)(
             cosmology_params, z, m_min, m_max)
         estimate = norm * masses ** slope
 
         np.testing.assert_array_almost_equal(estimate / estimate,
             mass_function_exact / estimate, decimal = 1)
+
+    def test_add_los_lookup_tables_to_cosmology_params(self):
+        # Make sure that the power law fit is in decent agreement with the los
+        # values.
+        los_params = _prepare_los_params()
+        m_min = los_params['m_min']
+        m_max = los_params['m_max']
+        z_lookup_max = 0.5
+        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT,
+            z_lookup_max, los_params['dz'])
+        r_min = cosmology_utils.lagrangian_radius(cosmology_params, m_min / 10)
+        r_max = cosmology_utils.lagrangian_radius(cosmology_params, m_max * 10)
+        cosmology_params = _prepare_cosmology_params_los(los_params,
+            COSMOLOGY_PARAMS_INIT, z_lookup_max, los_params['dz'], r_min, r_max,
+            1000)
+
+        # Manually test two values
+        i = 2
+        slope_expected, norm_expected = los._mass_function_power_law_numerical(
+            cosmology_params, los_params['dz'] / 2 * i, los_params['m_min'],
+            los_params['m_max']
+        )
+        self.assertAlmostEqual(
+            cosmology_params['mass_function_slope_lookup_table'][i],
+            slope_expected, places=3
+        )
+        self.assertAlmostEqual(
+            cosmology_params['mass_function_norm_lookup_table'][i],
+            norm_expected, places=3
+        )
+
+        i = 4
+        slope_expected, norm_expected = los._mass_function_power_law_numerical(
+            cosmology_params, los_params['dz'] / 2 * i, los_params['m_min'],
+            los_params['m_max']
+        )
+        self.assertAlmostEqual(
+            cosmology_params['mass_function_slope_lookup_table'][i],
+            slope_expected, places=3
+        )
+        self.assertAlmostEqual(
+            cosmology_params['mass_function_norm_lookup_table'][i],
+            norm_expected, places=3
+        )
+
+
+    @chex.all_variants(without_device=False)
+    def test_mass_function_power_law(self):
+        # Check that it agrees with the numerical function.
+        los_params = _prepare_los_params()
+        m_min = los_params['m_min']
+        m_max = los_params['m_max']
+        z_lookup_max = 0.5
+        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT,
+            z_lookup_max, los_params['dz'])
+        r_min = cosmology_utils.lagrangian_radius(cosmology_params, m_min / 10)
+        r_max = cosmology_utils.lagrangian_radius(cosmology_params, m_max * 10)
+        cosmology_params = _prepare_cosmology_params_los(los_params,
+            COSMOLOGY_PARAMS_INIT, z_lookup_max, los_params['dz'], r_min, r_max,
+            1000)
+
+        z = 0.1
+        mass_function_power_law = self.variant(los.mass_function_power_law)
+        test_slope, test_norm = mass_function_power_law(cosmology_params, z)
+        expected_slope, expected_norm = los._mass_function_power_law_numerical(
+            cosmology_params, z, m_min, m_max)
+        self.assertAlmostEqual(test_slope, expected_slope, places=3)
+        self.assertAlmostEqual(test_norm, expected_norm, places=3)
+
+        z = 0.2-1e-6
+        test_slope, test_norm = mass_function_power_law(cosmology_params, z)
+        expected_slope, expected_norm = los._mass_function_power_law_numerical(
+            cosmology_params, z, m_min, m_max)
+        self.assertAlmostEqual(test_slope, expected_slope, places=3)
+        self.assertAlmostEqual(test_norm, expected_norm, places=3)
+
 
     @chex.all_variants(without_device=False)
     def test_cone_angle_to_radius(self):
@@ -224,11 +308,11 @@ class LosTests(chex.TestCase, parameterized.TestCase):
             source_params['z_source'], los_params['dz'] / 2)
         r_min = cosmology_utils.lagrangian_radius(cosmology_params, m_min / 10)
         r_max = cosmology_utils.lagrangian_radius(cosmology_params, m_max * 10)
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT,
-            source_params['z_source'], los_params['dz'] / 2, r_min, r_max, 1000)
+        cosmology_params = _prepare_cosmology_params_los(los_params,
+            COSMOLOGY_PARAMS_INIT, source_params['z_source'],
+            los_params['dz'] / 2, r_min, r_max, 1000)
 
-        slope, norm = los.mass_function_power_law(cosmology_params, z, m_min,
-            m_max)
+        slope, norm = los.mass_function_power_law(cosmology_params, z)
         norm *= los.volume_element(main_deflector_params, source_params,
             los_params, cosmology_params, z)
         norm *= power_law.power_law_integrate(m_min, m_max, slope)
@@ -256,8 +340,9 @@ class LosTests(chex.TestCase, parameterized.TestCase):
             source_params['z_source'], los_params['dz'] / 2)
         r_min = cosmology_utils.lagrangian_radius(cosmology_params, m_min / 10)
         r_max = cosmology_utils.lagrangian_radius(cosmology_params, m_max * 10)
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT,
-            source_params['z_source'], los_params['dz'] / 2, r_min, r_max, 1000)
+        cosmology_params = _prepare_cosmology_params_los(los_params,
+            COSMOLOGY_PARAMS_INIT, source_params['z_source'],
+            los_params['dz'] / 2, r_min, r_max, 1000)
         num_expected_min = los.expected_num_halos(main_deflector_params,
             source_params, los_params, cosmology_params, z_min)
         num_expected_max = los.expected_num_halos(main_deflector_params,
@@ -265,7 +350,7 @@ class LosTests(chex.TestCase, parameterized.TestCase):
             z_max - los_params['dz'])
 
         num_z_bins = 1000
-        pad_length = 2000
+        pad_length = 3000
         draw_redshifts = self.variant(functools.partial(los.draw_redshifts,
             num_z_bins=num_z_bins, pad_length=pad_length))
 
@@ -274,6 +359,7 @@ class LosTests(chex.TestCase, parameterized.TestCase):
             los_params, cosmology_params, z_min, z_max, rng)
 
         # Doing many draws is expensive, so we won't be picky.
+        print(z_draws)
         self.assertAlmostEqual(
             num_expected_max / (num_expected_max + num_expected_min),
             jnp.sum(z_draws > 0.4) / jnp.sum(z_draws > 0.3), places = 1)
@@ -292,8 +378,9 @@ class LosTests(chex.TestCase, parameterized.TestCase):
             source_params['z_source'], los_params['dz'] / 2)
         r_min = cosmology_utils.lagrangian_radius(cosmology_params, m_min / 10)
         r_max = cosmology_utils.lagrangian_radius(cosmology_params, m_max * 10)
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT,
-            source_params['z_source'], los_params['dz'] / 2, r_min, r_max, 1000)
+        cosmology_params = _prepare_cosmology_params_los(los_params,
+            COSMOLOGY_PARAMS_INIT, source_params['z_source'],
+            los_params['dz'] / 2, r_min, r_max, 1000)
 
         rng = jax.random.PRNGKey(0)
         z = 0.3
@@ -301,8 +388,7 @@ class LosTests(chex.TestCase, parameterized.TestCase):
 
         draw_masses = self.variant(los.draw_masses)
 
-        slope, _ = los.mass_function_power_law(cosmology_params, z, m_min,
-            m_max)
+        slope, _ = los.mass_function_power_law(cosmology_params, z)
         integrate_below = power_law.power_law_integrate(m_min, 5e6, slope)
         integrate_above = power_law.power_law_integrate(5e6, m_max, slope)
 
@@ -358,8 +444,9 @@ class LosTests(chex.TestCase, parameterized.TestCase):
             source_params['z_source'], los_params['dz'] / 2)
         r_min = cosmology_utils.lagrangian_radius(cosmology_params, m_min / 10)
         r_max = cosmology_utils.lagrangian_radius(cosmology_params, m_max * 10)
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT,
-            source_params['z_source'], los_params['dz'] / 2, r_min, r_max, 1000)
+        cosmology_params = _prepare_cosmology_params_los(los_params,
+            COSMOLOGY_PARAMS_INIT, source_params['z_source'],
+            los_params['dz'] / 2, r_min, r_max, 1000)
 
         rng = jax.random.PRNGKey(0)
         num_z_bins = 1000
