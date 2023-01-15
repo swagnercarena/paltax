@@ -52,7 +52,7 @@ def _prepare_cosmology_params(cosmology_params_init, z_lookup_max, dz,
 
 def _prepare_main_deflector_params():
     main_deflector_params = {'mass': 1e13, 'z_lens': 0.5, 'theta_e': 2.38,
-        'center_x': 0.0, 'center_y': 0.0}
+        'center_x': jnp.array([0.0]), 'center_y': jnp.array([0.0])}
     return main_deflector_params
 
 
@@ -69,7 +69,7 @@ class SubhalosTests(chex.TestCase, parameterized.TestCase):
 
     @chex.all_variants
     @parameterized.named_parameters([
-        (f'_m_{m}_z_{z}_ko_{ko}_kt_{kt}', m, z, ko, kt, expected) for 
+        (f'_m_{m}_z_{z}_ko_{ko}_kt_{kt}', m, z, ko, kt, expected) for
             m, z, ko, kt, expected in zip([1e13, 2e13, 1e13], [0.1, 0.2, 0.3],
                 [0.0, 0.5, 1.0], [0.0, 0.5, 1.0], [1.0, 1.183215956619923, 0.8])
     ])

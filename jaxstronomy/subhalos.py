@@ -224,8 +224,11 @@ def convert_to_lensing(main_deflector_params: Mapping[str, float],
     subhalos_kwargs = {'model_index': subhalos_model_index,
         'scale_radius': subhalos_r_scale_ang, 'alpha_rs': subhlos_alpha_rs,
         'trunc_radius': subhalos_r_trunc_ang,
-        'center_x': subhalos_cart_pos_ang[:,0],
-        'center_y': subhalos_cart_pos_ang[:,1]}
+        # Assume the first main deflector model sets the center.
+        'center_x': (
+            subhalos_cart_pos_ang[:,0] + main_deflector_params['center_x']),
+        'center_y': (
+            subhalos_cart_pos_ang[:,1] + main_deflector_params['center_y'])}
 
     return subhalos_z, subhalos_kwargs
 

@@ -69,7 +69,7 @@ def power_law_draw(p_min: float, p_max: float, slope: float, norm:float,
     # convert that to values in the pdf
     cdf = jax.random.uniform(rng_cdf, shape=(pad_length,))
     s_one = slope + 1
-    draws = (cdf * (p_max ** s_one - p_min ** s_one) + 
+    draws = (cdf * (p_max ** s_one - p_min ** s_one) +
         p_min ** s_one) ** (1 / s_one)
 
     # Pad the draws
