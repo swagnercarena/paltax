@@ -34,7 +34,6 @@ from jaxstronomy import psf_models
 
 # Most important parameters
 rng = jax.random.PRNGKey(0)
-batch_size = 4
 
 # Set the simulation parameters we will keep static.
 los_params = {'delta_los': 1.1, 'r_min':0.5, 'r_max':10.0, 'm_min': 1e8,
@@ -89,7 +88,7 @@ def draw_sample(rng):
                                           'center_x': main_deflector_params['center_x'][0],
                                           'center_y': main_deflector_params['center_y'][0]}
     rng_ss, rng_pi, rng = jax.random.split(rng, 3)
-    subhalo_params = {'sigma_sub': jax.random.normal(rng_ss) * 2e-3 + 1.1e-3,
+    subhalo_params = {'sigma_sub': jax.random.normal(rng_ss) * 1.1e-3 + 2.0e-3,
                       'shmf_plaw_index': jax.random.uniform(rng_pi) * 0.1 - 2.02,
                       'm_pivot': 1e8, 'm_min': 1e6, 'm_max': 1e9, 'k_one': 0.0, 'k_two': 0.0,
                       'c_zero': 18, 'conc_zeta': -0.2, 'conc_beta': 0.8, 'conc_m_ref': 1e8,
@@ -151,7 +150,7 @@ def draw_images(rng, batch_size):
     z_source = source_params.pop('z_source')
 
     # TODO For now the todos are just brute force sigma_sub
-    truth = subhalo_params['sigma_sub']
+    truth = subhalo_params['sigma_sub'] / 2e-3
 
     return downsample_vmap(
         image_simulation_vmap(grid_x, grid_y, kwargs_lens_all, source_params,

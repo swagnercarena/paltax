@@ -1,4 +1,4 @@
-# Copyright 2022 The Flax Authors.
+# coding=utf-8
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,15 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-"""ImageNet example.
-This script trains a ResNet-50 on the ImageNet dataset.
-The data is loaded using tensorflow_datasets.
-"""
+"""Training script for dark matter substructure inference."""
 
 import functools
 import time
 from typing import Any, Sequence
+
+from absl import app
+from absl import flags
 
 from clu import metric_writers
 from clu import periodic_actions
@@ -35,6 +34,11 @@ import optax
 
 from jaxstronomy import input_pipeline
 from jaxstronomy import models
+
+
+FLAGS = flags.FLAGS
+flags.DEFINE_integer('workdir', None, 'working directory')
+flags.DEFINE_float('learning_rate', 0.001, 'learning rate')
 
 
 def initialized(key, image_size, model):
@@ -163,7 +167,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
     steps_per_epoch = config.steps_per_epoch
     num_steps = config.num_train_steps
 
-    base_learning_rate = config.learning_rate * config.batch_size / 256.
+    base_learning_rate = FLAGS.learning_rate * config.batch_size / 256.
 
     model_cls = getattr(models, config.model)
     model = model_cls(num_outputs=config.num_outputs, dtype=jnp.float32)
@@ -226,6 +230,5 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
 from jaxstronomy import train_config
 config = train_config.get_config()
 image_size = 124
-workdir = 'test/'
 rng = jax.random.PRNGKey(0)
-train_and_evaluate(config, workdir, rng, image_size)
+train_and_evaluate(config, FLAGS.workdir, rng, image_size)
