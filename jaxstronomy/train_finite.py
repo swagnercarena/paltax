@@ -198,6 +198,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
 
         # Generate truths and images
         rng_images = next(rng_iterator)
+        rng_images = jax.random.split(rng_images, num=jax.device_count())
         image, truth = draw_images_jit(rng_images)
         batch = {'image': jnp.expand_dims(image, axis=-1), 'truth': truth}
         state, metrics = p_train_step(state, batch)
