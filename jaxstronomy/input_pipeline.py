@@ -150,7 +150,7 @@ def draw_images(rng, batch_size):
     z_source = source_params.pop('z_source')
 
     # TODO For now the todos are just brute force sigma_sub
-    truth = subhalo_params['sigma_sub'] / 2e-3
+    truth = (subhalo_params['sigma_sub'] - 2e-3) / 1.1e-3
 
     return downsample_vmap(
         image_simulation_vmap(grid_x, grid_y, kwargs_lens_all, source_params,
