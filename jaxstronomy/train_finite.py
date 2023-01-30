@@ -40,7 +40,7 @@ from jaxstronomy import models
 FLAGS = flags.FLAGS
 flags.DEFINE_string('workdir', None, 'working directory')
 flags.DEFINE_float('learning_rate', 0.001, 'learning rate')
-flags.DEFINE_int('num_unique_batches', 1, 'number of unique batches of data to draw')
+flags.DEFINE_integer('num_unique_batches', 1, 'number of unique batches of data to draw')
 
 
 def initialized(key, image_size, model):
