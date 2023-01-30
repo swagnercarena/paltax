@@ -175,7 +175,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
     model_cls = getattr(models, config.model)
     model = model_cls(num_outputs=config.num_outputs, dtype=jnp.float32)
 
-    state = create_train_state(rng, config, model, image_size,
+    state = create_train_state(next(rng_iterator), config, model, image_size,
         base_learning_rate)
     state = restore_checkpoint(state, workdir)
 
