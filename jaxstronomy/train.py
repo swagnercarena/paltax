@@ -227,8 +227,14 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
 
     return state
 
-from jaxstronomy import train_config
-config = train_config.get_config()
-image_size = 124
-rng = jax.random.PRNGKey(0)
-train_and_evaluate(config, FLAGS.workdir, rng, image_size)
+
+def main():
+    from jaxstronomy import train_config
+    config = train_config.get_config()
+    image_size = 124
+    rng = jax.random.PRNGKey(0)
+    train_and_evaluate(config, FLAGS.workdir, rng, image_size)
+
+
+if __name__ == '__main__':
+    app.run(main)

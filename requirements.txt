@@ -3,3 +3,9 @@ chex
 dm-pix
 immutabledict
 jax
+tensorflow
+immutabledict
+clu
+flax==0.6.2
+ml_collections
+optax

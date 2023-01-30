@@ -10,8 +10,6 @@ def get_config():
     # `name` argument of tensorflow_datasets.builder()
     config.dataset = 'imagenet2012:5.*.*'
 
-    config.learning_rate = 0.1
-    config.warmup_epochs = 5.0
     config.momentum = 0.9
     config.batch_size = 4
 
