@@ -228,7 +228,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
     return state
 
 
-def main():
+def main(_):
     from jaxstronomy import train_config
     config = train_config.get_config()
     image_size = 124
