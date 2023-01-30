@@ -37,7 +37,7 @@ from jaxstronomy import models
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('workdir', None, 'working directory')
+flags.DEFINE_string('workdir', None, 'working directory')
 flags.DEFINE_float('learning_rate', 0.001, 'learning rate')
 
 
