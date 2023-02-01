@@ -359,7 +359,6 @@ class LosTests(chex.TestCase, parameterized.TestCase):
             los_params, cosmology_params, z_min, z_max, rng)
 
         # Doing many draws is expensive, so we won't be picky.
-        print(z_draws)
         self.assertAlmostEqual(
             num_expected_max / (num_expected_max + num_expected_min),
             jnp.sum(z_draws > 0.4) / jnp.sum(z_draws > 0.3), places = 1)

@@ -129,9 +129,26 @@ def sample_cored_nfw(main_deflector_params: Mapping[str, float],
     rng: Sequence[int], n_subs: int, sampling_pad_length: int) -> jnp.ndarray:
     """ Sample positions for NFW subhalos.
 
-    TODO
-    """
+    Args:
+        main_deflector_params: Parameters of the main deflector.
+        subhalo_params: Parameters of the subhalo population.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        rng: jax PRNG key used for noise realization.
+        n_subs: Number of subhalos to draw positions for.
+        sampling_pad_length: Number of positions to sample before conducting
+            rejection sampling. For small numbers, the odds of all of the
+            returned positions being within the host R200 and three times
+            the Einstein radius goes down.
 
+    Returns:
+        x-y-z coordinates of the subhalos in units of kpc.
+
+    Notes:
+        Subhalo positions are drawn within the scale radius of the host in the
+        z-direction and three times the Einstein radius in the xy-plane.
+    """
+    # Seperate rng keys for each of our random draws.
     rng_host, rng_radii, rng_pos = jax.random.split(rng, 3)
 
     # Extract the relevant host properties
@@ -171,7 +188,13 @@ def get_truncation_radius(subhalos_mass: jnp.ndarray,
     """Return truncation radius for the subhalos.
 
     Args:
-        TODO
+        subhalo_mass: Mass of the subhalo in units of M_sun.
+        subhalos_radii: Radius of the subhalos in units of kpc.
+        m_pivot: Pivot mass for the scaling in units of M_sun.
+        r_pivot: Pivot radius for the relation in units of kpc.
+
+    Returns:
+        Truncation radius in units of kpc.
     """
     return (1.4 * (subhalos_mass / m_pivot) ** (1 / 3) *
         (subhalos_radii / r_pivot) ** (2 / 3))
@@ -186,7 +209,20 @@ def convert_to_lensing(main_deflector_params: Mapping[str, float],
     """Convert subhalo masses and positions into lensing quantities.
 
     Args:
-        TODO
+        main_deflector_params: Parameters of the main deflector.
+        source_params: Parameters of the source.
+        subhalo_params: Parameters of the subhalo population.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        subhalo_masses: Masses of the subhalos in units of M_sun.
+        subhalos_cart_pos: x-y-z-position of the subhalos in units of kpc.
+        rng: Jax PRNG key.
+
+    Returns:
+        Redshifts for each subhalo and the dictionary of lensing quantities.
+
+    Notes:
+        Model index set to -1 for subhalos with zero mass.
     """
     # Extract the redshifts we need
     z_lens = main_deflector_params['z_lens']
@@ -242,7 +278,25 @@ def draw_subhalos(main_deflector_params: Mapping[str, float],
     """Draw subhalos with redshift and lensing quantities.
 
     Args:
-        TODO
+        main_deflector_params: Parameters of the main deflector.
+        source_params: Parameters of the source.
+        subhalo_params: Parameters of the subhalo population.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        rng: Jax PRNG key.
+        subhalos_pad_length: Number of subhalos to draw, including padding. If
+            this number is too small, you may undercount the number of subhalos
+            in your system.
+        sampling_pad_length: Number of positional samples to draw before
+            rejection sampling the subhalo positions within the volume
+            boundaries. Should be one to two order of magntidue larger than the
+            subhalo pad length.
+
+    Returns:
+        Redshifts for each subhalo and the dictionary of lensing quantities.
+
+    Notes:
+        Model index set to -1 for subhalos with zero mass.
     """
     rng_masses, rng_pos, rng_convert = jax.random.split(rng, 3)
 
