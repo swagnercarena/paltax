@@ -11,12 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Script for training a neural network with on-the-fly images.
-
-Example usage:
-
-    python training.py TODO
-
+"""Code for drawing batches of example images used to train a neural
+network.
 """
 
 import functools
@@ -84,9 +80,9 @@ def draw_sample(rng):
                              'angle': jax.random.uniform(rng_ang, shape=(2,)) * 2 * jnp.pi,
                              'gamma_ext': jax.random.normal(rng_ge, shape=(2,)) * 0.05}
     main_deflector_params_substructure = {'mass': 1e13, 'z_lens': 0.5,
-                                          'theta_e': main_deflector_params['theta_e'][0],
-                                          'center_x': main_deflector_params['center_x'][0],
-                                          'center_y': main_deflector_params['center_y'][0]}
+                                          'theta_e': main_deflector_params['theta_e'][1],
+                                          'center_x': main_deflector_params['center_x'][1],
+                                          'center_y': main_deflector_params['center_y'][1]}
     rng_ss, rng_pi, rng = jax.random.split(rng, 3)
     subhalo_params = {'sigma_sub': jax.random.normal(rng_ss) * 1.1e-3 + 2.0e-3,
                       'shmf_plaw_index': jax.random.uniform(rng_pi) * 0.1 - 2.02,
@@ -109,7 +105,7 @@ def draw_sample(rng):
 num_z_bins = 1000
 los_pad_length = 200
 subhalos_pad_length = 200
-sampling_pad_length = 1000
+sampling_pad_length = 10000
 
 draw_los_jit = jax.jit(functools.partial(los.draw_los, num_z_bins=num_z_bins,
     los_pad_length=los_pad_length))
@@ -134,7 +130,8 @@ def draw_images(rng, batch_size):
 
     rng_array = jax.random.split(rng, batch_size)
 
-    main_deflector_params, source_params, subhalo_params, main_deflector_params_sub = draw_sample_vmap(rng_array)
+    (main_deflector_params, source_params, subhalo_params,
+        main_deflector_params_sub) = draw_sample_vmap(rng_array)
     los_before_tuple, los_after_tuple = draw_los_vmap(main_deflector_params_sub,
         source_params, los_params, cosmology_params, rng_array)
     subhalos_z, subhalos_kwargs = draw_subhalos_vmap(main_deflector_params_sub,
@@ -149,9 +146,12 @@ def draw_images(rng, batch_size):
         'z_array_subhalos': subhalos_z, 'kwargs_subhalos': subhalos_kwargs}
     z_source = source_params.pop('z_source')
 
-    # TODO For now the todos are just brute force sigma_sub
+    # TODO For now the truths are just brute-force normalized sigma_sub
     truth = (subhalo_params['sigma_sub'] - 2e-3) / 1.1e-3
-
-    return downsample_vmap(
+    image = downsample_vmap(
         image_simulation_vmap(grid_x, grid_y, kwargs_lens_all, source_params,
-        source_params, kwargs_psf, cosmology_params, z_source)), truth
+        source_params, kwargs_psf, cosmology_params, z_source))
+    image /= jnp.expand_dims(jnp.expand_dims(
+        jnp.std(image.reshape(batch_size, -1), axis=-1), axis=-1), axis=-1)
+
+    return image, truth
