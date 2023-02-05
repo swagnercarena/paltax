@@ -147,7 +147,8 @@ def draw_images(rng, batch_size):
     z_source = source_params.pop('z_source')
 
     # TODO For now the truths are just brute-force normalized sigma_sub
-    truth = (subhalo_params['sigma_sub'] - 2e-3) / 1.1e-3
+    truth = jnp.expand_dims((subhalo_params['sigma_sub'] - 2e-3) / 1.1e-3,
+        axis=-1)
     image = downsample_vmap(
         image_simulation_vmap(grid_x, grid_y, kwargs_lens_all, source_params,
         source_params, kwargs_psf, cosmology_params, z_source))

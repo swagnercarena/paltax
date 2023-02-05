@@ -51,6 +51,11 @@ def initialized(key, image_size, model):
 
 
 def gaussian_loss(outputs, truth):
+    """
+
+    Notes:
+        Loss does not inlcude constant factor of 1 / (2 * pi) ^ (d/2)
+    """
     mean, log_var = jnp.split(outputs, 2, axis=-1)
     loss = 0.5 * jnp.sum(
         jnp.multiply(jnp.square(mean-truth), jnp.exp(-log_var)), axis=-1)
