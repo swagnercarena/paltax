@@ -144,10 +144,8 @@ def create_train_state(rng, config: ml_collections.ConfigDict,
                        model, image_size, learning_rate):
     """Create initial training state."""
     params, batch_stats = initialized(rng, image_size, model)
-    tx = optax.sgd(
-        learning_rate=learning_rate,
-        momentum=config.momentum,
-        nesterov=True,
+    tx = optax.adam(
+        learning_rate=learning_rate
     )
     state = TrainState.create(
         apply_fn=model.apply,
