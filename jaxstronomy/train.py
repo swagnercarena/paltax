@@ -155,7 +155,7 @@ def create_train_state(rng, config: ml_collections.ConfigDict,
 
 def train_and_evaluate(config: ml_collections.ConfigDict,
                        workdir: str, rng: Sequence[int],
-                       image_size: int) -> TrainState:
+                       image_size: int, learning_rate: float) -> TrainState:
     """Execute model training and evaluation loop.
     Args:
         config: Hyperparameter configuration for training and evaluation.
@@ -173,7 +173,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
     steps_per_epoch = config.steps_per_epoch
     num_steps = config.num_train_steps
 
-    base_learning_rate = FLAGS.learning_rate * config.batch_size / 256.
+    base_learning_rate = learning_rate * config.batch_size / 256.
 
     model_cls = getattr(models, config.model)
     model = model_cls(num_outputs=config.num_outputs, dtype=jnp.float32)
@@ -239,7 +239,8 @@ def main(_):
     config = train_config.get_config()
     image_size = 124
     rng = jax.random.PRNGKey(0)
-    train_and_evaluate(config, FLAGS.workdir, rng, image_size)
+    train_and_evaluate(config, FLAGS.workdir, rng, image_size,
+        FLAGS.learning_rate)
 
 
 if __name__ == '__main__':
