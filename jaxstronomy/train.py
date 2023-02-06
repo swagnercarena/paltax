@@ -181,7 +181,11 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
     model_cls = getattr(models, config.model)
     model = model_cls(num_outputs=config.num_outputs, dtype=jnp.float32)
 
-    state = create_train_state(rng, config, model, image_size,
+    if isinstance(rng, Iterator):
+        rng_state = next(rng)
+    else:
+        rng, rng_state = jax.random.split(rng)
+    state = create_train_state(rng_state, config, model, image_size,
         base_learning_rate)
     state = restore_checkpoint(state, workdir)
 
