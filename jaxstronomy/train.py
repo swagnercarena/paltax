@@ -14,8 +14,10 @@
 """Training script for dark matter substructure inference."""
 
 import functools
+import itertools
 import time
-from typing import Any, Sequence
+from typing import Any, Iterator, Sequence, Union
+from collections.abc import Iterator
 
 from absl import app
 from absl import flags
@@ -39,6 +41,8 @@ from jaxstronomy import models
 FLAGS = flags.FLAGS
 flags.DEFINE_string('workdir', None, 'working directory')
 flags.DEFINE_float('learning_rate', 0.001, 'learning rate')
+flags.DEFINE_integer('num_unique_batches', 0,
+    'number of unique batches of data to draw. If 0 produces infinite data.')
 
 
 def initialized(key, image_size, model):
@@ -154,7 +158,8 @@ def create_train_state(rng, config: ml_collections.ConfigDict,
 
 
 def train_and_evaluate(config: ml_collections.ConfigDict,
-                       workdir: str, rng: Sequence[int],
+                       workdir: str,
+                       rng: Union[Iterator[Sequence[int]], Sequence[int]],
                        image_size: int, learning_rate: float) -> TrainState:
     """Execute model training and evaluation loop.
     Args:
@@ -200,7 +205,10 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
     for step in range(step_offset, num_steps):
 
         # Generate truths and images
-        rng, rng_images = jax.random.split(rng)
+        if isinstance(rng, Iterator):
+            rng_images = next(rng)
+        else:
+            rng, rng_images = jax.random.split(rng)
         rng_images = jax.random.split(rng_images, num=jax.device_count())
         image, truth = draw_images_jit(rng_images)
         batch = {'image': jnp.expand_dims(image, axis=-1), 'truth': truth}
@@ -239,6 +247,9 @@ def main(_):
     config = train_config.get_config()
     image_size = 124
     rng = jax.random.PRNGKey(0)
+    if FLAGS.num_unique_batches > 0:
+        rng_list = jax.random.split(rng, FLAGS.num_unique_batches)
+        rng = itertools.cycle(rng_list)
     train_and_evaluate(config, FLAGS.workdir, rng, image_size,
         FLAGS.learning_rate)
 
