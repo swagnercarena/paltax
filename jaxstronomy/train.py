@@ -79,7 +79,19 @@ def compute_metrics(outputs, truth):
     return metrics
 
 
-def train_step(state, batch):
+def get_learning_rate_schedule(config, base_learning_rate, steps_per_epoch):
+    warmup_fn = optax.linear_schedule(init_value=0.0,
+        end_value=base_learning_rate,
+        transition_steps=config.warmup_epochs * steps_per_epoch)
+    cosine_epochs = max(config.num_epochs - config.warmup_epochs, 1)
+    cosine_fn = optax.cosine_decay_schedule(init_value=base_learning_rate,
+        decay_steps=cosine_epochs * steps_per_epoch)
+    schedule_fn = optax.join_schedules(schedules=[warmup_fn, cosine_fn],
+        boundaries=[config.warmup_epochs * steps_per_epoch])
+    return schedule_fn
+
+
+def train_step(state, batch, learning_rate_schedule):
     """Perform a single training step."""
 
     def loss_fn(params):
@@ -98,12 +110,16 @@ def train_step(state, batch):
         # loss = loss + weight_penalty
         return loss, (new_model_state, outputs)
 
+    step = state.step
+    lr = learning_rate_schedule(step)
+
     grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
     aux, grads = grad_fn(state.params)
     # Re-use same axis_name as in the call to `pmap(...train_step...)` below.
     grads = lax.pmean(grads, axis_name='batch')
     new_model_state, outputs = aux[1]
     metrics = compute_metrics(outputs, batch['truth'])
+    metrics['learning_rate'] = lr
 
     new_state = state.apply_gradients(
         grads=grads, batch_stats=new_model_state['batch_stats'])
@@ -141,11 +157,11 @@ def sync_batch_stats(state):
 
 
 def create_train_state(rng, config: ml_collections.ConfigDict,
-                       model, image_size, learning_rate):
+                       model, image_size, learning_rate_schedule):
     """Create initial training state."""
     params, batch_stats = initialized(rng, image_size, model)
     tx = optax.adam(
-        learning_rate=learning_rate
+        learning_rate=learning_rate_schedule
     )
     state = TrainState.create(
         apply_fn=model.apply,
@@ -181,19 +197,24 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
     model_cls = getattr(models, config.model)
     model = model_cls(num_outputs=config.num_outputs, dtype=jnp.float32)
 
+    learning_rate_schedule = get_learning_rate_schedule(config,
+        base_learning_rate, steps_per_epoch)
+
     if isinstance(rng, Iterator):
         rng_state = next(rng)
     else:
         rng, rng_state = jax.random.split(rng)
     state = create_train_state(rng_state, config, model, image_size,
-        base_learning_rate)
+        learning_rate_schedule)
     state = restore_checkpoint(state, workdir)
 
     # step_offset > 0 if restarting from checkpoint
     step_offset = int(state.step)
     state = jax_utils.replicate(state)
 
-    p_train_step = jax.pmap(train_step, axis_name='batch')
+    p_train_step = jax.pmap(functools.partial(train_step,
+        learning_rate_schedule=learning_rate_schedule),
+        axis_name='batch')
     draw_images_jit = jax.pmap(
         jax.jit(functools.partial(input_pipeline.draw_images,
         batch_size=config.batch_size)), axis_name='batch')
