@@ -79,15 +79,15 @@ def compute_metrics(outputs, truth):
     return metrics
 
 
-def get_learning_rate_schedule(config, base_learning_rate, steps_per_epoch):
+def get_learning_rate_schedule(config, base_learning_rate):
     warmup_fn = optax.linear_schedule(init_value=0.0,
         end_value=base_learning_rate,
-        transition_steps=config.warmup_epochs * steps_per_epoch)
-    cosine_epochs = max(config.num_epochs - config.warmup_epochs, 1)
+        transition_steps=config.warmup_steps)
+    cosine_steps = max(config.num_train_steps - config.warmup_steps, 1)
     cosine_fn = optax.cosine_decay_schedule(init_value=base_learning_rate,
-        decay_steps=cosine_epochs * steps_per_epoch)
+        decay_steps=cosine_steps)
     schedule_fn = optax.join_schedules(schedules=[warmup_fn, cosine_fn],
-        boundaries=[config.warmup_epochs * steps_per_epoch])
+        boundaries=[config.warmup_steps])
     return schedule_fn
 
 
@@ -198,7 +198,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
     model = model_cls(num_outputs=config.num_outputs, dtype=jnp.float32)
 
     learning_rate_schedule = get_learning_rate_schedule(config,
-        base_learning_rate, steps_per_epoch)
+        base_learning_rate)
 
     if isinstance(rng, Iterator):
         rng_state = next(rng)
