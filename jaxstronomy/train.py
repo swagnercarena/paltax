@@ -257,7 +257,9 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
             image = jnp.expand_dims(image, axis=-1)
         else:
             image, truth = next(rotations_dataset)
+            #TODO this is just a quick fix for 1 process.
             image = jnp.expand_dims(image, axis=0)
+            truth = jnp.expand_dims(truth, axis=0)
 
         batch = {'image': image, 'truth': truth}
         state, metrics = p_train_step(state, batch)
