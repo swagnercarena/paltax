@@ -15,8 +15,9 @@
 
 import functools
 import itertools
+import os
 import time
-from typing import Any, Iterator, Sequence, Union
+from typing import Any, Iterator, Optional, Sequence, Union
 from collections.abc import Iterator
 
 from absl import app
@@ -35,6 +36,7 @@ import ml_collections
 import optax
 
 from jaxstronomy import input_pipeline
+from jaxstronomy import input_pipeline_paltas
 from jaxstronomy import models
 
 
@@ -43,6 +45,8 @@ flags.DEFINE_string('workdir', None, 'working directory')
 flags.DEFINE_float('learning_rate', 0.001, 'learning rate')
 flags.DEFINE_integer('num_unique_batches', 0,
     'number of unique batches of data to draw. If 0 produces infinite data.')
+flags.DEFINE_bool('use_jaxstronomy', True, 'If false pull from pre-generated '
+ + 'paltas data.')
 
 
 def initialized(key, image_size, model):
@@ -174,7 +178,8 @@ def create_train_state(rng, config: ml_collections.ConfigDict,
 def train_and_evaluate(config: ml_collections.ConfigDict,
                        workdir: str,
                        rng: Union[Iterator[Sequence[int]], Sequence[int]],
-                       image_size: int, learning_rate: float) -> TrainState:
+                       image_size: int, learning_rate: float,
+                       use_jaxstronomy: Optional[bool] = True) -> TrainState:
     """Execute model training and evaluation loop.
     Args:
         config: Hyperparameter configuration for training and evaluation.
@@ -219,6 +224,19 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
         jax.jit(functools.partial(input_pipeline.draw_images,
         batch_size=config.batch_size)), axis_name='batch')
 
+    # TODO remove this after tests
+    npy_folders_train = [
+        '/scratch/users/swagnerc/paltas/datasets/marg_mc2/marg_mc2_%d/'%(i)
+            for i in range(1,501)]
+    tfr_train_paths = [os.path.join(path,'data.tfrecord')
+        for path in npy_folders_train]
+    learning_params = ['subhalo_parameters_sigma_sub']
+    input_norm_path = npy_folders_train[0] + 'norms.csv'
+    rotations_dataset = input_pipeline_paltas.generate_rotations_dataset(
+        tfr_train_paths, learning_params, config.batch_size, 1000,
+        norm_images=True, input_norm_path=input_norm_path, kwargs_detector=None)
+
+
     train_metrics = []
     hooks = []
     if jax.process_index() == 0:
@@ -233,7 +251,12 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
         else:
             rng, rng_images = jax.random.split(rng)
         rng_images = jax.random.split(rng_images, num=jax.device_count())
-        image, truth = draw_images_jit(rng_images)
+
+        if use_jaxstronomy:
+            image, truth = draw_images_jit(rng_images)
+        else:
+            image, truth = next(rotations_dataset)
+
         batch = {'image': jnp.expand_dims(image, axis=-1), 'truth': truth}
         state, metrics = p_train_step(state, batch)
         for h in hooks:
@@ -274,7 +297,7 @@ def main(_):
         rng_list = jax.random.split(rng, FLAGS.num_unique_batches)
         rng = itertools.cycle(rng_list)
     train_and_evaluate(config, FLAGS.workdir, rng, image_size,
-        FLAGS.learning_rate)
+        FLAGS.learning_rate, FLAGS.use_jaxstronomy)
 
 
 if __name__ == '__main__':
