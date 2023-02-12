@@ -107,6 +107,10 @@ los_pad_length = 200
 subhalos_pad_length = 200
 sampling_pad_length = 10000
 
+# TODO LOS have been turned off
+los_params['delta_los'] = 0.0
+los_pad_length = 1
+
 draw_los_jit = jax.jit(functools.partial(los.draw_los, num_z_bins=num_z_bins,
     los_pad_length=los_pad_length))
 draw_subhalos_jit = jax.jit(functools.partial(subhalos.draw_subhalos,
