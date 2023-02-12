@@ -254,8 +254,10 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
 
         if use_jaxstronomy:
             image, truth = draw_images_jit(rng_images)
+            image = jnp.expand_dims(image, axis=-1)
         else:
             image, truth = next(rotations_dataset)
+            jnp.expand_dims(image, axis=0)
 
         batch = {'image': jnp.expand_dims(image, axis=-1), 'truth': truth}
         state, metrics = p_train_step(state, batch)
