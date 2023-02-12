@@ -295,7 +295,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
 def main(_):
     from jaxstronomy import train_config
     config = train_config.get_config()
-    if FLAGS.use_jaxstronomy:
+    if not FLAGS.use_jaxstronomy:
         config.batch_size = min(config.batch_size, 128)
     image_size = 124
     rng = jax.random.PRNGKey(0)
