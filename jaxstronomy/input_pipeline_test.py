@@ -79,6 +79,8 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         np.testing.assert_array_almost_equal(
             jnp.std(image.reshape(batch_size, -1)), jnp.ones(batch_size),
             decimal=2)
-        self.assertTupleEqual(truth.shape, (batch_size, 1))
-        self.assertLess(jnp.abs(jnp.mean(truth)), 0.3)
-        self.assertGreater(jnp.std(truth), 0.6)
+        self.assertTupleEqual(truth.shape, (batch_size, 2))
+        self.assertLess(jnp.abs(jnp.mean(truth[:,0])), 0.3)
+        self.assertGreater(jnp.std(truth[:,0]), 0.6)
+        self.assertLess(jnp.abs(jnp.mean(truth[:,1])), 0.3)
+        self.assertGreater(jnp.std(truth[:,1]), 0.15)
