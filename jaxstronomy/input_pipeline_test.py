@@ -33,15 +33,16 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
     def setUp(self):
         # Set up the baseline configuration.
         self.config = {}
+        encode_constant = input_pipeline.encode_constant
         self.config['cosmology_params'] = {
-            'omega_m_zero': 0.3089,
-            'omega_b_zero': 0.0486,
-            'omega_de_zero': 0.6910088292453472,
-            'omega_rad_zero': 9.117075466e-5,
-            'temp_cmb_zero': 2.7255,
-            'hubble_constant': 67.74,
-            'n_s': 0.9667,
-            'sigma_eight': 0.8159,
+            'omega_m_zero': encode_constant(0.3089),
+            'omega_b_zero': encode_constant(0.0486),
+            'omega_de_zero': encode_constant(0.6910088292453472),
+            'omega_rad_zero': encode_constant(9.117075466e-5),
+            'temp_cmb_zero': encode_constant(2.7255),
+            'hubble_constant': encode_constant(67.74),
+            'n_s': encode_constant(0.9667),
+            'sigma_eight': encode_constant(0.8159),
         }
         return super().setUp()
 
@@ -224,9 +225,10 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
                 'm_min': encode_constant(1e7)
             }
         }
+        rng = jax.random.PRNGKey(0)
 
         cosmology_params = input_pipeline.intialize_cosmology_params(
-            self.config)
+            self.config, rng)
 
         # Test that the cosmology params do not cause issues if the masses
         # are within the specified range.
@@ -417,9 +419,10 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
                 'center_y': encode_normal(mean=0.0, std=0.16)
             }
         }
+        rng = jax.random.PRNGKey(0)
 
         cosmology_params = input_pipeline.intialize_cosmology_params(
-            self.config)
+            self.config, rng)
         n_x = 16
         n_y = 16
         self.config['kwargs_detector'] = {
@@ -429,7 +432,6 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             'magnitude_zero_point': 25, 'read_noise': 3.0
         }
         grid_x, grid_y = input_pipeline.generate_grids(self.config)
-        rng = jax.random.PRNGKey(0)
         all_models = {
             'all_los_models': (lens_models.NFW,),
             'all_subhalo_models': (lens_models.TNFW,),

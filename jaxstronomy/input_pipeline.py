@@ -20,7 +20,6 @@ from typing import Any, Mapping, Sequence, Tuple, Union
 
 import jax.numpy as jnp
 import jax
-import ml_collections
 
 from jaxstronomy import cosmology_utils
 from jaxstronomy import los
@@ -164,7 +163,7 @@ def normalize_param(parameter: float, encoding: jnp.ndarray) -> float:
     return normalized_param
 
 def generate_grids(
-        config: ml_collections.ConfigDict
+        config: Mapping[str, Mapping[str, jnp.ndarray]]
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Generate the x- and y-grid on which to generate the lensing image.
 
@@ -183,12 +182,13 @@ def generate_grids(
 
 
 def intialize_cosmology_params(
-        config: ml_collections.ConfigDict
+        config: Mapping[str, Mapping[str, jnp.ndarray]], rng: Sequence[int],
 ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
     """Initialize the cosmology parameters as needed by the config.
 
     Args:
         config: Configuration dictionary for input generation.
+        rng: jax PRNG key.
 
     Returns:
         Cosmological parameters with appropriate lookup table.
@@ -203,15 +203,17 @@ def intialize_cosmology_params(
         decode_minimum(config['lensing_config']['subhalo_params']['m_min']),
         decode_minimum(config['lensing_config']['los_params']['m_min']))
 
+    cosmology_params_init = draw_sample(config['cosmology_params'], rng)
+
     # Initial bounds on lagrangian radius are just placeholders.
     cosmology_params = cosmology_utils.add_lookup_tables_to_cosmology_params(
-        dict(config['cosmology_params']), max_source_z, dz / 2, 1e-4, 1e3, 2)
+        cosmology_params_init, max_source_z, dz / 2, 1e-4, 1e3, 2)
     r_min = cosmology_utils.lagrangian_radius(cosmology_params,
                                               m_min / 10)
     r_max = cosmology_utils.lagrangian_radius(cosmology_params,
                                               m_max * 10)
     cosmology_params = cosmology_utils.add_lookup_tables_to_cosmology_params(
-        config['cosmology_params'], 1.5, dz / 2, r_min, r_max, 10000)
+        cosmology_params_init, 1.5, dz / 2, r_min, r_max, 10000)
     extremal_los_params = {'m_min': m_min, 'm_max': m_max, 'dz': dz}
     return los.add_los_lookup_tables_to_cosmology_params(
         extremal_los_params, cosmology_params, max_source_z)
