@@ -61,7 +61,7 @@ def get_config():
             'sigma_sub': encode_normal(mean=2.0e-3, std=1.1e-3),
             'shmf_plaw_index': encode_uniform(minimum=-2.02, maximum=-1.92),
             'm_pivot': encode_constant(1e10),
-            'm_min': encode_constant(1e7),
+            'm_min': encode_constant(7e7),
             'm_max': encode_constant(1e10),
             'k_one': encode_constant(0.0),
             'k_two': encode_constant(0.0),
@@ -74,8 +74,8 @@ def get_config():
         'source_params':{
             'z_source': encode_constant(1.5),
             'amp': encode_uniform(minimum=1.0, maximum=10.0),
-            'sersic_radius': encode_normal(mean=1.0, std=2.0),
-            'n_sersic': encode_normal(mean=1.0, std=3.0),
+            'sersic_radius': encode_uniform(minimum=1.0, maximum=3.0),
+            'n_sersic': encode_uniform(minimum=1.0, maximum=4.0),
             'axis_ratio': encode_normal(mean=1.0, std=0.05),
             'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
             'center_x': encode_normal(mean=0.0, std=0.16),
@@ -83,8 +83,8 @@ def get_config():
         },
         'lens_light_params':{
             'amp': encode_constant(0.0),
-            'sersic_radius': encode_normal(mean=1.0, std=2.0),
-            'n_sersic': encode_normal(mean=1.0, std=3.0),
+            'sersic_radius': encode_uniform(minimum=1.0, maximum=3.0),
+            'n_sersic': encode_uniform(minimum=1.0, maximum=4.0),
             'axis_ratio': encode_normal(mean=1.0, std=0.05),
             'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
             'center_x': encode_normal(mean=0.0, std=0.16),
@@ -118,12 +118,17 @@ def get_config():
     config['kwargs_simulation'] = {
         'num_z_bins': 1000,
         'los_pad_length': 10,
-        'subhalos_pad_length': 1300,
+        'subhalos_pad_length': 750,
         'sampling_pad_length': 10000,
     }
 
     config['rng'] = jax.random.PRNGKey(0)
 
     config['kwargs_psf'] = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 0.02}
+
+    config['principal_md_index'] = 0
+    config['principal_source_index'] = 0
+    config['truth_parameters'] = (['main_deflector_params','subhalo_params'],
+                                  ['theta_e', 'sigma_sub'])
 
     return config
