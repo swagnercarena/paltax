@@ -16,148 +16,385 @@ network.
 """
 
 import functools
+from typing import Any, Mapping, Sequence, Tuple, Union
 
 import jax.numpy as jnp
 import jax
+import ml_collections
+
 from jaxstronomy import cosmology_utils
 from jaxstronomy import los
 from jaxstronomy import subhalos
 from jaxstronomy import image_simulation
 from jaxstronomy import utils
-from jaxstronomy import lens_models
-from jaxstronomy import source_models
-from jaxstronomy import psf_models
-
-# Most important parameters
-rng = jax.random.PRNGKey(0)
-
-# Set the simulation parameters we will keep static.
-los_params = {'delta_los': 1.1, 'r_min':0.5, 'r_max':10.0, 'm_min': 1e8,
-    'm_max': 1e10, 'dz':0.1, 'cone_angle': 8.0, 'angle_buffer': 0.8,
-    'c_zero': 18, 'conc_zeta': -0.2, 'conc_beta': 0.8, 'conc_m_ref': 1e8,
-    'conc_dex_scatter': 0.0}
-cosmology_params_init = {'omega_m_zero': 0.3089, 'omega_b_zero': 0.0486,
-    'omega_de_zero': 0.6910088292453472, 'omega_rad_zero': 9.117075466e-5,
-    'temp_cmb_zero': 2.7255, 'hubble_constant': 67.74, 'n_s': 0.9667,
-    'sigma_eight': 0.8159}
-kwargs_detector = {'n_x': 124, 'n_y': 124, 'pixel_width': 0.04,
-    'supersampling_factor': 2, 'exposure_time': 1024, 'num_exposures': 2.0,
-    'sky_brightness': 22, 'magnitude_zero_point': 25,
-    'read_noise': 3.0}
-# TODO the bounds on the cosmology lookup table are being set manually here.
-cosmology_params = cosmology_utils.add_lookup_tables_to_cosmology_params(
-    cosmology_params_init, 1.5, los_params['dz'] / 2, 1e-4, 1e3, 2)
-grid_x, grid_y = utils.coordinates_evaluate(kwargs_detector['n_x'],
-    kwargs_detector['n_y'], kwargs_detector['pixel_width'],
-    kwargs_detector['supersampling_factor'])
-# TODO using a very simple PSF
-kwargs_psf = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 0.02}
-r_min = cosmology_utils.lagrangian_radius(cosmology_params, los_params['m_min'] / 10)
-r_max = cosmology_utils.lagrangian_radius(cosmology_params, los_params['m_max'] * 10)
-cosmology_params = cosmology_utils.add_lookup_tables_to_cosmology_params(
-    cosmology_params_init, 1.5, los_params['dz'] / 2, r_min, r_max, 1000)
-cosmology_params = los.add_los_lookup_tables_to_cosmology_params(los_params,
-    cosmology_params, 1.5)
-
-all_models = {'all_los_models': (lens_models.NFW,),
-    'all_subhalo_models': (lens_models.TNFW,),
-    'all_main_deflector_models': (lens_models.Shear, lens_models.EPL),
-    'all_source_models': (source_models.SersicElliptic,),
-    'all_psf_models': (psf_models.Gaussian,)}
-
-# TODO hard code a sampler here. Will want to break this out later.
-def draw_sample(rng):
-
-    rng_te, rng_cx, rng_cy, rng = jax.random.split(rng, 4)
-    rng_sl, rng_ar, rng_ge, rng_ang, rng = jax.random.split(rng, 5)
-    main_deflector_params = {'model_index': jnp.array([0,1]),
-                             'z_lens': jnp.full((2,), 0.5),
-                             'theta_e': jax.random.normal(rng_te, shape=(2,)) * 0.15 + 1.1,
-                             'slope': jax.random.normal(rng_sl, shape=(2,)) * 0.1 + 2.0,
-                             'center_x': jax.random.normal(rng_cx, shape=(2,)) * 0.16,
-                             'center_y': jax.random.normal(rng_cy, shape=(2,)) * 0.16,
-                             'axis_ratio': jax.random.normal(rng_ar, shape=(2,)) * 0.05 + 1.0,
-                             'angle': jax.random.uniform(rng_ang, shape=(2,)) * 2 * jnp.pi,
-                             'gamma_ext': jax.random.normal(rng_ge, shape=(2,)) * 0.05}
-    main_deflector_params_substructure = {'mass': 1e13, 'z_lens': 0.5,
-                                          'theta_e': main_deflector_params['theta_e'][1],
-                                          'center_x': main_deflector_params['center_x'][1],
-                                          'center_y': main_deflector_params['center_y'][1]}
-    rng_ss, rng_pi, rng = jax.random.split(rng, 3)
-    subhalo_params = {'sigma_sub': jax.random.normal(rng_ss) * 1.1e-3 + 2.0e-3,
-                      'shmf_plaw_index': jax.random.uniform(rng_pi) * 0.1 - 2.02,
-                      'm_pivot': 1e8, 'm_min': 1e6, 'm_max': 1e9, 'k_one': 0.0, 'k_two': 0.0,
-                      'c_zero': 18, 'conc_zeta': -0.2, 'conc_beta': 0.8, 'conc_m_ref': 1e8,
-                      'conc_dex_scatter': 0.0}
-    rng_amp, rng_sr, rng_ns, rng_ar, rng_ang, rng_cx, rng_cy, rng = jax.random.split(rng, 8)
-    source_params = {'model_index': jnp.full((1,), 0), 'z_source': 1.5,
-                     'amp': jax.random.uniform(rng_amp, shape=(1,)) * 9.0 + 1.0,
-                     'sersic_radius': jax.random.uniform(rng_sr, shape=(1,)) * 2.0 + 1.0,
-                     'n_sersic': jax.random.uniform(rng_ns, shape=(1,)) * 3.0 + 1.0,
-                     'axis_ratio': jax.random.normal(rng_ar, shape=(1,)) * 0.05 + 1.0,
-                     'angle': jax.random.uniform(rng_ang, shape=(1,)) * 2 * jnp.pi,
-                     'center_x': jax.random.normal(rng_cx, shape=(1,)) * 0.16,
-                     'center_y': jax.random.normal(rng_cy, shape=(1,)) * 0.16}
-    return main_deflector_params, source_params, subhalo_params, main_deflector_params_substructure
-
-# TODO these values are also hard coded in the script and should be read from
-# a configuration file in the future.
-num_z_bins = 1000
-los_pad_length = 200
-subhalos_pad_length = 200
-sampling_pad_length = 10000
-
-# TODO LOS have been turned off
-los_params['delta_los'] = 0.0
-los_pad_length = 1
-
-draw_los_jit = jax.jit(functools.partial(los.draw_los, num_z_bins=num_z_bins,
-    los_pad_length=los_pad_length))
-draw_subhalos_jit = jax.jit(functools.partial(subhalos.draw_subhalos,
-    subhalos_pad_length=subhalos_pad_length,
-    sampling_pad_length=sampling_pad_length))
-image_simulation_jit = jax.jit(functools.partial(
-    image_simulation.generate_image, kwargs_detector=kwargs_detector,
-    all_models=all_models))
-
-draw_sample_vmap = jax.jit(jax.vmap(draw_sample))
-draw_los_vmap = jax.jit(jax.vmap(draw_los_jit, in_axes=[0, 0, None, None, 0]))
-draw_subhalos_vmap = jax.jit(jax.vmap(draw_subhalos_jit,
-    in_axes=[0, 0, 0, None, 0]))
-image_simulation_vmap = jax.jit(jax.vmap(image_simulation_jit,
-    in_axes=[None, None, 0, 0, 0, None, None, 0]))
-downsample_vmap = jax.jit(jax.vmap(functools.partial(utils.downsample,
-    supersampling_factor=2)))
 
 
-def draw_images(rng, batch_size):
+def encode_normal(mean: float, std: float) -> jnp.ndarray:
+    """Generate the jax array that encodes a normal distribution.
 
-    rng_array = jax.random.split(rng, batch_size)
+    Args:
+        mean: Mean of the normal distribution.
+        std: Standard deviation of the normal distribution.
 
-    (main_deflector_params, source_params, subhalo_params,
-        main_deflector_params_sub) = draw_sample_vmap(rng_array)
-    los_before_tuple, los_after_tuple = draw_los_vmap(main_deflector_params_sub,
-        source_params, los_params, cosmology_params, rng_array)
-    subhalos_z, subhalos_kwargs = draw_subhalos_vmap(main_deflector_params_sub,
-        source_params, subhalo_params, cosmology_params, rng_array)
+    Returns:
+        Encoding that represents a normal with given mean and standard
+            deviation.
+    """
 
-    kwargs_lens_all = {'z_array_los_before': los_before_tuple[0],
+    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
+    # normal_bool, normal_mean, normal_std, constant].
+    return jnp.array([0.0, 0.0, 0.0, 1.0, mean, std, 0.0])
+
+
+def encode_uniform(minimum: float, maximum: float) -> jnp.ndarray:
+    """Generate the jax array that encodes a uniform distribution.
+
+    Args:
+        min: Minimum value of the uniform distribution.
+        max: Maximum value of the uniform distribution.
+
+    Returns:
+        Encoding that represents a uniform with given min and max.
+    """
+
+    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
+    # normal_bool, normal_mean, normal_std, constant].
+    return jnp.array([1.0, minimum, maximum, 0.0, 0.0, 0.0, 0.0])
+
+
+def encode_constant(constant: float) -> jnp.ndarray:
+    """Generate the jax array that encodes a constant value.
+
+    Args:
+        constant: Constant value.
+
+    Returns:
+        Encoding that represents a constant value.
+    """
+    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
+    # normal_bool, normal_mean, normal_std, constant].
+    return jnp.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, constant])
+
+
+def decode_maximum(encoding: jnp.ndarray) -> float:
+    """Decode the maximum value of the distribution defined by encoding.
+
+    Args:
+        encoding: Encoded distribution
+
+    Returns:
+        Maximum value of encoded distribution. May be an approximation for
+        distributions without a maximum.
+    """
+    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
+    # normal_bool, normal_mean, normal_std, constant].
+    # If not uniform will give 0.
+    maximum = encoding[0] * encoding[2]
+    # If normal will give mean + five sigma.
+    maximum += encoding[3] * (encoding[4] + encoding[5]*5)
+    # If constant return constant
+    maximum += encoding[6]
+    return maximum
+
+
+def decode_minimum(encoding: jnp.ndarray) -> float:
+    """Decode the minimum value of the dsitribution defined by the encoding.
+
+    Args:
+        encoding: Encoded distribution
+
+    Returns:
+        Minimum value of encoded distribution. May be an approximation for
+        distributions without a minimum.
+    """
+    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
+    # normal_bool, normal_mean, normal_std, constant].
+    # If not uniform will give 0.
+    minimum = encoding[0] * encoding[1]
+    # If normal will give mean - five sigma.
+    minimum += encoding[3] * (encoding[4] - encoding[5]*5)
+    # If constant return constant
+    minimum += encoding[6]
+    return minimum
+
+
+def draw_from_encoding(encoding: jnp.ndarray, rng: Sequence[int]) -> float:
+    """Draw from encoded distribution.
+
+    Args:
+        encoding: Encoding defining the distribution.
+        rng: jax PRNG key.
+
+    Returns:
+        A draw from the encoded distribution.
+    """
+    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
+    # normal_bool, normal_mean, normal_std, constant].
+    # Start with the uniform component.
+    draw = encoding[0] * (
+        jax.random.uniform(rng) * (encoding[2] - encoding[1]) + encoding[1])
+    # Now the normal component.
+    draw += encoding[3] * (jax.random.normal(rng) * encoding[5] + encoding[4])
+    # And finally the constant
+    draw += encoding[6]
+    return draw
+
+
+def normalize_param(parameter: float, encoding: jnp.ndarray) -> float:
+    """Return parameter normalized by encoded distribution.
+
+    Args:
+        parameter: Parameter value to normalize
+        encoding: Encoding defining the distribution.
+
+    Returns:
+        Normalized parameter.
+    """
+    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
+    # normal_bool, normal_mean, normal_std, constant].
+    # Normalize uniform distribution to be between 0 and 1.
+    normalized_param = jax.lax.select(
+        encoding[0] > 0.0,
+        (parameter - encoding[1]) / (encoding[2] - encoding[1]), 0.0)
+    # Normalize normal distribution to mean 0 and standard deviation 1.0
+    normalized_param += jax.lax.select(
+        encoding[3] > 0.0,(parameter - encoding[4]) / encoding[5], 0.0)
+    # Constant will be normalzied to 0.0 by default.
+
+    return normalized_param
+
+def generate_grids(
+        config: ml_collections.ConfigDict
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Generate the x- and y-grid on which to generate the lensing image.
+
+    Args:
+        config: Configuration dictionary from which the detector kwargs will be
+            drawn.
+
+    Returns:
+        x- and y-grid in units of arcseconds as a tuple.
+    """
+    kwargs_detector = config['kwargs_detector']
+    grid_x, grid_y = utils.coordinates_evaluate(kwargs_detector['n_x'],
+        kwargs_detector['n_y'], kwargs_detector['pixel_width'],
+        kwargs_detector['supersampling_factor'])
+    return grid_x, grid_y
+
+
+def intialize_cosmology_params(
+        config: ml_collections.ConfigDict
+) -> Mapping[str, Union[float, int, jnp.ndarray]]:
+    """Initialize the cosmology parameters as needed by the config.
+
+    Args:
+        config: Configuration dictionary for input generation.
+
+    Returns:
+        Cosmological parameters with appropriate lookup table.
+    """
+    max_source_z = decode_maximum(
+        config['lensing_config']['source_params']['z_source'])
+    dz = decode_minimum(config['lensing_config']['los_params']['dz'])
+    m_max = max(
+        decode_maximum(config['lensing_config']['subhalo_params']['m_max']),
+        decode_maximum(config['lensing_config']['los_params']['m_max']))
+    m_min = min(
+        decode_minimum(config['lensing_config']['subhalo_params']['m_min']),
+        decode_minimum(config['lensing_config']['los_params']['m_min']))
+
+    # Initial bounds on lagrangian radius are just placeholders.
+    cosmology_params = cosmology_utils.add_lookup_tables_to_cosmology_params(
+        dict(config['cosmology_params']), max_source_z, dz / 2, 1e-4, 1e3, 2)
+    r_min = cosmology_utils.lagrangian_radius(cosmology_params,
+                                              m_min / 10)
+    r_max = cosmology_utils.lagrangian_radius(cosmology_params,
+                                              m_max * 10)
+    cosmology_params = cosmology_utils.add_lookup_tables_to_cosmology_params(
+        config['cosmology_params'], 1.5, dz / 2, r_min, r_max, 10000)
+    extremal_los_params = {'m_min': m_min, 'm_max': m_max, 'dz': dz}
+    return los.add_los_lookup_tables_to_cosmology_params(
+        extremal_los_params, cosmology_params, max_source_z)
+
+
+def draw_sample(
+        encoded_configuration: Mapping[str, Mapping[str, float]],
+        rng: Sequence[int]
+) -> Mapping[str, Mapping[str, float]]:
+    """Map an econded configuration into a configuration of randomly draws.
+
+    Args:
+        encoded_configuration: Configuration with encoded distribution for all
+            leaves of the PyTree structure.
+        rng: jax PRNG key.
+
+    Returns:
+        Configuration with encoded distribution replaced by draws from those
+            distributions.
+    """
+    # Generate the rng keys we will need for each leaf.
+    treedef = jax.tree_util.tree_structure(encoded_configuration)
+    rng_keys = jax.random.split(rng, treedef.num_leaves)
+    rng_tree = jax.tree_util.tree_unflatten(treedef, rng_keys)
+    return jax.tree_util.tree_map(draw_from_encoding, encoded_configuration,
+                                  rng_tree)
+
+
+def extract_multiple_models(
+        encoded_configuration: Mapping[str, Mapping[str, float]],
+        rng: Sequence[int], n_models: int
+) -> Mapping[str, jnp.ndarray]:
+    """Extract multiple models from a single configuration.
+
+    Args:
+        encoded_configuration: Encodings for each of the parameters of the
+            model(s).
+        rng: jax PRNG key.
+        n_models: Number of models to draw parameters for.
+
+    Returns:
+        Draws for the parameters for all the models. For each parameters, first
+        dimension will be the number of models.
+    """
+    draw_sample_vmap = jax.vmap(draw_sample, in_axes=[None, 0])
+    rng_list = jax.random.split(rng, n_models)
+    draws = draw_sample_vmap(encoded_configuration, rng_list)
+    # Add the model index list.
+    draws['model_index'] = jnp.arange(n_models)
+    return draws
+
+
+def extract_truth_values(
+        all_params: Mapping[str, Mapping[str, jnp.ndarray]],
+        lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
+        truth_parameters: Tuple[Sequence[str], Sequence[str]]) -> jnp.ndarray:
+    """Extract the truth parameters and normalize them according to the config.
+
+    Args:
+        all_params: All of the parameters grouped by object.
+        lensing_config: Distribution encodings for each of the parameters.
+        truth_parameters: List of the lensing objects and corresponding
+            parameters to extract.
+
+    Returns:
+        Truth values for each of the requested parameters.
+    """
+    extract_objects, extract_keys = truth_parameters
+    return jnp.array(jax.tree_util.tree_map(
+        lambda x, y: normalize_param(all_params[x][y],
+                                     lensing_config[x][y]),
+        extract_objects, extract_keys))
+
+
+def draw_image_and_truth(
+        lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
+        cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+        grid_x: jnp.ndarray, grid_y: jnp.ndarray, rng: Sequence[int],
+        all_models: Mapping[str, Sequence[Any]],
+        principal_md_index: int, principal_source_index: int,
+        kwargs_simulation: Mapping[str, int],
+        kwargs_detector:  Mapping[str, Union[int, float]],
+        kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
+        truth_parameters: Tuple[Sequence[str], Sequence[str]]
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Draw image and truth values for a realization of the lensing config.
+
+    Args:
+        lensing_config: Distribution encodings for each of the objects in the
+            lensing system.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        grid_x: x-grid in units of arcseconds.
+        grid_y: y-grid in units of arcseconds.
+        rng: jax PRNG key.
+        all_models: Tuple of model classes to consider for each component.
+        principal_md_index: Index of the main deflector model to consider when
+            determining the position of the source and substructure.
+        principal_source_index: Index of the source model to consider when
+            determining the position of the substructure.
+        kwargs_simulation: Keyword arguments for the draws of the substructure.
+        kwargs_detector: Keyword arguments defining the detector configuration.
+        kwargs_psf: Keyword arguments defining the point spread function. The
+            psf is applied in the supersampled space, so the size of pixels
+            should be defined with respect to the supersampled space.
+        truth_parameters: List of the lensing objects and corresponding
+            parameters to extract.
+
+    Returns:
+        Image and corresponding truth values.
+
+    Notes:
+        To jit compile, every parameter after rng must be fixed.
+    """
+
+    num_z_bins = kwargs_simulation['num_z_bins']
+    los_pad_length = kwargs_simulation['los_pad_length']
+    subhalos_pad_length = kwargs_simulation['subhalos_pad_length']
+    sampling_pad_length = kwargs_simulation['sampling_pad_length']
+
+    rng_md, rng_source, rng_ll, rng_los, rng_sub, rng = jax.random.split(rng, 6)
+    main_deflector_params = extract_multiple_models(
+        lensing_config['main_deflector_params'], rng_md,
+        len(all_models['all_main_deflector_models'])
+    )
+    source_params = extract_multiple_models(
+        lensing_config['source_params'], rng_source,
+        len(all_models['all_source_models'])
+    )
+    lens_light_params = extract_multiple_models(
+        lensing_config['lens_light_params'], rng_ll,
+        len(all_models['all_source_models'])
+    )
+    los_params = draw_sample(lensing_config['los_params'], rng_los)
+    subhalo_params = draw_sample(lensing_config['subhalo_params'], rng_sub)
+
+    # Extract the principle model for redshifts and substructure draws.
+    main_deflector_params_sub = jax.tree_util.tree_map(
+        lambda x: x[principal_md_index], main_deflector_params
+    )
+    source_params_sub = jax.tree_util.tree_map(
+        lambda x: x[principal_source_index], source_params
+    )
+    lens_light_params_sub = jax.tree_util.tree_map(
+        lambda x: x[principal_source_index], lens_light_params
+    )
+
+    # Repackage the parameters.
+    all_params = {
+        'source_params': source_params_sub,
+        'lens_light_params': lens_light_params_sub,
+        'los_params': los_params, 'subhalo_params': subhalo_params,
+        'main_deflector_params': main_deflector_params_sub
+    }
+
+    rng_los, rng_sub = jax.random.split(rng)
+    los_before_tuple, los_after_tuple = los.draw_los(
+        main_deflector_params_sub, source_params_sub, los_params,
+        cosmology_params, rng_los, num_z_bins, los_pad_length)
+    subhalos_z, subhalos_kwargs = subhalos.draw_subhalos(
+        main_deflector_params_sub, source_params_sub, subhalo_params,
+        cosmology_params, rng_sub, subhalos_pad_length, sampling_pad_length)
+
+    kwargs_lens_all = {
+        'z_array_los_before': los_before_tuple[0],
         'kwargs_los_before': los_before_tuple[1],
         'z_array_los_after': los_after_tuple[0],
         'kwargs_los_after': los_after_tuple[1],
         'kwargs_main_deflector': main_deflector_params,
         'z_array_main_deflector': main_deflector_params['z_lens'],
         'z_array_subhalos': subhalos_z, 'kwargs_subhalos': subhalos_kwargs}
-    z_source = source_params.pop('z_source')
+    z_source = source_params_sub['z_source']
 
-    # TODO For now the truths are just brute-force normalized sigma_sub
-    truth = jnp.stack([(subhalo_params['sigma_sub'] - 2e-3) / 1.1e-3,
-                       (main_deflector_params_sub['theta_e'] - 1.1) / 0.15],
-                       axis=-1)
-    image = downsample_vmap(
-        image_simulation_vmap(grid_x, grid_y, kwargs_lens_all, source_params,
-        source_params, kwargs_psf, cosmology_params, z_source))
-    image /= jnp.expand_dims(jnp.expand_dims(
-        jnp.std(image.reshape(batch_size, -1), axis=-1), axis=-1), axis=-1)
+    image_supersampled = image_simulation.generate_image(
+        grid_x, grid_y, kwargs_lens_all, source_params,
+        lens_light_params, kwargs_psf, cosmology_params, z_source,
+        kwargs_detector, all_models)
+    image = utils.downsample(image_supersampled,
+                             kwargs_detector['supersampling_factor'])
+    # Normalize and the image to have standard deviation 1.
+    image /= jnp.std(image)
+
+    # Extract the truth values and normalize them.
+    truth = extract_truth_values(all_params, lensing_config, truth_parameters)
 
     return image, truth

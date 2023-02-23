@@ -45,7 +45,9 @@ def generate_image(
     Args:
         grid_x: X-coordinates of grid on which image will be generated.
         grid_y: Y-coordinates of grid on which image will be generated.
-        kwargs_lens_all: TODO
+        kwargs_lens_all: Keyword arguments and redshifts for each of the
+            lensing components. This should include los_before, los_after,
+            subhalos, and main_deflector.
         kwargs_source_slice: Keyword arguments to pass to brightness functions
             for each light model. Keys should include parameters for all source
             models (due to use of `jax.lax.switch`) and `model_index` which
@@ -61,7 +63,7 @@ def generate_image(
             expansion.
         z_source: Redshift of the source.
         kwargs_detector: Keyword arguments defining the detector configuration.
-        all_models: TODO
+        all_models: Tuple of model classes to consider for each component.
 
     Returns:
         Image after gravitational lensing at supersampling resolution. For
@@ -194,13 +196,15 @@ def source_surface_brightness(
     Args:
         alpha_x: Initial x-component of deflection at each position.
         alpha_y: Initial y-component of deflection at each position.
-        kwargs_lens_all: TODO
+        kwargs_lens_all: Keyword arguments and redshifts for each of the
+            lensing components. This should include los_before, los_after,
+            subhalos, and main_deflector.
         kwargs_detector: Keyword arguments defining the detector configuration. This
             includes potential supersampling in the lensing calculation.
         cosmology_params: Cosmological parameters that define the universe's
             expansion.
         z_source: Redshift of the source.
-        all_models: TODO
+        all_models: Tuple of model classes to consider for each component.
 
     Returns:
         Lensed source surface brightness as 1D array.
@@ -232,7 +236,9 @@ def _image_flux(
     Args:
         alpha_x: Initial x-component of deflection at each position.
         alpha_y: Initial y-component of deflectoin at each position.
-        kwargs_lens_all: TODO
+        kwargs_lens_all: Keyword arguments and redshifts for each of the
+            lensing components. This should include los_before, los_after,
+            subhalos, and main_deflector.
         kwargs_source_slice: Keyword arguments to pass to brightness functions for
             each light model. Keys should include parameters for all source models
             (due to use of `jax.lax.switch`) and `model_index` which defines the model
@@ -244,7 +250,7 @@ def _image_flux(
         cosmology_params: Cosmological parameters that define the universe's
             expansion.
         z_source: Redshift of the source.
-        all_models: TODO
+        all_models: Tuple of model classes to consider for each component.
 
     Returns:
         Image flux.
@@ -278,11 +284,13 @@ def _ray_shooting(
     Args:
         alpha_x: Initial x-component of deflection at each position.
         alpha_y: Initial y-component of deflectoin at each position.
-        kwargs_lens_all: TODO
+        kwargs_lens_all: Keyword arguments and redshifts for each of the
+            lensing components. This should include los_before, los_after,
+            subhalos, and main_deflector.
         cosmology_params: Cosmological parameters that define the universe's
             expansion.
         z_source: Redshift of the source.
-        all_models: TODO
+        all_models: Tuple of model classes to consider for each component.
 
     Returns:
         Comoving x- and y-coordinate after ray shooting.

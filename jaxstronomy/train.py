@@ -18,7 +18,6 @@ import itertools
 import os
 import time
 from typing import Any, Iterator, Optional, Sequence, Union
-from collections.abc import Iterator
 
 from absl import app
 from absl import flags
