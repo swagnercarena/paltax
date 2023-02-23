@@ -214,9 +214,9 @@ def intialize_cosmology_params(
                                               m_max * 10)
     cosmology_params = cosmology_utils.add_lookup_tables_to_cosmology_params(
         cosmology_params_init, 1.5, dz / 2, r_min, r_max, 10000)
-    extremal_los_params = {'m_min': m_min, 'm_max': m_max, 'dz': dz}
+    extrenal_los_params = {'m_min': m_min, 'm_max': m_max, 'dz': dz}
     return los.add_los_lookup_tables_to_cosmology_params(
-        extremal_los_params, cosmology_params, max_source_z)
+        extrenal_los_params, cosmology_params, max_source_z)
 
 
 def draw_sample(
