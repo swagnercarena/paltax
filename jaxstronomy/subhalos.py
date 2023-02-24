@@ -196,8 +196,11 @@ def get_truncation_radius(subhalos_mass: jnp.ndarray,
     Returns:
         Truncation radius in units of kpc.
     """
-    return (1.4 * (subhalos_mass / m_pivot) ** (1 / 3) *
-        (subhalos_radii / r_pivot) ** (2 / 3))
+    # Set a minimum truncation radius of 1e-7 kpc to avoid poorly defined
+    # models
+    r_trunc_min = 1e-7
+    return jax.lax.max((1.4 * (subhalos_mass / m_pivot) ** (1 / 3) *
+        (subhalos_radii / r_pivot) ** (2 / 3)), r_trunc_min)
 
 
 def convert_to_lensing(main_deflector_params: Mapping[str, float],

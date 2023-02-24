@@ -15,9 +15,8 @@
 
 import functools
 import itertools
-import os
 import time
-from typing import Any, Iterator, Optional, Sequence, Union
+from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple, Union
 
 from absl import app
 from absl import flags
@@ -43,21 +42,38 @@ flags.DEFINE_string('workdir', None, 'working directory')
 flags.DEFINE_float('learning_rate', 0.001, 'learning rate')
 flags.DEFINE_integer('num_unique_batches', 0,
     'number of unique batches of data to draw. If 0 produces infinite data.')
-flags.DEFINE_bool('use_jaxstronomy', True, 'If false pull from pre-generated '
- + 'paltas data.')
 
 
-def initialized(key, image_size, model):
+def initialized(
+        rng: Sequence[int], image_size: int, model: Any
+    ) -> Tuple[Any, Any]:
+    """Initialize the model parameters
+
+    Args:
+        rng: jax PRNG key.
+        image_size: Size of the input image.
+        model: Model class to initialize.
+
+    Returns:
+        Initialized model parameters and batch stats.
+    """
     input_shape = (1, image_size, image_size, 1)
     @jax.jit
     def init(*args):
         return model.init(*args)
-    variables = init({'params': key}, jnp.ones(input_shape, model.dtype))
+    variables = init({'params': rng}, jnp.ones(input_shape, model.dtype))
     return variables['params'], variables['batch_stats']
 
 
-def gaussian_loss(outputs, truth):
-    """
+def gaussian_loss(outputs: jnp.ndarray, truth: jnp.ndarray) -> jnp.ndarray:
+    """Gaussian loss calculated on the outputs and truth values.
+
+    Args:
+        outputs: Values outputted by the model.
+        truth: True value of the parameters.
+
+    Returns:
+        Gaussian loss.
 
     Notes:
         Loss does not inlcude constant factor of 1 / (2 * pi) ^ (d/2)
@@ -69,7 +85,17 @@ def gaussian_loss(outputs, truth):
     return jnp.mean(loss)
 
 
-def compute_metrics(outputs, truth):
+def compute_metrics(
+        outputs: jnp.ndarray, truth: jnp.ndarray) -> Mapping[str, jnp.ndarray]:
+    """Compute the performance metrics of the output.
+
+    Args:
+        outputs: Values outputted by the model.
+        truth: True value of the parameters.
+
+    Returns:
+        Value of each of the metrics.
+    """
     loss = gaussian_loss(outputs, truth)
     mean, _ = jnp.split(outputs, 2, axis=-1)
     rmse = jnp.sqrt(jnp.mean(jnp.square(mean - truth)))
@@ -81,7 +107,18 @@ def compute_metrics(outputs, truth):
     return metrics
 
 
-def get_learning_rate_schedule(config, base_learning_rate):
+def get_learning_rate_schedule(
+        config: ml_collections.ConfigDict,
+        base_learning_rate: float) -> Any:
+    """Return the learning rate schedule function.
+
+    Args:
+        config: Training configuration.
+        base_learning_rate: Base learning rate for the schedule.
+
+    Returns:
+        Mapping from step to learning rate according to the schedule.
+    """
     warmup_fn = optax.linear_schedule(init_value=0.0,
         end_value=base_learning_rate,
         transition_steps=config.warmup_steps)
@@ -194,7 +231,8 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
     base_learning_rate = learning_rate * config.batch_size / 256.
 
     model_cls = getattr(models, config.model)
-    model = model_cls(num_outputs=config.num_outputs, dtype=jnp.float32)
+    num_outputs = len(input_config['truth_parameters'][0]) * 2
+    model = model_cls(num_outputs=num_outputs, dtype=jnp.float32)
 
     learning_rate_schedule = get_learning_rate_schedule(config,
         base_learning_rate)
@@ -292,7 +330,7 @@ def main(_):
 
     config = train_config.get_config()
     ic = input_config.get_config()
-    image_size = 128
+    image_size = ic['kwargs_detector']['n_x']
     rng = jax.random.PRNGKey(0)
     if FLAGS.num_unique_batches > 0:
         rng_list = jax.random.split(rng, FLAGS.num_unique_batches)

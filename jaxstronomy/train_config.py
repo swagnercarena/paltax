@@ -20,5 +20,4 @@ def get_config():
     config.warmup_steps = 10 * config.steps_per_epoch
     config.num_train_steps = 500 * config.steps_per_epoch
     config.keep_every_n_steps = 500
-    config.num_outputs = 2
     return config

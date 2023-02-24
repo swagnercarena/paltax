@@ -94,7 +94,7 @@ def get_config():
 
     # The remaining parameters should not be drawn from random distributions.
     config['kwargs_detector'] = {
-        'n_x': 124, 'n_y': 124, 'pixel_width': 0.04, 'supersampling_factor': 2,
+        'n_x': 128, 'n_y': 128, 'pixel_width': 0.04, 'supersampling_factor': 2,
         'exposure_time': 1024, 'num_exposures': 2.0, 'sky_brightness': 22,
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }

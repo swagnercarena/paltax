@@ -202,6 +202,10 @@ class SubhalosTests(chex.TestCase, parameterized.TestCase):
         np.testing.assert_array_almost_equal(get_truncation_radius(m_two_hund,
             radii), expected, decimal=5)
 
+        # Make sure a truncation radius of 0 cannot be returned.
+        self.assertGreater(get_truncation_radius(0.0, 1e-4), 0.0)
+        self.assertGreater(get_truncation_radius(1e-4, 0.0), 0.0)
+
     @chex.all_variants(without_device=False)
     def test_convert_to_lensing(self):
         main_deflector_params = _prepare_main_deflector_params()
