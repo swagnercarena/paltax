@@ -269,7 +269,6 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
         rng_cosmo = next(rng)
     else:
         rng, rng_cosmo = jax.random.split(rng)
-    rng, rng_cosmo = jax.random.split(rng)
     cosmology_params = input_pipeline.intialize_cosmology_params(input_config,
                                                                  rng_cosmo)
     grid_x, grid_y = input_pipeline.generate_grids(input_config)
