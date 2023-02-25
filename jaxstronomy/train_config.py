@@ -9,7 +9,7 @@ def get_config():
     config.model = 'ResNet50'
 
     config.momentum = 0.9
-    config.batch_size = 256
+    config.batch_size = 128
 
     config.cache = False
     config.half_precision = False

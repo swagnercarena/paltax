@@ -128,7 +128,9 @@ def get_config():
 
     config['principal_md_index'] = 0
     config['principal_source_index'] = 0
-    config['truth_parameters'] = (['main_deflector_params','subhalo_params'],
-                                  ['theta_e', 'sigma_sub'])
+    config['truth_parameters'] = (
+        ['main_deflector_params', 'main_deflector_params',
+         'main_deflector_params', 'main_deflector_params', 'subhalo_params'],
+        ['theta_e', 'slope', 'center_x', 'center_y', 'sigma_sub'])
 
     return config
