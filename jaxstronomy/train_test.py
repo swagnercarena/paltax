@@ -61,8 +61,35 @@ class TrainTests(chex.TestCase, parameterized.TestCase):
         # With variance 1 and dropping the factor of 2 pi, the negative entropy
         # should simply be 0.5
         self.assertAlmostEqual(gaussian_loss(outputs, truth), 0.5, places=2)
-
         outputs = jnp.stack([
             jax.random.normal(rng, (batch_size,)) * jnp.sqrt(jnp.e),
             jnp.ones((batch_size,))], axis=-1)
         self.assertAlmostEqual(gaussian_loss(outputs, truth), 1.0, places=2)
+
+        # We can repeat this experiment with a two dimensional output.
+        outputs = jnp.concatenate([jax.random.normal(rng, (batch_size, 2)),
+            jnp.zeros((batch_size, 2))], axis=-1)
+        truth = jnp.zeros((batch_size, 2))
+        self.assertAlmostEqual(gaussian_loss(outputs, truth), 1.0, places=2)
+
+
+    @chex.all_variants
+    def test_compute_metrics(self):
+        # Test the the computed metrics match expectations.
+        batch_size = int(1e3)
+        rng = jax.random.PRNGKey(0)
+        outputs = jnp.stack([jax.random.normal(rng, (batch_size,)),
+            jnp.zeros((batch_size,))], axis=-1)
+        truth = jnp.zeros((batch_size,1))
+        gaussian_loss = train.gaussian_loss(outputs, truth)
+        rmse = jnp.sqrt(jnp.mean(jnp.square(outputs[:,0] - truth)))
+
+        outputs = jnp.expand_dims(outputs, axis=0)
+        truth = jnp.expand_dims(truth, axis=0)
+
+        compute_metrics = jax.pmap(self.variant(train.compute_metrics),
+                                   axis_name='batch')
+        metrics = compute_metrics(outputs, truth)
+
+        self.assertAlmostEqual(metrics['rmse'], rmse, places=4)
+        self.assertAlmostEqual(metrics['loss'], gaussian_loss, places=4)

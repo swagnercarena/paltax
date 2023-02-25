@@ -314,12 +314,6 @@ def _ray_shooting(
         z_source=z_source,
         all_lens_models=all_models["all_los_models"]
     )
-    ray_shooting_step_subhalos = functools.partial(
-        _ray_shooting_step,
-        cosmology_params=cosmology_params,
-        z_source=z_source,
-        all_lens_models=all_models["all_subhalo_models"]
-    )
     ray_shooting_step_main_deflector = functools.partial(
         _ray_shooting_step,
         cosmology_params=cosmology_params,
@@ -337,22 +331,16 @@ def _ray_shooting(
             "kwargs_lens": kwargs_lens_all["kwargs_los_before"]
         },
     )
-    state, _ = jax.lax.scan(
-        ray_shooting_step_subhalos,
-        state,
-        {
-            "z_lens": kwargs_lens_all["z_array_subhalos"],
-            "kwargs_lens": kwargs_lens_all["kwargs_subhalos"]
-        },
-    )
-    state, _ = jax.lax.scan(
-        ray_shooting_step_main_deflector,
-        state,
-        {
-            "z_lens": kwargs_lens_all["z_array_main_deflector"],
-            "kwargs_lens": kwargs_lens_all["kwargs_main_deflector"]
-        },
-    )
+    # We can do all the subhalos at once, which is a lot faster for large
+    # number of subhalos.
+    state, _ = _ray_shooting_group(
+        state, kwargs_lens_all["kwargs_subhalos"], cosmology_params, z_source,
+        jnp.mean(kwargs_lens_all["z_array_subhalos"]),
+        all_models["all_subhalo_models"])
+    state, _ = _ray_shooting_group(
+        state, kwargs_lens_all["kwargs_main_deflector"], cosmology_params,
+        z_source, jnp.mean(kwargs_lens_all["z_array_main_deflector"]),
+        all_models["all_main_deflector_models"])
     state, _ = jax.lax.scan(
         ray_shooting_step_los,
         state,
@@ -371,6 +359,51 @@ def _ray_shooting(
     return comv_x, comv_y
 
 
+def _ray_shooting_group(
+    state: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, float],
+    kwargs_lens_slice: Mapping[str, jnp.ndarray],
+    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    z_source: float,
+    z_lens: float,
+    all_lens_models: Sequence[Any]
+) -> Tuple[Tuple, Tuple]:
+    """Conduct ray shooting for a group of coplanar lens models.
+
+    Args:
+        state: The current comoving positions, deflections, and the previous lens
+            model redshift.
+        kwargs_lens_slice: Keyword arguments specifying the model (through
+            `model_index` value) and the lens model parameters for each lens
+            model in the slice. Due to the nature of `jax.lax.switch` this must
+            have a key-value pair for all lens models included in
+            `all_lens_models`, even if those lens models will not be used.
+            `model_index` of -1 indicates that the model should be ignored.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        z_source: Redshift of the source.
+        z_lens: Redshift of the coplanar group of lens models.
+        all_lens_models: Lens models to use for model_index lookup.
+
+    Returns:
+        Two copies of the new state, which is a tuple of new comoving positions,
+        new deflection, and the redshift of the current lens.
+    """
+    comv_x, comv_y, alpha_x, alpha_y, z_lens_last = state
+
+    # The displacement from moving along the deflection direction.
+    delta_t = cosmology_utils.comoving_distance(
+        cosmology_params, z_lens_last, z_lens,
+    )
+    comv_x, comv_y = _ray_step_add(comv_x, comv_y, alpha_x, alpha_y, delta_t)
+    alpha_x, alpha_y = _add_deflection_group(
+        comv_x, comv_y, alpha_x, alpha_y, kwargs_lens_slice,
+        cosmology_params, z_lens, z_source, all_lens_models)
+
+    new_state = (comv_x, comv_y, alpha_x, alpha_y, z_lens)
+
+    # Second return is required by scan, but will be ignored by the compiler.
+    return new_state, new_state
+
 def _ray_shooting_step(
     state: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, float],
     kwargs_z_lens: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
@@ -387,7 +420,7 @@ def _ray_shooting_step(
             and 'kwargs_lens`, the keyword arguments specifying the next lens model
             (through `model_index` value) and the lens model parameters. Due to the
             requirements of `jax.lax.switch`, `kwargs_lens` must have a key-value pair
-            for all lens models included in `lens_models.py`, even if those lens
+            for all lens models included in `all_lens_models`, even if those lens
             models will not be used.
         cosmology_params: Cosmological parameters that define the universe's
             expansion.
@@ -448,6 +481,64 @@ def _ray_step_add(
     return comv_x + alpha_x * delta_t, comv_y + alpha_y * delta_t
 
 
+def _add_deflection_group(
+    comv_x: jnp.ndarray,
+    comv_y: jnp.ndarray,
+    alpha_x: jnp.ndarray,
+    alpha_y: jnp.ndarray,
+    kwargs_lens_slice: Mapping[str, jnp.ndarray],
+    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    z_lens: float,
+    z_source: float,
+    all_lens_models: Sequence[Any],
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Calculate the deflection angle for a group of co-planar lens models.
+
+    Args:
+        comv_x: Comoving x-coordinate.
+        comv_y: Comoving y-coordinate.
+        alpha_x: Current physical x-component of deflection at each position.
+        alpha_y: Current physical y-component of deflection at each position.
+        kwargs_lens_slice: Keyword arguments specifying the model (through
+            `model_index` value) and the lens model parameters for each lens
+            model in the slice. Due to the nature of `jax.lax.switch` this must
+            have a key-value pair for all lens models included in
+            `all_lens_models`, even if those lens models will not be used.
+            `model_index` of -1 indicates that the model should be ignored.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        z_lens: Redshift of the slice (i.e. current redshift).
+        z_source: Redshift of the source.
+        all_lens_models: Lens models to use for model_index lookup.
+
+    Returns:
+        New x- and y-component of the deflection at each specified position.
+    """
+    theta_x, theta_y = cosmology_utils.comoving_to_angle(
+        comv_x, comv_y, cosmology_params, z_lens
+    )
+
+    # All of our derivatives are defined in reduced coordinates. We want to
+    # scan over all the calculation in reduced coordinates to improve
+    # parallelization performance.
+    calculate_derivatives = functools.partial(
+        _calculate_derivatives, theta_x=theta_x, theta_y=theta_y,
+        all_lens_models=all_lens_models)
+    alpha_x_reduced_array, alpha_y_reduced_array = jax.vmap(
+        calculate_derivatives, in_axes=0)(kwargs_lens_slice)
+    alpha_x_reduced = jnp.sum(alpha_x_reduced_array, axis=0)
+    alpha_y_reduced = jnp.sum(alpha_y_reduced_array, axis=0)
+
+    alpha_x_update = cosmology_utils.reduced_to_physical(
+        alpha_x_reduced, cosmology_params, z_lens, z_source
+    )
+    alpha_y_update = cosmology_utils.reduced_to_physical(
+        alpha_y_reduced, cosmology_params, z_lens, z_source
+    )
+
+    return alpha_x - alpha_x_update, alpha_y - alpha_y_update
+
+
 def _add_deflection(
     comv_x: jnp.ndarray,
     comv_y: jnp.ndarray,
@@ -469,7 +560,7 @@ def _add_deflection(
         kwargs_lens: Keyword arguments specifying the model (through `model_index`
             value) and the lens model parameters. Due to the nature of
             `jax.lax.switch` this must have a key-value pair for all lens models
-            included in `lens_models.py`, even if those lens models will not be used.
+            included in `all_lens_models`, even if those lens models will not be used.
             `model_index` of -1 indicates that the previous total should be returned.
         cosmology_params: Cosmological parameters that define the universe's
             expansion.
@@ -511,7 +602,7 @@ def _calculate_derivatives(
         kwargs_lens: Keyword arguments specifying the model (through
             `model_index` value) and the lens model parameters. Due to the
             nature of `jax.lax.switch` this must have a key-value pair for all
-            lens models included in `lens_models.py`, even if those lens models
+            lens models included in `all_lens_models`, even if those lens models
             will not be used. `model_index` of -1 indicates that the previous
             total should be returned.
         theta_x: X-coordinate at which to evaluate the derivative.
@@ -561,6 +652,7 @@ def _surface_brightness(
         theta_y: Y-coordinate at which to evaluate the surface brightness.
         kwargs_source_slice: Keyword arguments to pass to brightness functions for
             each light model. Keys should include parameters for all source models
+            included in `all_source_models`.
             (due to use of `jax.lax.switch`) and `model_index` which defines the model
             to pass the parameters to. Parameter values not relevant for the specified
             model are discarded. Values should be of type jnp.ndarray and have length

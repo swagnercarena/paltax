@@ -431,6 +431,46 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         (f'_z_lens_{z_lens}_z_source_{z_source}', z_lens, z_source)
         for z_lens, z_source in zip([0.1, 0.5], [0.5, 1.0])
     ])
+    def test__ray_shooting_group(self, z_lens, z_source):
+        x, y, = _prepare_x_y()
+        alpha_x, alpha_y = _prepare_alpha_x_alpha_y()
+        z_lens_last = 0.05
+        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_LENSTRONOMY,
+                                                    z_source, z_lens_last)
+        state = (x, y, alpha_x, alpha_y, z_lens_last)
+        expected_state = state
+        model_group = 'subhalos'
+        all_lens_models = _prepare_all_lens_models(model_group)
+
+        # Make it four deflectors and make sure they add up correctly.
+        kwargs_lens = _prepare_kwargs_lens(model_group)
+        kwargs_lens_slice = {}
+        for kwarg in kwargs_lens:
+            kwargs_lens_slice[kwarg] = jnp.ones(4) * kwargs_lens[kwarg]
+        kwargs_lens['model_index'] = 0
+        kwargs_lens_slice['model_index'] = jnp.array([0] * 4)
+
+        for _ in range(4):
+            expected_state, _ = image_simulation._ray_shooting_step(
+                expected_state, {'z_lens': z_lens, 'kwargs_lens': kwargs_lens},
+                cosmology_params, z_source, all_lens_models)
+
+        ray_shooting_group = self.variant(functools.partial(
+            image_simulation._ray_shooting_group,
+            all_lens_models=all_lens_models))
+
+        new_state, new_state_copy = ray_shooting_group(
+            state, kwargs_lens_slice, cosmology_params, z_source, z_lens)
+
+        for si in range(len(new_state)):
+            np.testing.assert_allclose(new_state[si], expected_state[si],
+                                       rtol=1e-5)
+
+    @chex.all_variants
+    @parameterized.named_parameters([
+        (f'_z_lens_{z_lens}_z_source_{z_source}', z_lens, z_source)
+        for z_lens, z_source in zip([0.1, 0.5], [0.5, 1.0])
+    ])
     def test__ray_shooting_step(self, z_lens, z_source):
         x, y, = _prepare_x_y()
         alpha_x, alpha_y = _prepare_alpha_x_alpha_y()
@@ -460,8 +500,10 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         )
 
         for si in range(len(new_state)):
-            np.testing.assert_allclose(new_state[si], expected[si], rtol=1e-2)
-            np.testing.assert_allclose(new_state_copy[si], expected[si], rtol=1e-2)
+            np.testing.assert_allclose(new_state[si], expected[si],
+                                       rtol=1e-2)
+            np.testing.assert_allclose(new_state_copy[si], expected[si],
+                                       rtol=1e-2)
 
     @chex.all_variants
     def test__ray_step_add(self):
@@ -477,6 +519,46 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
             jnp.array(ray_step_add(x, y, alpha_x, alpha_y, delta_t)),
             expected,
             rtol=1e-6)
+
+    @chex.all_variants
+    @parameterized.named_parameters([
+        (f'_z_lens_{z_lens}_z_source_{z_source}', z_lens, z_source)
+        for z_lens, z_source in zip([0.1, 0.5], [0.5, 1.0])
+    ])
+    def test__add_deflection_group(self, z_lens, z_source):
+        x, y = _prepare_x_y()
+        alpha_x, alpha_y = _prepare_alpha_x_alpha_y()
+        model_group = 'subhalos'
+        all_lens_models = _prepare_all_lens_models(model_group)
+
+        # Make it four deflectors and make sure they add up correctly.
+        kwargs_lens = _prepare_kwargs_lens(model_group)
+        kwargs_lens_slice = {}
+        for kwarg in kwargs_lens:
+            kwargs_lens_slice[kwarg] = jnp.ones(4) * kwargs_lens[kwarg]
+        kwargs_lens['model_index'] = 0
+        kwargs_lens_slice['model_index'] = jnp.array([0] * 4)
+
+        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_LENSTRONOMY,
+                                                    z_source, z_lens)
+
+        alpha_x_expected = jnp.copy(alpha_x)
+        alpha_y_expected = jnp.copy(alpha_y)
+        for _ in range(4):
+            alpha_x_expected, alpha_y_expected = (
+                image_simulation._add_deflection(
+                    x, y, alpha_x_expected, alpha_y_expected, kwargs_lens,
+                    cosmology_params, z_lens, z_source, all_lens_models))
+
+        add_deflection_group = self.variant(
+            functools.partial(image_simulation._add_deflection_group,
+            all_lens_models=all_lens_models))
+
+        np.testing.assert_allclose(
+            jnp.array(
+                add_deflection_group(x, y, alpha_x, alpha_y, kwargs_lens_slice,
+                            cosmology_params, z_lens, z_source)),
+            jnp.array([alpha_x_expected, alpha_y_expected]), rtol=1e-5)
 
     @chex.all_variants
     @parameterized.named_parameters([
