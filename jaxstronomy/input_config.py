@@ -101,7 +101,7 @@ def get_config():
     config['all_models'] = {
         'all_los_models': (lens_models.NFW,),
         'all_subhalo_models': (lens_models.TNFW,),
-        'all_main_deflector_models': (lens_models.Shear, lens_models.EPL),
+        'all_main_deflector_models': (lens_models.EPL, lens_models.Shear),
         'all_source_models': (source_models.SersicElliptic,),
         'all_psf_models': (psf_models.Gaussian,)
     }
