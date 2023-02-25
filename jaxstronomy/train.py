@@ -265,6 +265,10 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
         in_axes=(None, None, None, None, 0))),
         in_axes=(None, None, None, None, 0)
     )
+    if isinstance(rng, Iterator):
+        rng_cosmo = next(rng)
+    else:
+        rng, rng_cosmo = jax.random.split(rng)
     rng, rng_cosmo = jax.random.split(rng)
     cosmology_params = input_pipeline.intialize_cosmology_params(input_config,
                                                                  rng_cosmo)
