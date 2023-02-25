@@ -214,8 +214,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
                        input_config: dict,
                        workdir: str,
                        rng: Union[Iterator[Sequence[int]], Sequence[int]],
-                       image_size: int, learning_rate: float,
-                       use_jaxstronomy: Optional[bool] = True) -> TrainState:
+                       image_size: int, learning_rate: float) -> TrainState:
     """
     """
 
@@ -339,7 +338,7 @@ def main(_):
         rng_list = jax.random.split(rng, FLAGS.num_unique_batches)
         rng = itertools.cycle(rng_list)
     train_and_evaluate(config, ic, FLAGS.workdir, rng, image_size,
-        FLAGS.learning_rate, FLAGS.use_jaxstronomy)
+                       FLAGS.learning_rate)
 
 
 if __name__ == '__main__':
