@@ -38,7 +38,8 @@ def generate_image(
     cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
     z_source: float,
     kwargs_detector: Mapping[str, Union[float, int]],
-    all_models: Mapping[str, Sequence[Any]]
+    all_models: Mapping[str, Sequence[Any]],
+    apply_psf: bool = True,
 ) -> jnp.ndarray:
     """Generate an image given the source, lens light, and mass profiles.
 
@@ -64,6 +65,8 @@ def generate_image(
         z_source: Redshift of the source.
         kwargs_detector: Keyword arguments defining the detector configuration.
         all_models: Tuple of model classes to consider for each component.
+        apply_psf: Whether or not to convolve the final image with the point 
+            spread function r not.
 
     Returns:
         Image after gravitational lensing at supersampling resolution. For
@@ -90,7 +93,9 @@ def generate_image(
         ),
     )
 
-    return psf_convolution(image, kwargs_psf, all_models["all_psf_models"])
+    if apply_psf:
+        image = psf_convolution(image, kwargs_psf, all_models["all_psf_models"])
+    return image
 
 
 def psf_convolution(
