@@ -66,7 +66,7 @@ def generate_image(
         kwargs_detector: Keyword arguments defining the detector configuration.
         all_models: Tuple of model classes to consider for each component.
         apply_psf: Whether or not to convolve the final image with the point 
-            spread function r not.
+            spread function.
 
     Returns:
         Image after gravitational lensing at supersampling resolution. For
