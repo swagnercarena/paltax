@@ -342,13 +342,14 @@ def _ray_shooting(
     )
     # We can do all the subhalos at once, which is a lot faster for large
     # number of subhalos.
+    # Use max instead of mean here, in case things are padded with zeros
     state, _ = _ray_shooting_group(
         state, kwargs_lens_all["kwargs_subhalos"], cosmology_params, z_source,
-        jnp.mean(kwargs_lens_all["z_array_subhalos"]),
+        jnp.max(kwargs_lens_all["z_array_subhalos"]),
         all_models["all_subhalo_models"])
     state, _ = _ray_shooting_group(
         state, kwargs_lens_all["kwargs_main_deflector"], cosmology_params,
-        z_source, jnp.mean(kwargs_lens_all["z_array_main_deflector"]),
+        z_source, jnp.max(kwargs_lens_all["z_array_main_deflector"]),
         all_models["all_main_deflector_models"])
     state, _ = jax.lax.scan(
         ray_shooting_step_los,
