@@ -178,7 +178,9 @@ def lens_light_surface_brightness(
     lens_light_flux = _surface_brightness(
         theta_x, theta_y, kwargs_lens_light_slice, all_source_models
     )
-    return lens_light_flux * kwargs_detector["pixel_width"] ** 2
+    pixel_width = kwargs_detector["pixel_width"]
+    pixel_width /= kwargs_detector['supersampling_factor']
+    return lens_light_flux * pixel_width ** 2
 
 
 def source_surface_brightness(
@@ -219,7 +221,9 @@ def source_surface_brightness(
         all_models
     )
     # Scale by pixel area to go from flux to surface brightness.
-    return image_flux_array * kwargs_detector["pixel_width"] ** 2
+    pixel_width = kwargs_detector["pixel_width"]
+    pixel_width /= kwargs_detector['supersampling_factor']
+    return image_flux_array * pixel_width ** 2
 
 
 def _image_flux(

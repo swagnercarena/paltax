@@ -44,7 +44,7 @@ def get_config():
             'conc_zeta': encode_constant(-0.2),
             'conc_beta': encode_constant(0.8),
             'conc_m_ref': encode_constant(1e8),
-            'conc_dex_scatter': encode_constant(0.0)
+            'conc_dex_scatter': encode_constant(0.1)
         },
         'main_deflector_params': {
             'mass': encode_constant(1e13),
@@ -69,13 +69,13 @@ def get_config():
             'conc_zeta': encode_constant(-0.2),
             'conc_beta': encode_constant(0.8),
             'conc_m_ref': encode_constant(1e8),
-            'conc_dex_scatter': encode_constant(0.0)
+            'conc_dex_scatter': encode_constant(0.1)
         },
         'source_params':{
             'z_source': encode_constant(1.5),
             'amp': encode_uniform(minimum=1.0, maximum=10.0),
             'sersic_radius': encode_uniform(minimum=1.0, maximum=3.0),
-            'n_sersic': encode_uniform(minimum=1.0, maximum=4.0),
+            'n_sersic': encode_uniform(minimum=1.0, maximum=1.5),
             'axis_ratio': encode_normal(mean=1.0, std=0.05),
             'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
             'center_x': encode_normal(mean=0.0, std=0.16),
@@ -119,7 +119,7 @@ def get_config():
         'num_z_bins': 1000,
         'los_pad_length': 10,
         'subhalos_pad_length': 750,
-        'sampling_pad_length': 10000,
+        'sampling_pad_length': 100000,
     }
 
     config['rng'] = jax.random.PRNGKey(0)
