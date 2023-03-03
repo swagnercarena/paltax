@@ -119,7 +119,7 @@ def get_config():
         'num_z_bins': 1000,
         'los_pad_length': 10,
         'subhalos_pad_length': 750,
-        'sampling_pad_length': 10000,
+        'sampling_pad_length': 100000,
     }
 
     config['rng'] = jax.random.PRNGKey(0)
