@@ -511,7 +511,7 @@ def convert_to_lensing(main_deflector_params: Mapping[str, float],
     z_lens = main_deflector_params['z_lens']
     z_source = source_params['z_source']
 
-    # Calculate the concentration and radial position of the subhalos
+    # Calculate the concentration and radial position of the los halos
     los_c = nfw_functions.mass_concentration(los_params, cosmology_params,
         los_masses, z_lens, rng)
 
@@ -525,19 +525,19 @@ def convert_to_lensing(main_deflector_params: Mapping[str, float],
     los_r_scale_ang, los_alpha_rs = nfw_functions.convert_to_lensing_nfw(
         cosmology_params, los_r_scale, los_z, los_rho_nfw, z_source)
     kpa = cosmology_utils.kpc_per_arcsecond(cosmology_params, z_lens)
-    subhalos_cart_pos_ang = los_cart_pos / kpa
+    los_cart_pos_ang = los_cart_pos / kpa
 
-    # There is only one model, the NFW. Subhalos with redshift -1.0 are treated
+    # There is only one model, the NFW. LOS halos with redshift -1.0 are treated
     # as padding models.
-    subhalos_model_index = (jnp.full(los_masses.shape, -1) *
+    los_model_index = (jnp.full(los_masses.shape, -1) *
         jnp.int32(los_z == -1.0))
 
-    subhalos_kwargs = {'model_index': subhalos_model_index,
+    los_kwargs = {'model_index': los_model_index,
         'scale_radius': los_r_scale_ang, 'alpha_rs': los_alpha_rs,
-        'center_x': subhalos_cart_pos_ang[:,0],
-        'center_y': subhalos_cart_pos_ang[:,1]}
+        'center_x': los_cart_pos_ang[:,0],
+        'center_y': los_cart_pos_ang[:,1]}
 
-    return los_z, subhalos_kwargs
+    return los_z, los_kwargs
 
 
 def draw_los(main_deflector_params: Mapping[str, float],

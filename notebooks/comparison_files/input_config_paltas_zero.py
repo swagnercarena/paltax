@@ -47,7 +47,7 @@ config_dict = {
             'conc_m_ref': 1e8,
             'k1':0.0,
             'k2':0.0,
-            'dex_scatter': 1.0
+            'dex_scatter': 0.1
         }
     },
     'main_deflector':{
@@ -70,10 +70,10 @@ config_dict = {
     'source':{
         'class': SingleSersicSource,
         'parameters':{
-            'magnitude': -29.027384789, # Equivalent to an amplitude of 10.
+            'magnitude': -28.676946769467694, # Equivalent to an amplitude of 10.
             'output_ab_zeropoint': output_ab_zeropoint,
             'R_sersic': 1.5,
-            'n_sersic':3.0 ,
+            'n_sersic':1.5,
             'e1': (1.0-0.9)/(1.0+0.9),
             'e2': 0.0,
             'center_x': 0.16,

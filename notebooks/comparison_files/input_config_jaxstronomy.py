@@ -44,7 +44,7 @@ def get_config():
             'conc_zeta': encode_constant(-0.2),
             'conc_beta': encode_constant(0.8),
             'conc_m_ref': encode_constant(1e8),
-            'conc_dex_scatter': encode_constant(1.0)
+            'conc_dex_scatter': encode_constant(0.1)
         },
         'main_deflector_params': {
             'mass': encode_constant(1e13),
@@ -69,13 +69,13 @@ def get_config():
             'conc_zeta': encode_constant(-0.2),
             'conc_beta': encode_constant(0.8),
             'conc_m_ref': encode_constant(1e8),
-            'conc_dex_scatter': encode_constant(1.0)
+            'conc_dex_scatter': encode_constant(0.1)
         },
         'source_params':{
             'z_source': encode_constant(1.5),
             'amp': encode_constant(10.0),
             'sersic_radius': encode_constant(1.5),
-            'n_sersic': encode_constant(3.0),
+            'n_sersic': encode_constant(1.5),
             'axis_ratio': encode_constant(0.9),
             'angle': encode_constant(0.0),
             'center_x': encode_constant(0.16),
@@ -106,20 +106,20 @@ def get_config():
         'all_psf_models': (psf_models.Gaussian,)
     }
     config['cosmology_params'] = {
-        'omega_m_zero': encode_constant(0.3089),
-        'omega_b_zero': encode_constant(0.0486),
-        'omega_de_zero': encode_constant(0.6910088292453472),
-        'omega_rad_zero': encode_constant(9.117075466e-5),
+        'omega_m_zero': encode_constant(0.3111),
+        'omega_b_zero': encode_constant(0.049),
+        'omega_de_zero': encode_constant(0.6888086135204782),
+        'omega_rad_zero': encode_constant(9.138647952184145e-5),
         'temp_cmb_zero': encode_constant(2.7255),
-        'hubble_constant': encode_constant(67.74),
-        'n_s': encode_constant(0.9667),
-        'sigma_eight': encode_constant(0.815)
+        'hubble_constant': encode_constant(67.66),
+        'n_s': encode_constant(0.9665),
+        'sigma_eight': encode_constant(0.8102)
     }
     config['kwargs_simulation'] = {
         'num_z_bins': 1000,
         'los_pad_length': 10,
         'subhalos_pad_length': 750,
-        'sampling_pad_length': 10000,
+        'sampling_pad_length': 100000,
     }
 
     config['rng'] = jax.random.PRNGKey(0)

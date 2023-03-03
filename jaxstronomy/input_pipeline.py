@@ -16,7 +16,7 @@ network.
 """
 
 import functools
-from typing import Any, Mapping, Sequence, Tuple, Union
+from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
 import jax.numpy as jnp
 import jax
@@ -297,7 +297,8 @@ def draw_image_and_truth(
         kwargs_simulation: Mapping[str, int],
         kwargs_detector:  Mapping[str, Union[int, float]],
         kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
-        truth_parameters: Tuple[Sequence[str], Sequence[str]]
+        truth_parameters: Tuple[Sequence[str], Sequence[str]],
+        normalize_image: Optional[bool] = True
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Draw image and truth values for a realization of the lensing config.
 
@@ -321,6 +322,8 @@ def draw_image_and_truth(
             should be defined with respect to the supersampled space.
         truth_parameters: List of the lensing objects and corresponding
             parameters to extract.
+        normalize_image: If True, the image will be normalized to have
+            standard deviation 1.
 
     Returns:
         Image and corresponding truth values.
@@ -394,7 +397,8 @@ def draw_image_and_truth(
     image = utils.downsample(image_supersampled,
                              kwargs_detector['supersampling_factor'])
     # Normalize and the image to have standard deviation 1.
-    image /= jnp.std(image)
+    if normalize_image:
+        image /= jnp.std(image)
 
     # Extract the truth values and normalize them.
     truth = extract_truth_values(all_params, lensing_config, truth_parameters)

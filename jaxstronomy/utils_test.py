@@ -85,12 +85,12 @@ class UtilsTest(chex.TestCase, parameterized.TestCase):
         downsample = utils.downsample
 
         image = jnp.ones((12, 12))
-        np.testing.assert_allclose(downsample(image, 3), jnp.ones((4, 4)))
-        np.testing.assert_allclose(downsample(image, 4), jnp.ones((3, 3)))
+        np.testing.assert_allclose(downsample(image, 3), jnp.ones((4, 4)) * 9)
+        np.testing.assert_allclose(downsample(image, 4), jnp.ones((3, 3)) * 16)
 
         image = jax.random.normal(jax.random.PRNGKey(0), shape=(4, 4))
         expected = jnp.array([[0.37571156, 0.7770451],
-                              [-0.67193794, 0.014301866]])
+                              [-0.67193794, 0.014301866]]) * 4
         np.testing.assert_allclose(downsample(image, 2), expected)
 
     @chex.all_variants

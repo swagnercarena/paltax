@@ -85,9 +85,9 @@ def downsample(image, supersampling_factor):
     """
     n_x, n_y = image.shape
     image = jnp.reshape(image,
-                                            (n_x // supersampling_factor, supersampling_factor,
-                                             n_y // supersampling_factor, supersampling_factor))
-    return jnp.mean(jnp.mean(image, axis=3), axis=1)
+                        (n_x // supersampling_factor, supersampling_factor,
+                         n_y // supersampling_factor, supersampling_factor))
+    return jnp.sum(jnp.sum(image, axis=3), axis=1)
 
 
 def magnitude_to_cps(magnitude, magnitude_zero_point):

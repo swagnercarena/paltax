@@ -58,7 +58,7 @@ config_dict = {
             'conc_m_ref': 1e8,
             'k1':0.0,
             'k2':0.0,
-            'dex_scatter': 1.0
+            'dex_scatter': 0.1
         }
     },
     'los':{
@@ -100,10 +100,10 @@ config_dict = {
     'source':{
         'class': SingleSersicSource,
         'parameters':{
-            'magnitude': 10.0,
+            'magnitude': -28.676946769467694,
             'output_ab_zeropoint': output_ab_zeropoint,
             'R_sersic': 1.5,
-            'n_sersic':3.0 ,
+            'n_sersic':1.5 ,
             'e1': (1.0-0.9)/(1.0+0.9),
             'e2': 0.0,
             'center_x': 0.16,
@@ -117,8 +117,8 @@ config_dict = {
     },
     'psf':{
         'parameters':{
-            'psf_type':'PIXEL',
-            'kernel_point_source': psf_pix_map,
+            'psf_type':'GAUSSIAN',
+            'fwhm': 0.04,
             'point_source_supersampling_factor':2
         }
     },
