@@ -33,9 +33,15 @@ in lenstronomy: https://github.com/lenstronomy/lenstronomy.
 """
 
 import dm_pix
+import jax
 import jax.numpy as jnp
+import numpy as np
+from skimage.transform import downscale_local_mean
+from tqdm import tqdm
 
-__all__ = ['Interpol', 'SersicElliptic']
+from jaxstronomy import cosmology_utils
+
+__all__ = ['Interpol', 'SersicElliptic', 'PaltasGalaxyCatalog']
 
 
 class Interpol():
@@ -211,3 +217,137 @@ class SersicElliptic():
       Approximate b(n_sersic).
     """
     return 1.9992 * n_sersic - 0.3271
+
+
+class PaltasGalaxyGatalog:
+  """Light profiles of real galaxies, using paltas to access a catalog
+  """
+
+  parameters = (
+    'galaxy_index', 'z_source',
+    'amp', 'center_x', 'center_y', 'angle',
+  )
+
+  def __init__(self, 
+               cosmology_params=None,
+               paltas_class=None, 
+               maximum_size_in_pixels=256, 
+               **source_parameters):
+    if paltas_class is None:
+      # No paltas class specified -- this source model shouldn't be used
+      # (and will crash if you try it anyway)
+      return
+    assert cosmology_params is not None
+    self.cosmology_parameters = cosmology_params
+    self.paltas_catalog = paltas_class(
+      # We only use the paltas class for extracting raw images, and do
+      # redshift and magnitude scaling ourselves in jax.
+      # Thus we can load an arbitrary cosmology here.
+      cosmology_parameters='planck18',
+      # We don't need all parameters, but paltas won't let us initialize
+      # without a complete set
+      source_parameters=(
+        source_parameters
+        | dict(center_x=np.nan, center_y=np.nan, 
+               z_source=np.nan, 
+               # rotations are done by jaxstronomy, not paltas
+               random_rotation=False)))
+
+    passes_cuts = self.paltas_catalog._passes_cuts()
+    catalog_indices = np.where(passes_cuts)[0]
+    self.n_images = passes_cuts.sum()
+
+    # Allocate memory (in main RAM, not on the GPU) 
+    # for all the galaxy images that pass the cuts
+    size = maximum_size_in_pixels
+    images = np.zeros((self.n_images, size, size))
+    pixel_sizes = np.zeros(self.n_images)
+    redshifts = np.zeros(self.n_images)
+
+    for galaxy_i, catalog_i in tqdm(
+        zip(np.arange(self.n_images), catalog_indices),
+        desc='Slurping galaxies into RAM...'):
+      img, meta = self.paltas_catalog.image_and_metadata(catalog_i)
+      pixel_sizes[galaxy_i] = meta['pixel_width']
+      redshifts[galaxy_i] = meta['z']
+      
+      # Check if the image is too large, if so, downsample
+      img_size = max(img.shape[0], img.shape[1])
+      if img_size > size:
+        # Image is too large: downsample it and adjust the pixel size.
+        # Since images are in electrons/sec/pixel, we have to use sum,
+        # not mean, to downsample.
+        downsample_factor =int(np.ceil(img_size / size))
+        assert downsample_factor > 1
+        img = (
+          downscale_local_mean(img, (downsample_factor, downsample_factor))
+          * downsample_factor**2)
+        pixel_sizes[galaxy_i] *= downsample_factor
+        # Recompute image size
+        img_size = max(img.shape[0], img.shape[1])
+
+      # Check if the image is too small, if so, pad with zeros
+      if img_size < size:
+        images[galaxy_i] = pad_image(img, size, size)
+
+    # Convert attributes we need later to jax arrays
+    self.pixel_sizes = jnp.asarray(pixel_sizes)
+    self.redshifts = jnp.asarray(redshifts)
+    # Place the giant image array in main RAM, not GPU memory
+    with jax.default_device(jax.devices("cpu")[0]):
+      self.images = jnp.asarray(images)
+
+  def function(self, x, y, galaxy_index, z_source, amp, center_x, center_y, angle):
+    # Conver from uniform[0,1] into a discrete index
+    galaxy_index = jnp.floor(galaxy_index * self.n_images).astype(int)
+    img = self.images[galaxy_index]
+
+    # Convert to from electrons/sec/pixel to electrons/sec/arcsec
+    pixel_size = self.pixel_sizes[galaxy_index]
+    img = img / pixel_size**2
+
+    # Take into account the difference in the magnitude zeropoints
+    # of the input survey and the output survey. Note this doesn't
+    # take into account the color of the object!
+    img *= 10**((
+        self.paltas_catalog.source_parameters['output_ab_zeropoint']
+        - self.paltas_catalog.ab_zeropoint
+      ) / 2.5)
+
+    pixel_size *= self.z_scale_factor(self.redshifts[galaxy_index], z_source)
+
+    # TODO: don't be lazy, implement k-corrections
+    # Apply the k correction to the image from the redshifting
+    # self.k_correct_image(img,metadata['z'],z_new)
+
+    return Interpol.function(x, y, img, amp, center_x, center_y, angle, pixel_size)
+
+  def z_scale_factor(self, z_old, z_new):
+    """Return multiplication factor for object/pixel size for moving its
+    redshift from z_old to z_new.
+
+    Args:
+      z_old (float): The original redshift of the object.
+      z_new (float): The redshift the object will be placed at.
+
+    Returns:
+      (float): The multiplicative pixel size.
+    """
+    # Pixel length ~ angular diameter distance
+    # (colossus uses funny /h units, but for ratios it
+    #  fortunately doesn't matter)
+    return (
+      cosmology_utils.angular_diameter_distance(self.cosmology_parameters, z_old)
+      / cosmology_utils.angular_diameter_distance(self.cosmology_parameters, z_new))
+
+
+def pad_image(img, nx, ny):
+  """Returns img with zeros padded on both sides so shape is (nx, ny)"""
+  old_nx, old_ny = img.shape
+  result = np.zeros((nx, ny), dtype=img.dtype)
+  x_center = (nx - old_nx) // 2
+  y_center = (ny - old_ny) // 2
+  result[
+    x_center:x_center + old_nx, 
+    y_center:y_center + old_ny] = img
+  return result
