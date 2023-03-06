@@ -108,7 +108,7 @@ def _prepare_image():
 
 def _prepare_all_psf_models():
     models = psf_models.__all__
-    return tuple([psf_models.__getattribute__(model) for model in models])
+    return tuple([psf_models.__getattribute__(model)() for model in models])
 
 def _prepare_all_lens_models(model_group):
     if model_group == 'los':
@@ -127,7 +127,7 @@ def _prepare_all_lens_models(model_group):
 
 def _prepare_all_source_models():
     all_source_models = tuple(
-        [source_models.__getattribute__(model)
+        [source_models.__getattribute__(model)()
             for model in source_models.__all__])
     return all_source_models
 
