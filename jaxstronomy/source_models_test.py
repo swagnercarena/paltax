@@ -85,7 +85,7 @@ class AllTest(absltest.TestCase):
         all_present = sorted(source_models.__all__)
         all_required = []
         for name, value in inspect.getmembers(source_models):
-            if inspect.isclass(value):
+            if inspect.isclass(value) and name is not '_SourceModelBase':
                 all_required.append(name)
 
         self.assertListEqual(all_present, sorted(all_required))

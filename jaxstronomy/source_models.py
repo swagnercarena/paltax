@@ -39,7 +39,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from skimage.transform import downscale_local_mean
-from tqdm import tqdm
+import tqdm
 
 from jaxstronomy import cosmology_utils
 
@@ -296,7 +296,7 @@ class PaltasGalaxyCatalog(_SourceModelBase):
         pixel_sizes = np.zeros(self.n_images)
         redshifts = np.zeros(self.n_images)
 
-        for galaxy_i, catalog_i in tqdm(
+        for galaxy_i, catalog_i in tqdm.tqdm(
                 zip(np.arange(self.n_images), catalog_indices),
                 desc='Slurping galaxies into RAM...'):
             img, meta = self.paltas_catalog.image_and_metadata(catalog_i)
