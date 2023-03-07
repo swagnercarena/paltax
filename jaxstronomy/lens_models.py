@@ -1,19 +1,4 @@
 # coding=utf-8
-# Copyright 2022 The Google Research Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-# Copyright 2022 Google LLC
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,14 +17,46 @@ Implementation of mass profiles for lensing closely following implementations
 in lenstronomy: https://github.com/lenstronomy/lenstronomy.
 """
 
-from typing import Tuple
+from typing import Any, Mapping, Tuple, Union
 
 import jax.numpy as jnp
 
 __all__ = ['EPL', 'NFW', 'Shear', 'TNFW']
 
 
-class EPL():
+class _LensModelBase():
+    """Base source model.
+
+    Provides identity implementation of convert_to_angular for all lens
+    models.
+    """
+
+    physical_parameters = ()
+    parameters = ()
+
+    def convert_to_angular(
+            self: Any, all_kwargs:  Mapping[str, jnp.ndarray],
+            cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
+        ) -> Mapping[str, jnp.ndarray]:
+        """Convert any parameters in physical units to angular units.
+
+        Args:
+            all_kwargs: All of the arguments, possibly including some in
+                physical units.
+            cosmology_params: Cosmological parameters that define the universe's
+                expansion.
+
+        Returns:
+            Arguments with any physical units parameters converted to angular
+                units.
+        """
+        # Don't get yelled at by the linter. This will not slow down evaluation
+        # after jit compilation.
+        _ = cosmology_params
+        return all_kwargs
+
+
+class EPL(_LensModelBase):
     """Elliptical Power Law mass profile.
 
     Elliptical Power Law mass profile functions, with calculation following
@@ -52,9 +69,10 @@ class EPL():
     )
 
     @staticmethod
-    def derivatives(x, y, theta_e, slope,
-                                    axis_ratio, angle, center_x,
-                                    center_y):
+    def derivatives(
+        x: jnp.ndarray, y: jnp.ndarray, theta_e: float, slope: float,
+        axis_ratio: float, angle: float, center_x: float, center_y: float
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Calculate the derivative of the potential for the EPL mass profile.
 
         Args:
@@ -79,8 +97,8 @@ class EPL():
         return complex_derivative.real, complex_derivative.imag
 
     @staticmethod
-    def _complex_derivative(x, y, scale_length,
-                                                    axis_ratio, slope):
+    def _complex_derivative(x: jnp.ndarray, y: jnp.ndarray, scale_length: float,
+                            axis_ratio: float, slope: float) -> jnp.ndarray:
         """Calculate the complex derivative for the EPL mass profile.
 
         Args:
@@ -102,8 +120,8 @@ class EPL():
                 (scale_length / ellip_radius)**(slope - 2), copy=False) * omega
 
     @staticmethod
-    def _hypergeometric_series(ellip_angle, slope,
-                                                         axis_ratio):
+    def _hypergeometric_series(ellip_angle: jnp.ndarray, slope: float,
+                               axis_ratio: float) -> jnp.ndarray:
         """Calculate the hypergeometric series required for the derivative.
 
         Args:
@@ -131,7 +149,7 @@ class EPL():
         return omegas
 
 
-class NFW():
+class NFW(_LensModelBase):
     """Navarro Frenk White (NFW) mass profile.
 
     NFW mass profile functions, with implementation closely following the NFW
@@ -141,9 +159,10 @@ class NFW():
     parameters = ('scale_radius', 'alpha_rs', 'center_x', 'center_y')
 
     @staticmethod
-    def derivatives(x, y, scale_radius,
-                                    alpha_rs, center_x,
-                                    center_y):
+    def derivatives(
+        x: jnp.ndarray, y: jnp.ndarray, scale_radius: float, alpha_rs: float,
+        center_x: float, center_y: float
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the NFW profile derivatives.
 
         Args:
@@ -160,12 +179,12 @@ class NFW():
         rho_input = NFW._alpha_to_rho(alpha_rs, scale_radius)
         x_centered = x - center_x
         y_centered = y - center_y
-        radius = jnp.sqrt(x_centered**2 + y_centered**2)
+        radius = jnp.sqrt(x_centered ** 2 + y_centered ** 2)
         return NFW._nfw_derivatives(radius, scale_radius, rho_input, x_centered,
-                                                                y_centered)
+                                    y_centered)
 
     @staticmethod
-    def _alpha_to_rho(alpha_rs, scale_radius):
+    def _alpha_to_rho(alpha_rs: float, scale_radius: float) -> float:
         """Return the NFW profile normalization.
 
         Args:
@@ -180,9 +199,9 @@ class NFW():
 
     @staticmethod
     def _nfw_derivatives(
-            radius, scale_radius, rho_input,
-            x_centered,
-            y_centered):
+        radius: jnp.ndarray, scale_radius: float, rho_input: float,
+        x_centered: jnp.ndarray, y_centered: jnp.ndarray
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the NFW profile derivatives.
 
         Args:
@@ -203,7 +222,7 @@ class NFW():
         return derivative_norm * x_centered, derivative_norm * y_centered
 
     @staticmethod
-    def _nfw_integral(reduced_radius):
+    def _nfw_integral(reduced_radius: jnp.ndarray) -> jnp.ndarray:
         """Return analytic solution to integral of NFW profile.
 
         Args:
@@ -232,7 +251,7 @@ class NFW():
         return solution
 
 
-class Shear():
+class Shear(_LensModelBase):
     """Shear mass profile.
 
     Shear mass profile functions, with implementation closely following the
@@ -242,9 +261,10 @@ class Shear():
     parameters = ('gamma_ext', 'angle', 'center_x', 'center_y')
 
     @staticmethod
-    def derivatives(x, y, gamma_ext,
-                                    angle, center_x,
-                                    center_y):
+    def derivatives(
+        x: jnp.ndarray, y: jnp.ndarray, gamma_ext: float, angle: float,
+        center_x: float, center_y: float
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the shear profile derivatives.
 
         Args:
@@ -266,8 +286,9 @@ class Shear():
                         gamma_two * x_centered - gamma_one * y_centered)
 
     @staticmethod
-    def _polar_to_cartesian(gamma_ext,
-                                                    angle):
+    def _polar_to_cartesian(
+        gamma_ext: float, angle: float
+    ) -> Tuple[float, float]:
         """Return the two shear components used for the shear derivative.
 
         Args:
@@ -289,12 +310,14 @@ class TNFW(NFW):
     """
 
     parameters = (
-            'scale_radius', 'alpha_rs', 'trunc_radius', 'center_x', 'center_y'
+        'scale_radius', 'alpha_rs', 'trunc_radius', 'center_x', 'center_y'
     )
 
     @staticmethod
-    def derivatives(x, y, scale_radius, alpha_rs, trunc_radius, center_x,
-                    center_y):
+    def derivatives(
+        x: jnp.ndarray, y: jnp.ndarray, scale_radius: float, alpha_rs: float,
+        trunc_radius: float, center_x: float, center_y: float
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the TNFW profile derivatives.
 
         Args:
@@ -318,9 +341,9 @@ class TNFW(NFW):
 
     @staticmethod
     def _tnfw_derivatives(
-            radius, scale_radius, rho_input,
-            trunc_radius, x_centered,
-            y_centered):
+        radius: jnp.ndarray, scale_radius: float, rho_input: float,
+        trunc_radius: float, x_centered: jnp.ndarray, y_centered: jnp.ndarray
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the TNFW profile derivatives.
 
         Args:
@@ -344,7 +367,9 @@ class TNFW(NFW):
         return derivative_norm * x_centered, derivative_norm * y_centered
 
     @staticmethod
-    def _tnfw_integral(reduced_radius, reduced_trunc_radius):
+    def _tnfw_integral(
+        reduced_radius: jnp.ndarray, reduced_trunc_radius: float
+    ) -> jnp.ndarray:
         """Return analytic solution to integral of TNFW profile.
 
         Args:
@@ -366,8 +391,9 @@ class TNFW(NFW):
         return solution
 
     @staticmethod
-    def _tnfw_log(reduced_radius,
-                                reduced_trunc_radius):
+    def _tnfw_log(
+        reduced_radius: jnp.ndarray, reduced_trunc_radius: float
+    ) -> jnp.ndarray:
         """Evaluate log expression that appears in the TNFW calculations.
 
         Args:
@@ -382,7 +408,7 @@ class TNFW(NFW):
                                                   reduced_trunc_radius**2))**-1)
 
     @staticmethod
-    def _nfw_function(reduced_radius):
+    def _nfw_function(reduced_radius: jnp.ndarray) -> jnp.ndarray:
         """Evaluate NFW function.
 
         Args:

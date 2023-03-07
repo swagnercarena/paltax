@@ -266,6 +266,43 @@ def extract_multiple_models(
     return draws
 
 
+def extract_multiple_models_angular(
+        encoded_configuration: Mapping[str, Mapping[str, float]],
+        rng: Sequence[int], all_models: Sequence[Any],
+        cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
+) -> Mapping[str, jnp.ndarray]:
+    """Extract multiple models and translate them to angular coordinates.
+
+    Args:
+        encoded_configuration: Encodings for each of the parameters of the
+            model(s).
+        rng: jax PRNG key.
+        all_models: Model classes to use for translation from physical to
+            angular units.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+
+    Returns:
+        Draws for the parameters for all the models. For each parameters, first
+        dimension will be the number of models.
+    """
+    n_models = len(all_models)
+
+    # Start by drawing the parameters directly from the config
+    draws = extract_multiple_models(encoded_configuration, rng, n_models)
+
+    # Convert those parameters using the conversion function included in
+    # each source model. This may often do nothing at all.
+    pta_functions = [
+        functools.partial(model.convert_to_angular,
+                          cosmology_params=cosmology_params)
+        for model in all_models
+    ]
+    return jax.vmap(jax.lax.switch, in_axes=[0, None, 0])(
+        draws['model_index'], pta_functions, draws
+    )
+
+
 def extract_truth_values(
         all_params: Mapping[str, Mapping[str, jnp.ndarray]],
         lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
@@ -331,12 +368,14 @@ def draw_image_and_truth(
     Notes:
         To jit compile, every parameter after rng must be fixed.
     """
-
+    # Pull out the padding and bins we will use while vmapping our simulation.
     num_z_bins = kwargs_simulation['num_z_bins']
     los_pad_length = kwargs_simulation['los_pad_length']
     subhalos_pad_length = kwargs_simulation['subhalos_pad_length']
     sampling_pad_length = kwargs_simulation['sampling_pad_length']
 
+    # Draw an instance of the parameter values for each object in our lensing
+    # system.
     rng_md, rng_source, rng_ll, rng_los, rng_sub, rng = jax.random.split(rng, 6)
     main_deflector_params = extract_multiple_models(
         lensing_config['main_deflector_params'], rng_md,

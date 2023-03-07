@@ -32,7 +32,7 @@ Implementation of light profiles for lensing closely following implementations
 in lenstronomy: https://github.com/lenstronomy/lenstronomy.
 """
 
-from typing import Any, Tuple
+from typing import Any, Mapping, Tuple, Union
 
 import dm_pix
 import jax
@@ -46,7 +46,39 @@ from jaxstronomy import cosmology_utils
 __all__ = ['Interpol', 'SersicElliptic', 'PaltasGalaxyCatalog']
 
 
-class Interpol():
+class _SourceModelBase():
+    """Base source model.
+
+    Provides identity implementation of convert_to_angular for all source
+    models.
+    """
+
+    physical_parameters = ()
+    parameters = ()
+
+    def convert_to_angular(
+            self: Any, all_kwargs:  Mapping[str, jnp.ndarray],
+            cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
+        ) -> Mapping[str, jnp.ndarray]:
+        """Convert any parameters in physical units to angular units.
+
+        Args:
+            all_kwargs: All of the arguments, possibly including some in
+                physical units.
+            cosmology_params: Cosmological parameters that define the universe's
+                expansion.
+
+        Returns:
+            Arguments with any physical units parameters converted to angular
+                units.
+        """
+        # Don't get yelled at by the linter. This will not slow down evaluation
+        # after jit compilation.
+        _ = cosmology_params
+        return all_kwargs
+
+
+class Interpol(_SourceModelBase):
     """Interpolated light profile.
 
     Interpolated light profile functions, with calculation following those in
@@ -134,7 +166,7 @@ class Interpol():
         return complex_coords.real, complex_coords.imag
 
 
-class SersicElliptic():
+class SersicElliptic(_SourceModelBase):
     """Sersic light profile.
 
     Sersic light profile functions, with implementation closely following the
@@ -142,8 +174,8 @@ class SersicElliptic():
     """
 
     parameters = (
-            'amp', 'sersic_radius', 'n_sersic', 'axis_ratio', 'angle', 'center_x',
-            'center_y'
+            'amp', 'sersic_radius', 'n_sersic', 'axis_ratio', 'angle',
+            'center_x', 'center_y'
     )
 
     @staticmethod
@@ -223,7 +255,7 @@ class SersicElliptic():
         return 1.9992 * n_sersic - 0.3271
 
 
-class PaltasGalaxyGatalog():
+class PaltasGalaxyCatalog(_SourceModelBase):
     """Light profiles of real galaxies, using paltas to access a catalog
     """
 
@@ -231,11 +263,8 @@ class PaltasGalaxyGatalog():
         'galaxy_index', 'z_source', 'amp', 'center_x', 'center_y', 'angle',
     )
 
-    def __init__(self,
-                             cosmology_params=None,
-                             paltas_class=None,
-                             maximum_size_in_pixels=256,
-                             **source_parameters):
+    def __init__(self: Any, cosmology_params=None, paltas_class=None,
+                 maximum_size_in_pixels=256, **source_parameters):
         if paltas_class is None:
             # No paltas class specified -- this source model shouldn't be used
             # (and will crash if you try it anyway)
@@ -307,7 +336,7 @@ class PaltasGalaxyGatalog():
 
         # Convert to from electrons/sec/pixel to electrons/sec/arcsec
         pixel_size = self.pixel_sizes[galaxy_index]
-        img = img / pixel_size**2
+        img = img / pixel_size ** 2
 
         # Take into account the difference in the magnitude zeropoints
         # of the input survey and the output survey. Note this doesn't

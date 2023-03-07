@@ -65,7 +65,7 @@ def generate_image(
         z_source: Redshift of the source.
         kwargs_detector: Keyword arguments defining the detector configuration.
         all_models: Tuple of model classes to consider for each component.
-        apply_psf: Whether or not to convolve the final image with the point 
+        apply_psf: Whether or not to convolve the final image with the point
             spread function.
 
     Returns:
@@ -83,18 +83,18 @@ def generate_image(
     )
     image_array += lens_light_surface_brightness(
         grid_x, grid_y, kwargs_lens_light_slice, kwargs_detector,
-        all_models["all_source_models"]
+        all_models['all_source_models']
     )
     image = jnp.reshape(
         image_array,
         (
-            kwargs_detector["n_x"] * kwargs_detector["supersampling_factor"],
-            kwargs_detector["n_y"] * kwargs_detector["supersampling_factor"],
+            kwargs_detector['n_x'] * kwargs_detector['supersampling_factor'],
+            kwargs_detector['n_y'] * kwargs_detector['supersampling_factor'],
         ),
     )
 
     if apply_psf:
-        image = psf_convolution(image, kwargs_psf, all_models["all_psf_models"])
+        image = psf_convolution(image, kwargs_psf, all_models['all_psf_models'])
     return image
 
 
@@ -116,7 +116,8 @@ def psf_convolution(
     # Psf not accounting for supersampling by default is prone to user error.
     # Consider changing.
     psf_functions = [model.convolve for model in all_psf_models]
-    return jax.lax.switch(kwargs_psf["model_index"], psf_functions, image, kwargs_psf)
+    return jax.lax.switch(kwargs_psf['model_index'], psf_functions, image,
+                          kwargs_psf)
 
 
 def noise_realization(
@@ -138,16 +139,20 @@ def noise_realization(
 
     # Calculate expected background noise from detector kwargs.
     exposure_time_total = (
-        kwargs_detector["exposure_time"] * kwargs_detector["num_exposures"]
+        kwargs_detector['exposure_time'] * kwargs_detector['num_exposures']
     )
-    read_noise = kwargs_detector["read_noise"] ** 2 * kwargs_detector["num_exposures"]
+    read_noise = (
+        kwargs_detector['read_noise'] ** 2 * kwargs_detector['num_exposures'])
     sky_brightness_cps = utils.magnitude_to_cps(
-        kwargs_detector["sky_brightness"], kwargs_detector["magnitude_zero_point"]
+        kwargs_detector['sky_brightness'],
+        kwargs_detector['magnitude_zero_point']
     )
     sky_brightness_tot = (
-        exposure_time_total * sky_brightness_cps * kwargs_detector["pixel_width"] ** 2
+        exposure_time_total * sky_brightness_cps *
+        kwargs_detector['pixel_width'] ** 2
     )
-    background_noise = jnp.sqrt(read_noise + sky_brightness_tot) / exposure_time_total
+    background_noise = (
+        jnp.sqrt(read_noise + sky_brightness_tot) / exposure_time_total)
 
     # By default all simulations are done in units of counts per second, but you
     # want to calculate poisson statistics in units of counts.
@@ -183,7 +188,7 @@ def lens_light_surface_brightness(
     lens_light_flux = _surface_brightness(
         theta_x, theta_y, kwargs_lens_light_slice, all_source_models
     )
-    pixel_width = kwargs_detector["pixel_width"]
+    pixel_width = kwargs_detector['pixel_width']
     pixel_width /= kwargs_detector['supersampling_factor']
     return lens_light_flux * pixel_width ** 2
 
@@ -206,8 +211,8 @@ def source_surface_brightness(
         kwargs_lens_all: Keyword arguments and redshifts for each of the
             lensing components. This should include los_before, los_after,
             subhalos, and main_deflector.
-        kwargs_detector: Keyword arguments defining the detector configuration. This
-            includes potential supersampling in the lensing calculation.
+        kwargs_detector: Keyword arguments defining the detector configuration.
+            This includes potential supersampling in the lensing calculation.
         cosmology_params: Cosmological parameters that define the universe's
             expansion.
         z_source: Redshift of the source.
@@ -226,7 +231,7 @@ def source_surface_brightness(
         all_models
     )
     # Scale by pixel area to go from flux to surface brightness.
-    pixel_width = kwargs_detector["pixel_width"]
+    pixel_width = kwargs_detector['pixel_width']
     pixel_width /= kwargs_detector['supersampling_factor']
     return image_flux_array * pixel_width ** 2
 
@@ -248,14 +253,14 @@ def _image_flux(
         kwargs_lens_all: Keyword arguments and redshifts for each of the
             lensing components. This should include los_before, los_after,
             subhalos, and main_deflector.
-        kwargs_source_slice: Keyword arguments to pass to brightness functions for
-            each light model. Keys should include parameters for all source models
-            (due to use of `jax.lax.switch`) and `model_index` which defines the model
-            to pass the parameters to. Parameter values not relevant for the specified
-            model are discarded. Values should be of type jnp.ndarray and have length
-            equal to the total number of light models in the slice. For more detailed
-            discussion see documentation of `jax.lax.scan`, which is used to iterate
-            over the models.
+        kwargs_source_slice: Keyword arguments to pass to brightness functions
+            for each light model. Keys should include parameters for all source
+            models (due to use of `jax.lax.switch`) and `model_index` which
+            defines the model to pass the parameters to. Parameter values not
+            relevant for the specified model are discarded. Values should be of
+            type jnp.ndarray and have length equal to the total number of light
+            models in the slice. For more detailed discussion see documentation
+            of `jax.lax.scan`, which is used to iterate over the models.
         cosmology_params: Cosmological parameters that define the universe's
             expansion.
         z_source: Redshift of the source.
@@ -276,7 +281,7 @@ def _image_flux(
         x_source_comv, y_source_comv, cosmology_params, z_source
     )
     return _surface_brightness(
-        x_source, y_source, kwargs_source_slice, all_models["all_source_models"]
+        x_source, y_source, kwargs_source_slice, all_models['all_source_models']
     )
 
 
@@ -321,13 +326,13 @@ def _ray_shooting(
         _ray_shooting_step,
         cosmology_params=cosmology_params,
         z_source=z_source,
-        all_lens_models=all_models["all_los_models"]
+        all_lens_models=all_models['all_los_models']
     )
     ray_shooting_step_main_deflector = functools.partial(
         _ray_shooting_step,
         cosmology_params=cosmology_params,
         z_source=z_source,
-        all_lens_models=all_models["all_main_deflector_models"]
+        all_lens_models=all_models['all_main_deflector_models']
     )
 
     # Scan over all of the lens models in our system to calculate deflection and
@@ -336,34 +341,35 @@ def _ray_shooting(
         ray_shooting_step_los,
         state,
         {
-            "z_lens": kwargs_lens_all["z_array_los_before"],
-            "kwargs_lens": kwargs_lens_all["kwargs_los_before"]
+            "z_lens": kwargs_lens_all['z_array_los_before'],
+            "kwargs_lens": kwargs_lens_all['kwargs_los_before']
         },
     )
     # We can do all the subhalos at once, which is a lot faster for large
     # number of subhalos.
     # Use max instead of mean here, in case things are padded with zeros
     state, _ = _ray_shooting_group(
-        state, kwargs_lens_all["kwargs_subhalos"], cosmology_params, z_source,
-        jnp.max(kwargs_lens_all["z_array_subhalos"]),
-        all_models["all_subhalo_models"])
+        state, kwargs_lens_all['kwargs_subhalos'], cosmology_params, z_source,
+        jnp.max(kwargs_lens_all['z_array_subhalos']),
+        all_models['all_subhalo_models'])
     state, _ = _ray_shooting_group(
-        state, kwargs_lens_all["kwargs_main_deflector"], cosmology_params,
-        z_source, jnp.max(kwargs_lens_all["z_array_main_deflector"]),
-        all_models["all_main_deflector_models"])
+        state, kwargs_lens_all['kwargs_main_deflector'], cosmology_params,
+        z_source, jnp.max(kwargs_lens_all['z_array_main_deflector']),
+        all_models['all_main_deflector_models'])
     state, _ = jax.lax.scan(
         ray_shooting_step_los,
         state,
         {
-            "z_lens": kwargs_lens_all["z_array_los_after"],
-            "kwargs_lens": kwargs_lens_all["kwargs_los_after"]
+            "z_lens": kwargs_lens_all['z_array_los_after'],
+            "kwargs_lens": kwargs_lens_all['kwargs_los_after']
         },
     )
 
     comv_x, comv_y, alpha_x, alpha_y, z_lens_last = state
 
     # Continue the ray tracing until the source.
-    delta_t = cosmology_utils.comoving_distance(cosmology_params, z_lens_last, z_source)
+    delta_t = cosmology_utils.comoving_distance(cosmology_params, z_lens_last,
+                                                z_source)
     comv_x, comv_y = _ray_step_add(comv_x, comv_y, alpha_x, alpha_y, delta_t)
 
     return comv_x, comv_y
@@ -380,8 +386,8 @@ def _ray_shooting_group(
     """Conduct ray shooting for a group of coplanar lens models.
 
     Args:
-        state: The current comoving positions, deflections, and the previous lens
-            model redshift.
+        state: The current comoving positions, deflections, and the previous
+            lens model redshift.
         kwargs_lens_slice: Keyword arguments specifying the model (through
             `model_index` value) and the lens model parameters for each lens
             model in the slice. Due to the nature of `jax.lax.switch` this must
@@ -424,14 +430,15 @@ def _ray_shooting_step(
     """Conduct ray shooting between two lens models.
 
     Args:
-        state: The current comoving positions, deflections, and the previous lens
-            model redshift.
-        kwargs_z_lens: Dict with keys `z_lens`, the redshift of the next lens model,
-            and 'kwargs_lens`, the keyword arguments specifying the next lens model
-            (through `model_index` value) and the lens model parameters. Due to the
-            requirements of `jax.lax.switch`, `kwargs_lens` must have a key-value pair
-            for all lens models included in `all_lens_models`, even if those lens
-            models will not be used.
+        state: The current comoving positions, deflections, and the previous
+            lens model redshift.
+        kwargs_z_lens: Dict with keys `z_lens`, the redshift of the next lens
+            model, and 'kwargs_lens`, the keyword arguments specifying the next
+            lens model (through `model_index` value) and the lens model
+            parameters. Due to the requirements of `jax.lax.switch`,
+            `kwargs_lens` must have a key-value pair for all lens models
+            included in `all_lens_models`, even if those lens models will not be
+            used.
         cosmology_params: Cosmological parameters that define the universe's
             expansion.
         z_source: Redshift of the source.
@@ -448,7 +455,7 @@ def _ray_shooting_step(
 
     # The displacement from moving along the deflection direction.
     delta_t = cosmology_utils.comoving_distance(
-        cosmology_params, z_lens_last, kwargs_z_lens["z_lens"]
+        cosmology_params, z_lens_last, kwargs_z_lens['z_lens']
     )
     comv_x, comv_y = _ray_step_add(comv_x, comv_y, alpha_x, alpha_y, delta_t)
     alpha_x, alpha_y = _add_deflection(
@@ -456,14 +463,14 @@ def _ray_shooting_step(
         comv_y,
         alpha_x,
         alpha_y,
-        kwargs_z_lens["kwargs_lens"],
+        kwargs_z_lens['kwargs_lens'],
         cosmology_params,
-        kwargs_z_lens["z_lens"],
+        kwargs_z_lens['z_lens'],
         z_source,
         all_lens_models,
     )
 
-    new_state = (comv_x, comv_y, alpha_x, alpha_y, kwargs_z_lens["z_lens"])
+    new_state = (comv_x, comv_y, alpha_x, alpha_y, kwargs_z_lens['z_lens'])
 
     # Second return is required by scan, but will be ignored by the compiler.
     return new_state, new_state
@@ -567,11 +574,12 @@ def _add_deflection(
         comv_y: Comoving y-coordinate.
         alpha_x: Current physical x-component of deflection at each position.
         alpha_y: Current physical y-component of deflection at each position.
-        kwargs_lens: Keyword arguments specifying the model (through `model_index`
-            value) and the lens model parameters. Due to the nature of
-            `jax.lax.switch` this must have a key-value pair for all lens models
-            included in `all_lens_models`, even if those lens models will not be used.
-            `model_index` of -1 indicates that the previous total should be returned.
+        kwargs_lens: Keyword arguments specifying the model (through
+            `model_index` value) and the lens model parameters. Due to the
+            nature of `jax.lax.switch` this must have a key-value pair for all
+            lens models included in `all_lens_models`, even if those lens models
+            will not be used. `model_index` of -1 indicates that the previous
+            total should be returned.
         cosmology_params: Cosmological parameters that define the universe's
             expansion.
         z_lens: Redshift of the slice (i.e. current redshift).
@@ -633,7 +641,7 @@ def _calculate_derivatives(
     # Condition on model_index to allow for padding.
     def calculate_derivative():
         alpha_x, alpha_y = jax.lax.switch(
-            kwargs_lens["model_index"],
+            kwargs_lens['model_index'],
             derivative_functions,
             theta_x,
             theta_y,
@@ -645,7 +653,7 @@ def _calculate_derivatives(
         return (jnp.zeros_like(theta_x), jnp.zeros_like(theta_y))
 
     return jax.lax.cond(
-        kwargs_lens["model_index"] == -1, identity, calculate_derivative
+        kwargs_lens['model_index'] == -1, identity, calculate_derivative
     )
 
 
@@ -660,15 +668,15 @@ def _surface_brightness(
     Args:
         theta_x: X-coordinate at which to evaluate the surface brightness.
         theta_y: Y-coordinate at which to evaluate the surface brightness.
-        kwargs_source_slice: Keyword arguments to pass to brightness functions for
-            each light model. Keys should include parameters for all source models
-            included in `all_source_models`.
-            (due to use of `jax.lax.switch`) and `model_index` which defines the model
-            to pass the parameters to. Parameter values not relevant for the specified
-            model are discarded. Values should be of type jnp.ndarray and have length
-            equal to the total number of light models in the slice. For more detailed
-            discussion see documentation of `jax.lax.scan`, which is used to iterate
-            over the models.
+        kwargs_source_slice: Keyword arguments to pass to brightness functions
+            for each light model. Keys should include parameters for all source
+            models included in `all_source_models` (due to use of
+            `jax.lax.switch`) and `model_index` which defines the model to pass
+            the parameters to. Parameter values not relevant for the specified
+            model are discarded. Values should be of type jnp.ndarray and have
+            length equal to the total number of light models in the slice. For
+            more detailed discussion see documentation of `jax.lax.scan`, which
+            is used to iterate over the models.
         all_source_models: Source models to use for model_index lookup.
 
     Returns:
@@ -711,7 +719,7 @@ def _add_surface_brightness(
         for model in all_source_models
     ]
     brightness = jax.lax.switch(
-        kwargs_source["model_index"], source_functions, theta_x, theta_y,
+        kwargs_source['model_index'], source_functions, theta_x, theta_y,
         kwargs_source
     )
 
