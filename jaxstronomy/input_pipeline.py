@@ -268,8 +268,9 @@ def extract_multiple_models(
 
 def extract_multiple_models_angular(
         encoded_configuration: Mapping[str, Mapping[str, float]],
-        rng: Sequence[int], all_models: Sequence[Any],
-        cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
+        rng: Sequence[int],
+        cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+        all_models: Sequence[Any]
 ) -> Mapping[str, jnp.ndarray]:
     """Extract multiple models and translate them to angular coordinates.
 
@@ -293,14 +294,13 @@ def extract_multiple_models_angular(
 
     # Convert those parameters using the conversion function included in
     # each source model. This may often do nothing at all.
-    pta_functions = [
-        functools.partial(model.convert_to_angular,
-                          cosmology_params=cosmology_params)
-        for model in all_models
-    ]
-    return jax.vmap(jax.lax.switch, in_axes=[0, None, 0])(
-        draws['model_index'], pta_functions, draws
-    )
+    # Since different models add different properties to the config, we cannot
+    # use a switch statement here. Instead loop over all the models.
+    for model in all_models:
+        draws = jax.vmap(model.convert_to_angular, in_axes=[0, None])(
+            draws, cosmology_params
+        )
+    return draws
 
 
 def extract_truth_values(
@@ -377,17 +377,17 @@ def draw_image_and_truth(
     # Draw an instance of the parameter values for each object in our lensing
     # system.
     rng_md, rng_source, rng_ll, rng_los, rng_sub, rng = jax.random.split(rng, 6)
-    main_deflector_params = extract_multiple_models(
-        lensing_config['main_deflector_params'], rng_md,
-        len(all_models['all_main_deflector_models'])
+    main_deflector_params = extract_multiple_models_angular(
+        lensing_config['main_deflector_params'], rng_md, cosmology_params,
+        all_models['all_main_deflector_models']
     )
-    source_params = extract_multiple_models(
-        lensing_config['source_params'], rng_source,
-        len(all_models['all_source_models'])
+    source_params = extract_multiple_models_angular(
+        lensing_config['source_params'], rng_source, cosmology_params,
+        all_models['all_source_models']
     )
-    lens_light_params = extract_multiple_models(
-        lensing_config['lens_light_params'], rng_ll,
-        len(all_models['all_source_models'])
+    lens_light_params = extract_multiple_models_angular(
+        lensing_config['lens_light_params'], rng_ll, cosmology_params,
+        all_models['all_source_models']
     )
     los_params = draw_sample(lensing_config['los_params'], rng_los)
     subhalo_params = draw_sample(lensing_config['subhalo_params'], rng_sub)
