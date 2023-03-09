@@ -126,10 +126,20 @@ def _prepare_all_lens_models(model_group):
 
 
 def _prepare_all_source_models():
-    all_source_models = tuple(
-        [source_models.__getattribute__(model)()
-            for model in source_models.__all__])
-    return all_source_models
+    all_source_models = []
+    for model in source_models.__all__:
+        # CosmosCatalog model required initialization parameters.
+        if model != 'CosmosCatalog':
+            all_source_models.append(
+                source_models.__getattribute__(model)()
+            )
+        else:
+            all_source_models.append(
+                source_models.__getattribute__(model)(
+                    'test_files/cosmos_galaxies_testing.npz'
+                )
+            )
+    return tuple(all_source_models)
 
 
 def _prepare_all_models():

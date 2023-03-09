@@ -32,14 +32,12 @@ Implementation of light profiles for lensing closely following implementations
 in lenstronomy: https://github.com/lenstronomy/lenstronomy.
 """
 
-import os
 from typing import Any, Mapping, Tuple, Union
 
 import dm_pix
 import jax
 import jax.numpy as jnp
 import numpy as np
-from skimage.transform import downscale_local_mean
 
 from jaxstronomy import cosmology_utils
 from jaxstronomy import utils
@@ -270,7 +268,7 @@ class CosmosCatalog(Interpol):
         """Initialize the array containing the images of the COSMOS galaxies.
 
         Args:
-            cosmos_folder: Path to the npz file containing the cosmos images,
+            cosmos_path: Path to the npz file containing the cosmos images,
                 redshift array, and pixel sizes.
         """
         # Load the cosmos images and redshifts
