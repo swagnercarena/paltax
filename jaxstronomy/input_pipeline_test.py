@@ -74,6 +74,9 @@ def _prepare_lensing_config():
             'conc_dex_scatter': encode_constant(0.0)
         },
         'source_params':{
+            'galaxy_index': encode_constant(0.7),
+            'output_ab_zeropoint': encode_constant(23.5),
+            'catalog_ab_zeropoint': encode_constant(25.6),
             'z_source': encode_constant(1.5),
             'amp': encode_uniform(minimum=1.0, maximum=10.0),
             'sersic_radius': encode_uniform(minimum=1.0, maximum=4.0),
@@ -84,8 +87,12 @@ def _prepare_lensing_config():
             'center_y': encode_normal(mean=0.0, std=0.16)
         },
         'lens_light_params':{
-            'amp': encode_constant(0.0),
-            'sersic_radius': encode_uniform(minimum=1.0, maximum=3.0),
+            'galaxy_index': encode_constant(0.7),
+            'output_ab_zeropoint': encode_constant(23.5),
+            'catalog_ab_zeropoint': encode_constant(25.6),
+            'z_source': encode_constant(1.5),
+            'amp': encode_uniform(minimum=1.0, maximum=10.0),
+            'sersic_radius': encode_uniform(minimum=1.0, maximum=4.0),
             'n_sersic': encode_uniform(minimum=1.0, maximum=4.0),
             'axis_ratio': encode_normal(mean=1.0, std=0.05),
             'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
@@ -395,7 +402,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             'output_ab_zeropoint': encode_constant(23.5),
             'catalog_ab_zeropoint': encode_constant(25.6),
             'z_source': encode_constant(1.5),
-            'amp': encode_uniform(minimum=1.0, maximum=10.0),
+            'amp': encode_constant(1e3),
             'sersic_radius': encode_uniform(minimum=1.0, maximum=4.0),
             'n_sersic': encode_uniform(minimum=1.0, maximum=4.0),
             'axis_ratio': encode_normal(mean=1.0, std=0.05),
@@ -429,6 +436,8 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
                 image,
                 all_models[1].images[1] / all_models[1].pixel_sizes[1] ** 2
             )
+        for amp in sampled_configuration['amp']:
+            self.assertNotAlmostEqual(amp, 1e3)
 
 
     @chex.all_variants(without_device=False)
@@ -492,7 +501,10 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             'all_subhalo_models': (lens_models.TNFW(),),
             'all_main_deflector_models': (lens_models.Shear(),
                                           lens_models.EPL()),
-            'all_source_models': (source_models.SersicElliptic(),),
+            'all_source_models': (source_models.SersicElliptic(),
+                                  source_models.CosmosCatalog(
+                                     'test_files/cosmos_galaxies_testing.npz'
+                                  )),
             'all_psf_models': (psf_models.Gaussian(),)
         }
         principal_md_index = 0
