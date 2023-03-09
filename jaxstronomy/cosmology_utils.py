@@ -20,7 +20,7 @@ Peak value calculations follow colossus implementation:
 https://bitbucket.org/bdiemer/colossus/src/master/
 """
 
-from typing import Mapping, Optional, Tuple, Union
+from typing import Mapping, Optional, Union
 
 import jax
 import jax.numpy as jnp
@@ -107,8 +107,8 @@ def _comoving_distance_numerical(
     one_over_ez_int = jnp.trapz(1 / e_z_samples, z_samples)
 
     # Factor in the speed of light and the Hubble constant. The factor of 1e-3
-    # comes from accounting for integral output being in Mpc * s / km and speed of
-    # light being in m/s as well as h being H0/100.
+    # comes from accounting for integral output being in Mpc * s / km and speed
+    # of light being in m/s as well as h being H0/100.
     one_over_ez_int *= SPEED_OF_LIGHT * 1e-3
     one_over_ez_int /= cosmology_params['hubble_constant']
 
@@ -123,8 +123,8 @@ def _sigma_k_integrand(
     Args:
         cosmology_params: Cosmological parameters that define the universe's
             expansion. Does not require lookup tables.
-        log_k: Log of the wavenumber values at which to evaluate integrand in units
-            of h/Mpc.
+        log_k: Log of the wavenumber values at which to evaluate integrand in
+            units of h/Mpc.
         radius: Scale at which to calculate the rms variance in units of Mpc/h.
 
     Returns:
@@ -176,8 +176,8 @@ def _sigma_norm(cosmology_params: Mapping[str, Union[float, int]]) -> float:
     """Calculate the normalization of the variance of the linear density field.
 
     Args:
-        init_cosmology_params: Cosmological parameters that define the universe's
-            expansion. Does not require lookup tables.
+        init_cosmology_params: Cosmological parameters that define the
+            universe's expansion. Does not require lookup tables.
 
     Returns:
         Normalized RMS variance of the linear density field.
@@ -193,9 +193,9 @@ def _growth_factor_exact_unormalized(
     """Calculate the linear growth factor, unormalized.
 
     Args:
-        init_cosmology_params: Cosmological parameters that define the universe's
-            expansion, excluding the lookup table for the comoving_distance
-            calculation.
+        init_cosmology_params: Cosmological parameters that define the
+            universe's expansion, excluding the lookup table for the
+            comoving_distance calculation.
         z: Redshift at which to calculate the growth factor.
 
     Returns:
@@ -206,9 +206,9 @@ def _growth_factor_exact_unormalized(
     """
     z_samples = jnp.logspace(
             jnp.log10(jax.lax.max(z, 1e-6)), jnp.log10(GROWTH_Z_MAX), 10000)
-    integral = jnp.trapz(
-            (1.0 + z_samples) / _e_z_rad_to_dark(cosmology_params, z_samples)**3,
-            z_samples)
+    integral = jnp.trapz((1.0 + z_samples) /
+                            _e_z_rad_to_dark(cosmology_params, z_samples) ** 3,
+                         z_samples)
 
     return (5.0 / 2.0 * cosmology_params['omega_m_zero'] *
                     _e_z_rad_to_dark(cosmology_params, z) * integral)
@@ -226,10 +226,10 @@ def add_lookup_tables_to_cosmology_params(
             expansion. Does not include lookup tables.
         z_lookup_max: Maximum z to calculate in the lookup tables.
         dz: Step size in redshift space at which to calculate lookup tables.
-        r_min: Logarithm of minimum lagrangian radius to include in lookup tables.
-            In units of Mpc/h.
-        r_max: Logarithm of maximum lagrangian radius to include in lookup tables.
-            In units of Mpc/h.
+        r_min: Logarithm of minimum lagrangian radius to include in lookup
+            tables. In units of Mpc/h.
+        r_max: Logarithm of maximum lagrangian radius to include in lookup
+            tables. In units of Mpc/h.
         n_r_bins: Number of radial bins to include in sigma lookup tables.
 
     Returns:
@@ -255,7 +255,7 @@ def add_lookup_tables_to_cosmology_params(
             sigma_exact, in_axes=[None, 0])(cosmology_params, radius_range)
     growth_lookup_table = (
             jax.vmap(growth_factor, in_axes=[None, 0])(cosmology_params,
-                                                                                                 z_range))
+                                                       z_range))
 
     cosmology_params_lookup = {
             'dz': dz,
@@ -287,9 +287,9 @@ def comoving_distance(
         Comoving distance in units of Mpc.
 
     Notes:
-        If `z_min` or `z_max` are larger than `z_lookup_max` in `cosmology_params`
-        the return will be equivalent to replacing the offending parameter(s) with
-        `z_lookup_max`.
+        If `z_min` or `z_max` are larger than `z_lookup_max` in
+        `cosmology_params` the return will be equivalent to replacing the
+        offending parameter(s) with `z_lookup_max`.
     """
     # Interpolate between the four nearest binds to the query.
     unrounded_i = z_min / cosmology_params['dz']
@@ -312,16 +312,20 @@ def comoving_distance(
     # leads to slightly slower code due to fraction matrix initialization.
     interpolated = (
             (1 - frac_i) * (1 - frac_j) *
-            cosmology_params['comoving_lookup_table'][lookup_i_lower, lookup_j_lower])
+            cosmology_params['comoving_lookup_table'][lookup_i_lower,
+                                                      lookup_j_lower])
     interpolated += (
             (frac_i) * (1 - frac_j) *
-            cosmology_params['comoving_lookup_table'][lookup_i_upper, lookup_j_lower])
+            cosmology_params['comoving_lookup_table'][lookup_i_upper,
+                                                      lookup_j_lower])
     interpolated += (
             (1 - frac_i) * (frac_j) *
-            cosmology_params['comoving_lookup_table'][lookup_i_lower, lookup_j_upper])
+            cosmology_params['comoving_lookup_table'][lookup_i_lower,
+                                                      lookup_j_upper])
     interpolated += (
             (frac_i) * (frac_j) *
-            cosmology_params['comoving_lookup_table'][lookup_i_upper, lookup_j_upper])
+            cosmology_params['comoving_lookup_table'][lookup_i_upper,
+                                                      lookup_j_upper])
 
     return interpolated
 
@@ -394,7 +398,8 @@ def comoving_to_angle(comv_x: Union[float, jnp.ndarray],
     Returns:
         X- and y-coordinate in angular units (radians).
     """
-    arcsecond_per_megaparsec = 1 / comoving_distance(cosmology_params, 0, z_lens)
+    arcsecond_per_megaparsec = 1 / comoving_distance(cosmology_params, 0,
+                                                     z_lens)
     return comv_x * arcsecond_per_megaparsec, comv_y * arcsecond_per_megaparsec
 
 
@@ -416,7 +421,8 @@ def reduced_to_physical(
     """
     return reduced * (
             angular_diameter_distance_between(cosmology_params, 0.0, z_source) /
-            angular_diameter_distance_between(cosmology_params, z_lens, z_source))
+            angular_diameter_distance_between(cosmology_params, z_lens,
+                                              z_source))
 
 
 def rho_matter(cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
@@ -460,7 +466,8 @@ def lagrangian_radius(
     Args:
         cosmology_params: Cosmological parameters that define the universe's
             expansion.
-        mass: Mass at which to calculate the lagrangian radius in units M_sun / h.
+        mass: Mass at which to calculate the lagrangian radius in units
+            M_sun / h.
 
     Returns:
         Lagrangian radius in units of comoving Mpc / h.
@@ -473,7 +480,7 @@ def lagrangian_radius(
 
 def sigma_tophat(cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
     lagrangian_r: float, z: float) -> float:
-    """The RMS variance of the linear density field, including the growth factor.
+    """The RMS variance of the linear density field, including growth factor.
 
     Args:
         cosmology_params: Cosmological parameters that define the universe's
@@ -505,12 +512,14 @@ def sigma_tophat(cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
             jnp.floor(lookup_sigma_unrounded).astype(int), 0)
 
     sigma_no_growth = (
-            frac_sigma * cosmology_params['sigma_lookup_table'][lookup_sigma_upper] +
+            frac_sigma *
+            cosmology_params['sigma_lookup_table'][lookup_sigma_upper] +
             (1 - frac_sigma) *
             cosmology_params['sigma_lookup_table'][lookup_sigma_lower])
     growth = (
             frac_z * cosmology_params['growth_lookup_table'][lookup_z_upper] +
-            (1 - frac_z) * cosmology_params['growth_lookup_table'][lookup_z_lower])
+            (1 - frac_z) *
+            cosmology_params['growth_lookup_table'][lookup_z_lower])
 
     return sigma_no_growth * growth
 
@@ -523,15 +532,15 @@ def derivative_log_sigma_log_r(
     Args:
         cosmology_params: Cosmological parameters that define the universe's
             expansion.
-        lagrangian_r: Lagrangian radius at which to evaluate the derivative in units
-            of comoving Mpc / h.
+        lagrangian_r: Lagrangian radius at which to evaluate the derivative in
+            units of comoving Mpc / h.
         z: Redshift at which to evaluate the derivative.
 
     Returns:
         Derivative of the log RMS variance.
     """
-    # Calculate the derivative of sigma with respect to radius, then use the chain
-    # rule to get the log of sigma with respect to the log of the radius.
+    # Calculate the derivative of sigma with respect to radius, then use the
+    # chain rule to get the log of sigma with respect to the log of the radius.
     dr = cosmology_params['dr']
 
     # Calculate the derivative using the five-point stencil.
@@ -552,7 +561,8 @@ def peak_height(cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
     Args:
         cosmology_params: Cosmological parameters that define the universe's
             expansion.
-        mass: Mass at which to calculate the lagrangian radius in units M_sun / h.
+        mass: Mass at which to calculate the lagrangian radius in units
+            M_sun / h.
         z: Redshift of the halo.
 
     Returns:

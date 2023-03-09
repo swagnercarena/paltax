@@ -315,6 +315,13 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             sampled_configuration['model_index'], np.arange(n_models))
 
 
+    @chex.all_variants
+    def test_extract_multiple_models_angular(self):
+        # Test that the code draws the parameters for multiple models and
+        # converts the required parameters to angular units.
+        self.assertTrue(False)
+
+
     @chex.all_variants(without_device=False)
     def test_extract_truth_values(self):
         # Test that the extracted parameters match the values fed into the

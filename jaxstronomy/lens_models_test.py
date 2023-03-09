@@ -99,7 +99,7 @@ class AllTest(chex.TestCase):
         all_present = sorted(lens_models.__all__)
         all_required = []
         for name, value in inspect.getmembers(lens_models):
-            if inspect.isclass(value) and name is not '_LensModelBase':
+            if inspect.isclass(value) and name != '_LensModelBase':
                 all_required.append(name)
 
         self.assertListEqual(all_present, sorted(all_required))

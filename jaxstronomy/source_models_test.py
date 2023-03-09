@@ -23,10 +23,39 @@ import inspect
 from absl.testing import absltest
 from absl.testing import parameterized
 import chex
+from immutabledict import immutabledict
 import jax
 import jax.numpy as jnp
 import numpy as np
+
+from jaxstronomy import cosmology_utils
 from jaxstronomy import source_models
+from jaxstronomy import utils
+
+
+COSMOLOGY_PARAMS_INIT = immutabledict({
+        'omega_m_zero': 0.3089,
+        'omega_b_zero': 0.0486,
+        'omega_de_zero': 0.6910088292453472,
+        'omega_rad_zero': 9.117075466e-5,
+        'temp_cmb_zero': 2.7255,
+        'hubble_constant': 67.74,
+        'n_s': 0.9667,
+        'sigma_eight': 0.8159,
+})
+
+
+def _prepare_cosmology_params(
+        cosmology_params_init, z_lookup_max, dz, r_min=1e-4, r_max=1e3,
+        n_r_bins=2):
+    # Only generate a lookup table for values we need.
+    # When 0,0 is specified for the two z values, need to select a small
+    # non-zero values to generate a non-empty table.
+    z_lookup_max = max(z_lookup_max, 1e-7)
+    dz = max(dz, 1e-7)
+    return cosmology_utils.add_lookup_tables_to_cosmology_params(
+            dict(cosmology_params_init), z_lookup_max, dz, r_min, r_max,
+            n_r_bins)
 
 
 def _prepare_x_y():
@@ -66,6 +95,18 @@ def _prepare_interpol_parameters():
     }
 
 
+def _prepare_cosmos_parameters():
+    return {
+            'galaxy_index': 0.01,
+            'z_source': 1.5,
+            'output_ab_zeropoint': 23.5,
+            'catalog_ab_zeropoint': 25.6,
+            'center_x': 0.2,
+            'center_y': -0.2,
+            'angle': -np.pi / 6,
+    }
+
+
 def _prepare_sersic_elliptic_parameters():
     return {
             'amp': 1.4,
@@ -85,7 +126,7 @@ class AllTest(absltest.TestCase):
         all_present = sorted(source_models.__all__)
         all_required = []
         for name, value in inspect.getmembers(source_models):
-            if inspect.isclass(value) and name is not '_SourceModelBase':
+            if inspect.isclass(value) and name != '_SourceModelBase':
                 all_required.append(name)
 
         self.assertListEqual(all_present, sorted(all_required))
@@ -146,7 +187,7 @@ class InterpolTest(chex.TestCase, parameterized.TestCase):
         x, y = _prepare_x_y()
         parameters = _prepare_interpol_parameters()
         expected = jnp.array([[-0.48121729, 0.51891287, -0.29162392],
-                                                    [0.75206837, -0.48633681, -0.46977397]])
+                              [0.75206837, -0.48633681, -0.46977397]])
 
         coord_to_image_pixels = self.variant(
                 source_models.Interpol._coord_to_image_pixels)
@@ -154,8 +195,9 @@ class InterpolTest(chex.TestCase, parameterized.TestCase):
         np.testing.assert_allclose(
                 jnp.asarray(
                         coord_to_image_pixels(x, y, parameters['center_x'],
-                                                                    parameters['center_y'], parameters['angle'],
-                                                                    parameters['scale'])),
+                                              parameters['center_y'],
+                                              parameters['angle'],
+                                              parameters['scale'])),
                 expected,
                 rtol=1e-6)
 
@@ -165,7 +207,9 @@ class SersicEllipticTest(chex.TestCase, parameterized.TestCase):
 
     def test_parameters(self):
         annotated_parameters = sorted(source_models.SersicElliptic.parameters)
-        correct_parameters = sorted(_prepare_sersic_elliptic_parameters().keys())
+        correct_parameters = sorted(
+            _prepare_sersic_elliptic_parameters().keys()
+        )
         self.assertListEqual(annotated_parameters, correct_parameters)
 
     @chex.all_variants
@@ -190,8 +234,9 @@ class SersicEllipticTest(chex.TestCase, parameterized.TestCase):
 
         np.testing.assert_allclose(
                 get_distance_from_center(x, y, parameters['axis_ratio'],
-                                                                 parameters['angle'], parameters['center_x'],
-                                                                 parameters['center_y']),
+                                         parameters['angle'],
+                                         parameters['center_x'],
+                                         parameters['center_y']),
                 expected,
                 rtol=1e-5)
 
@@ -208,18 +253,159 @@ class SersicEllipticTest(chex.TestCase, parameterized.TestCase):
         brightness = self.variant(source_models.SersicElliptic._brightness)
 
         np.testing.assert_allclose(
-                brightness(radius, sersic_radius, n_sersic), expected, rtol=1e-5)
+                brightness(radius, sersic_radius, n_sersic), expected,
+                rtol=1e-5)
 
     @chex.all_variants
     @parameterized.named_parameters([
             (f'_n_s_{n_sersic}', n_sersic, expected)
-            for n_sersic, expected in zip([1., 2., 3.], [1.6721, 3.6713, 5.6705])
+            for n_sersic, expected in zip([1., 2., 3.],
+                                          [1.6721, 3.6713, 5.6705])
     ])
     def test__b_n(self, n_sersic, expected):
         b_n = self.variant(source_models.SersicElliptic._b_n)
 
         np.testing.assert_allclose(b_n(n_sersic), expected, rtol=1e-5)
 
+
+class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
+    """Runs tests of elliptical Sersic brightness functions."""
+
+    def test__init__(self):
+        # Test that the intialization unpackes the desired images.
+        cosmos_catalog = source_models.CosmosCatalog(
+            'test_files/cosmos_galaxies_testing.npz'
+        )
+        self.assertTupleEqual(cosmos_catalog.images.shape, (2, 256, 256))
+        self.assertTupleEqual(cosmos_catalog.redshifts.shape, (2,))
+        self.assertTupleEqual(cosmos_catalog.pixel_sizes.shape, (2,))
+
+    @chex.all_variants
+    def test_convert_to_angular(self):
+        # Test that it returns the parameters we need for the interpolation
+        # function.
+        cosmos_catalog = source_models.CosmosCatalog(
+            'test_files/cosmos_galaxies_testing.npz'
+        )
+
+        # Start with the redshifts and zeropoints being equal.
+        all_kwargs = {
+            'galaxy_index': 0.1,
+            'z_source': cosmos_catalog.redshifts[0],
+            'output_ab_zeropoint': 23.5,
+            'catalog_ab_zeropoint': 23.5
+        }
+        cosmology_params = _prepare_cosmology_params(
+            COSMOLOGY_PARAMS_INIT, 1.0, 0.01
+        )
+
+        convert_to_angular = self.variant(cosmos_catalog.convert_to_angular)
+        angular_kwargs = convert_to_angular(all_kwargs, cosmology_params)
+
+        np.testing.assert_array_almost_equal(
+            angular_kwargs['image'],
+            cosmos_catalog.images[0] / cosmos_catalog.pixel_sizes[0] ** 2,
+            decimal=4)
+        self.assertAlmostEqual(angular_kwargs['amp'], 1.0)
+        self.assertAlmostEqual(angular_kwargs['scale'],
+                               cosmos_catalog.pixel_sizes[0])
+
+        # Test that moving the image farther in redshift changes the pixel
+        # size and image
+        all_kwargs = {
+            'galaxy_index': 0.1,
+            'z_source': 0.9,
+            'output_ab_zeropoint': 23.5,
+            'catalog_ab_zeropoint': 23.5
+        }
+        angular_kwargs = convert_to_angular(all_kwargs, cosmology_params)
+
+        np.testing.assert_array_almost_equal(
+            angular_kwargs['image'],
+            cosmos_catalog.images[0] / cosmos_catalog.pixel_sizes[0] ** 2,
+            decimal=4)
+        self.assertLess(angular_kwargs['amp'], 1.0)
+        self.assertLess(angular_kwargs['scale'],
+                        cosmos_catalog.pixel_sizes[0])
+
+        # Introduce only an offset in zeropoints.
+        all_kwargs = {
+            'galaxy_index': 0.1,
+            'z_source': cosmos_catalog.redshifts[0],
+            'output_ab_zeropoint': 26.5,
+            'catalog_ab_zeropoint': 23.5
+        }
+        angular_kwargs = convert_to_angular(all_kwargs, cosmology_params)
+
+        np.testing.assert_array_almost_equal(
+            angular_kwargs['image'],
+            cosmos_catalog.images[0] / cosmos_catalog.pixel_sizes[0] ** 2,
+            decimal=4)
+        self.assertGreater(angular_kwargs['amp'], 1.0)
+        self.assertAlmostEqual(angular_kwargs['scale'],
+                               cosmos_catalog.pixel_sizes[0])
+
+
+    @chex.all_variants
+    def test_function(self):
+        # The function here is inherited from interpolate, so the real test is
+        # just to make sure that it doesn't crash when provided the angular
+        # kwargs from convert_to_angular.
+        parameters = _prepare_cosmos_parameters()
+        cosmos_catalog = source_models.CosmosCatalog(
+            'test_files/cosmos_galaxies_testing.npz'
+        )
+        cosmology_params = _prepare_cosmology_params(
+            COSMOLOGY_PARAMS_INIT, 2.0, 0.1
+        )
+        angular_parameters = cosmos_catalog.convert_to_angular(parameters,
+                                                               cosmology_params)
+        for param in cosmos_catalog.physical_parameters:
+            angular_parameters.pop(param)
+        x, y = _prepare_x_y()
+
+        function = self.variant(cosmos_catalog.function)
+
+        self.assertTupleEqual(function(x, y, **angular_parameters).shape, (3,))
+
+
+    @chex.all_variants
+    @parameterized.named_parameters(
+        (f'z_old_{z_old}_z_new_{z_new}', z_old, z_new)
+        for z_old, z_new in zip([0.5, 0.0, 0.2], [0.5, 0.8, 0.7])
+    )
+    def test_z_scale_factor(self, z_old, z_new):
+        # Test that the k-correction factor agrees with a manual calculation.
+        cosmology_params = _prepare_cosmology_params(
+            COSMOLOGY_PARAMS_INIT, z_new, 0.1
+        )
+        z_scale_factor = self.variant(
+            source_models.CosmosCatalog.z_scale_factor
+        )
+        expected = cosmology_utils.angular_diameter_distance(cosmology_params,
+                                                             z_old)
+        expected /= cosmology_utils.angular_diameter_distance(cosmology_params,
+                                                              z_new)
+
+        self.assertAlmostEqual(expected,
+                               z_scale_factor(z_old, z_new, cosmology_params))
+
+
+    @chex.all_variants
+    @parameterized.named_parameters(
+        (f'z_old_{z_old}_z_new_{z_new}', z_old, z_new)
+        for z_old, z_new in zip([0.5, 0.0, 0.2], [0.5, 0.8, 0.7])
+    )
+    def test_k_correct_image(self, z_old, z_new):
+        # Test that the k-correction factor agrees with a manual calculation.
+        mag_correction = utils.get_k_correction(z_new)
+        mag_correction -= utils.get_k_correction(z_old)
+        expected = 10 ** (- mag_correction / 2.5)
+        k_correct_image = self.variant(
+            source_models.CosmosCatalog.k_correct_image
+        )
+
+        self.assertAlmostEqual(expected, k_correct_image(z_old, z_new))
 
 if __name__ == '__main__':
     absltest.main()
