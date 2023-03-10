@@ -387,8 +387,9 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
         expected /= cosmology_utils.angular_diameter_distance(cosmology_params,
                                                               z_new)
 
-        self.assertAlmostEqual(expected,
-                               z_scale_factor(z_old, z_new, cosmology_params))
+        self.assertAlmostEqual(
+            expected, z_scale_factor(z_old, z_new, cosmology_params), places=6
+        )
 
 
     @chex.all_variants

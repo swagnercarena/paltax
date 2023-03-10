@@ -72,6 +72,9 @@ def get_config():
             'conc_dex_scatter': encode_constant(0.1)
         },
         'source_params':{
+            'galaxy_index': encode_uniform(minimum=0.0, maximum=1.0),
+            'output_ab_zeropoint': encode_constant(25.0),
+            'catalog_ab_zeropoint': encode_constant(25.0),
             'z_source': encode_constant(1.5),
             'amp': encode_uniform(minimum=1.0, maximum=10.0),
             'sersic_radius': encode_uniform(minimum=1.0, maximum=3.0),
@@ -98,12 +101,13 @@ def get_config():
         'exposure_time': 1024, 'num_exposures': 2.0, 'sky_brightness': 22,
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
+    cosmos_path = '/scratch/users/swagnerc/datasets/cosmos/cosmos_galaxies_train.npz'
     config['all_models'] = {
-        'all_los_models': (lens_models.NFW,),
-        'all_subhalo_models': (lens_models.TNFW,),
-        'all_main_deflector_models': (lens_models.EPL, lens_models.Shear),
-        'all_source_models': (source_models.SersicElliptic,),
-        'all_psf_models': (psf_models.Gaussian,)
+        'all_los_models': (lens_models.NFW(),),
+        'all_subhalo_models': (lens_models.TNFW(),),
+        'all_main_deflector_models': (lens_models.EPL(), lens_models.Shear()),
+        'all_source_models': (source_models.CosmosCatalog(cosmos_path),),
+        'all_psf_models': (psf_models.Gaussian(),)
     }
     config['cosmology_params'] = {
         'omega_m_zero': encode_constant(0.3089),
