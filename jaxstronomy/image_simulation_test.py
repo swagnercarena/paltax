@@ -151,6 +151,7 @@ def _prepare_all_models():
     all_models['all_subhalo_models'] = all_lens_models
     all_models['all_main_deflector_models'] = all_lens_models
     all_models['all_source_models'] = _prepare_all_source_models()
+    all_models['all_lens_light_models'] = _prepare_all_source_models()
     all_models['all_psf_models'] = _prepare_all_psf_models()
 
     return all_models

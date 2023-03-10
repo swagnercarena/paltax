@@ -301,7 +301,8 @@ class CosmosCatalog(Interpol):
         # Take into account the difference in the magnitude zeropoints
         # of the input survey and the output survey. Note this doesn't
         # take into account the color of the object.
-        amp = 10 ** (
+        amp = all_kwargs['amp']
+        amp *= 10 ** (
             (all_kwargs['output_ab_zeropoint'] -
              all_kwargs['catalog_ab_zeropoint']) / 2.5)
 

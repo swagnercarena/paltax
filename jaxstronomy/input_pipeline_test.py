@@ -505,6 +505,12 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
                                   source_models.CosmosCatalog(
                                      'test_files/cosmos_galaxies_testing.npz'
                                   )),
+            'all_lens_light_models': (
+                source_models.SersicElliptic(),
+                source_models.CosmosCatalog(
+                    'test_files/cosmos_galaxies_testing.npz'
+                )
+            ),
             'all_psf_models': (psf_models.Gaussian(),)
         }
         principal_md_index = 0

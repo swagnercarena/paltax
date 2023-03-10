@@ -387,7 +387,7 @@ def draw_image_and_truth(
     )
     lens_light_params = extract_multiple_models_angular(
         lensing_config['lens_light_params'], rng_ll, cosmology_params,
-        all_models['all_source_models']
+        all_models['all_lens_light_models']
     )
     los_params = draw_sample(lensing_config['los_params'], rng_los)
     subhalo_params = draw_sample(lensing_config['subhalo_params'], rng_sub)

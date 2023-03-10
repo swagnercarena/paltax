@@ -99,6 +99,7 @@ def _prepare_cosmos_parameters():
     return {
             'galaxy_index': 0.01,
             'z_source': 1.5,
+            'amp': 1.0,
             'output_ab_zeropoint': 23.5,
             'catalog_ab_zeropoint': 25.6,
             'center_x': 0.2,
@@ -291,6 +292,7 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
         # Start with the redshifts and zeropoints being equal.
         all_kwargs = {
             'galaxy_index': 0.1,
+            'amp': 1.0,
             'z_source': cosmos_catalog.redshifts[0],
             'output_ab_zeropoint': 23.5,
             'catalog_ab_zeropoint': 23.5
@@ -314,6 +316,7 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
         # size and image
         all_kwargs = {
             'galaxy_index': 0.1,
+            'amp': 1.0,
             'z_source': 0.9,
             'output_ab_zeropoint': 23.5,
             'catalog_ab_zeropoint': 23.5
@@ -331,6 +334,7 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
         # Introduce only an offset in zeropoints.
         all_kwargs = {
             'galaxy_index': 0.1,
+            'amp': 1.0,
             'z_source': cosmos_catalog.redshifts[0],
             'output_ab_zeropoint': 26.5,
             'catalog_ab_zeropoint': 23.5

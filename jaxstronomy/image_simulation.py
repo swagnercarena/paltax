@@ -83,7 +83,7 @@ def generate_image(
     )
     image_array += lens_light_surface_brightness(
         grid_x, grid_y, kwargs_lens_light_slice, kwargs_detector,
-        all_models['all_source_models']
+        all_models['all_lens_light_models']
     )
     image = jnp.reshape(
         image_array,

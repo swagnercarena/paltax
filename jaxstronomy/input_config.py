@@ -107,6 +107,7 @@ def get_config():
         'all_subhalo_models': (lens_models.TNFW(),),
         'all_main_deflector_models': (lens_models.EPL(), lens_models.Shear()),
         'all_source_models': (source_models.CosmosCatalog(cosmos_path),),
+        'all_lens_light_models': (source_models.SersicElliptic(),),
         'all_psf_models': (psf_models.Gaussian(),)
     }
     config['cosmology_params'] = {
