@@ -295,6 +295,9 @@ class CosmosCatalog(Interpol):
         pixel_scale_catalog = self.pixel_sizes[galaxy_index]
         image = self.images[galaxy_index] / pixel_scale_catalog ** 2
 
+        # Force the image onto the default device (gpu if one is present).
+        image = jax.device_put(image, jax.devices()[0])
+
         # Take into account the difference in the magnitude zeropoints
         # of the input survey and the output survey. Note this doesn't
         # take into account the color of the object.
