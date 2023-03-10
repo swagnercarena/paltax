@@ -411,7 +411,7 @@ def draw_image_and_truth(
         'main_deflector_params': main_deflector_params_sub
     }
 
-    rng_los, rng_sub = jax.random.split(rng)
+    rng_los, rng_sub, rng_noise = jax.random.split(rng, 3)
     los_before_tuple, los_after_tuple = los.draw_los(
         main_deflector_params_sub, source_params_sub, los_params,
         cosmology_params, rng_los, num_z_bins, los_pad_length)
@@ -435,6 +435,8 @@ def draw_image_and_truth(
         kwargs_detector, all_models)
     image = utils.downsample(image_supersampled,
                              kwargs_detector['supersampling_factor'])
+    image += image_simulation.noise_realization(image, rng_noise,
+                                                kwargs_detector)
     # Normalize and the image to have standard deviation 1.
     if normalize_image:
         image /= jnp.std(image)
