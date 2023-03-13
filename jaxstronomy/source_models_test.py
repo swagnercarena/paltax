@@ -136,6 +136,13 @@ class AllTest(absltest.TestCase):
 class SourceModelBaseTest(chex.TestCase):
     """Runs tests of __SourceModelBase functions."""
 
+    def test_modify_cosmology_params(self):
+        # Make sure the dict is modified by default.
+        input_dict = {'a': 20}
+        new_dict = source_models._SourceModelBase().modify_cosmology_params(
+            input_dict)
+        self.assertDictEqual(input_dict, new_dict)
+
     @chex.all_variants
     def test_convert_to_angular(self):
         input_dict = {'a': 1.0, 'b': 12.0, 'c': 2}
@@ -277,9 +284,24 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
         cosmos_catalog = source_models.CosmosCatalog(
             'test_files/cosmos_galaxies_testing.npz'
         )
-        self.assertTupleEqual(cosmos_catalog.images.shape, (2, 256, 256))
-        self.assertTupleEqual(cosmos_catalog.redshifts.shape, (2,))
-        self.assertTupleEqual(cosmos_catalog.pixel_sizes.shape, (2,))
+        self.assertEqual(cosmos_catalog.cosmos_path,
+                         'test_files/cosmos_galaxies_testing.npz')
+
+    def test_modify_cosmology_params(self):
+        cosmos_catalog = source_models.CosmosCatalog(
+            'test_files/cosmos_galaxies_testing.npz'
+        )
+        cosmology_params = {}
+        cosmology_params = cosmos_catalog.modify_cosmology_params(
+            cosmology_params
+        )
+
+        self.assertEqual(cosmology_params['cosmos_images'].shape,
+                         (2, 256, 256))
+        self.assertTupleEqual(cosmology_params['cosmos_redshifts'].shape, (2,))
+        self.assertTupleEqual(cosmology_params['cosmos_pixel_sizes'].shape,
+                              (2,))
+        self.assertEqual(cosmology_params['cosmos_n_images'], 2)
 
     @chex.all_variants
     def test_convert_to_angular(self):
@@ -289,28 +311,33 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
             'test_files/cosmos_galaxies_testing.npz'
         )
 
+
         # Start with the redshifts and zeropoints being equal.
-        all_kwargs = {
-            'galaxy_index': 0.1,
-            'amp': 1.0,
-            'z_source': cosmos_catalog.redshifts[0],
-            'output_ab_zeropoint': 23.5,
-            'catalog_ab_zeropoint': 23.5
-        }
         cosmology_params = _prepare_cosmology_params(
             COSMOLOGY_PARAMS_INIT, 1.0, 0.01
         )
+        cosmology_params = cosmos_catalog.modify_cosmology_params(
+            cosmology_params
+        )
+        all_kwargs = {
+            'galaxy_index': 0.1,
+            'amp': 1.0,
+            'z_source': cosmology_params['cosmos_redshifts'][0],
+            'output_ab_zeropoint': 23.5,
+            'catalog_ab_zeropoint': 23.5
+        }
 
         convert_to_angular = self.variant(cosmos_catalog.convert_to_angular)
         angular_kwargs = convert_to_angular(all_kwargs, cosmology_params)
 
         np.testing.assert_array_almost_equal(
             angular_kwargs['image'],
-            cosmos_catalog.images[0] / cosmos_catalog.pixel_sizes[0] ** 2,
+            (cosmology_params['cosmos_images'][0] /
+                cosmology_params['cosmos_pixel_sizes'][0] ** 2),
             decimal=4)
         self.assertAlmostEqual(angular_kwargs['amp'], 1.0)
         self.assertAlmostEqual(angular_kwargs['scale'],
-                               cosmos_catalog.pixel_sizes[0])
+                               cosmology_params['cosmos_pixel_sizes'][0])
 
         # Test that moving the image farther in redshift changes the pixel
         # size and image
@@ -325,17 +352,18 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
 
         np.testing.assert_array_almost_equal(
             angular_kwargs['image'],
-            cosmos_catalog.images[0] / cosmos_catalog.pixel_sizes[0] ** 2,
+            (cosmology_params['cosmos_images'][0] /
+                cosmology_params['cosmos_pixel_sizes'][0] ** 2),
             decimal=4)
         self.assertLess(angular_kwargs['amp'], 1.0)
         self.assertLess(angular_kwargs['scale'],
-                        cosmos_catalog.pixel_sizes[0])
+                        cosmology_params['cosmos_pixel_sizes'][0])
 
         # Introduce only an offset in zeropoints.
         all_kwargs = {
             'galaxy_index': 0.1,
             'amp': 1.0,
-            'z_source': cosmos_catalog.redshifts[0],
+            'z_source': cosmology_params['cosmos_redshifts'][0],
             'output_ab_zeropoint': 26.5,
             'catalog_ab_zeropoint': 23.5
         }
@@ -343,11 +371,12 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
 
         np.testing.assert_array_almost_equal(
             angular_kwargs['image'],
-            cosmos_catalog.images[0] / cosmos_catalog.pixel_sizes[0] ** 2,
+            (cosmology_params['cosmos_images'][0] /
+                cosmology_params['cosmos_pixel_sizes'][0] ** 2),
             decimal=4)
         self.assertGreater(angular_kwargs['amp'], 1.0)
         self.assertAlmostEqual(angular_kwargs['scale'],
-                               cosmos_catalog.pixel_sizes[0])
+                               cosmology_params['cosmos_pixel_sizes'][0])
 
 
     @chex.all_variants
@@ -361,6 +390,9 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
         )
         cosmology_params = _prepare_cosmology_params(
             COSMOLOGY_PARAMS_INIT, 2.0, 0.1
+        )
+        cosmology_params = cosmos_catalog.modify_cosmology_params(
+            cosmology_params
         )
         angular_parameters = cosmos_catalog.convert_to_angular(parameters,
                                                                cosmology_params)

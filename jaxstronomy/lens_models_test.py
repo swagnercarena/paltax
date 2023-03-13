@@ -108,6 +108,13 @@ class AllTest(chex.TestCase):
 class LensModelBaseTest(chex.TestCase):
     """Runs tests of __SourceModelBase functions."""
 
+    def test_modify_cosmology_params(self):
+        # Make sure the dict is modified by default.
+        input_dict = {'a': 20}
+        new_dict = lens_models._LensModelBase().modify_cosmology_params(
+            input_dict)
+        self.assertDictEqual(input_dict, new_dict)
+
     @chex.all_variants
     def test_convert_to_angular(self):
         input_dict = {'a': 1.0, 'b': 12.0, 'c': 2}

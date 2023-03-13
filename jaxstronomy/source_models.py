@@ -40,8 +40,24 @@ class _SourceModelBase():
     physical_parameters = ()
     parameters = ()
 
+    def modify_cosmology_params(
+            self: Any,
+            cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
+        ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
+        """Modify cosmology params to include information required by model.
+
+        Args:
+            cosmology_params: Cosmological parameters that define the universe's
+                expansion.
+
+        Returns:
+            Modified cosmology parameters.
+        """
+        return cosmology_params
+
+    @staticmethod
     def convert_to_angular(
-            self: Any, all_kwargs:  Mapping[str, jnp.ndarray],
+            all_kwargs:  Mapping[str, jnp.ndarray],
             cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
         ) -> Mapping[str, jnp.ndarray]:
         """Convert any parameters in physical units to angular units.
@@ -240,7 +256,7 @@ class SersicElliptic(_SourceModelBase):
 
 
 class CosmosCatalog(Interpol):
-    """Light profiles of real galaxies, using paltas to access a catalog
+    """Light profiles of real galaxies from COSMOS.
     """
 
     physical_parameters = (
@@ -250,28 +266,44 @@ class CosmosCatalog(Interpol):
     parameters = ('image', 'amp', 'center_x', 'center_y', 'angle', 'scale')
 
     def __init__(self: Any, cosmos_path: str):
-        """Initialize the array containing the images of the COSMOS galaxies.
+        """Initialize the path to the COSMOS galaxies.
 
         Args:
             cosmos_path: Path to the npz file containing the cosmos images,
                 redshift array, and pixel sizes.
         """
         # Load the cosmos images and redshifts
-        npz_file = np.load(cosmos_path)
+        self.cosmos_path = cosmos_path
+
+    def modify_cosmology_params(
+            self: Any,
+            cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
+        ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
+        """Modify cosmology params to include information required by model.
+
+        Args:
+            cosmology_params: Cosmological parameters that define the universe's
+                expansion.
+
+        Returns:
+            Modified cosmology parameters.
+        """
+        npz_file = np.load(self.cosmos_path)
         images = npz_file['images']
-        self.n_images = len(images)
+        cosmology_params['cosmos_n_images'] = len(images)
         redshifts = npz_file['redshifts']
         pixel_sizes = npz_file['pixel_sizes']
 
         # Convert attributes we need later to jax arrays
-        self.pixel_sizes = jnp.asarray(pixel_sizes)
-        self.redshifts = jnp.asarray(redshifts)
-        # Place the giant image array in main RAM, not GPU memory
-        with jax.default_device(jax.devices("cpu")[0]):
-            self.images = jnp.asarray(images)
+        cosmology_params['cosmos_pixel_sizes'] = jnp.asarray(pixel_sizes)
+        cosmology_params['cosmos_redshifts'] = jnp.asarray(redshifts)
+        cosmology_params['cosmos_images'] = jnp.asarray(images)
 
+        return cosmology_params
+
+    @staticmethod
     def convert_to_angular(
-            self: Any, all_kwargs: Mapping[str, jnp.ndarray],
+            all_kwargs: Mapping[str, jnp.ndarray],
             cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
         ) -> Mapping[str, jnp.ndarray]:
         """Convert any parameters in physical units to angular units.
@@ -287,13 +319,17 @@ class CosmosCatalog(Interpol):
                 units.
         """
         # Select the galaxy incdex from the uniform distribution.
-        galaxy_index = jnp.floor(all_kwargs['galaxy_index'] *
-                                 self.n_images).astype(int)
+        galaxy_index = jnp.floor(
+            all_kwargs['galaxy_index'] * cosmology_params['cosmos_n_images']
+        ).astype(int)
 
         # Read the catalog values directly from the stored arrays.
-        z_catalog = self.redshifts[galaxy_index]
-        pixel_scale_catalog = self.pixel_sizes[galaxy_index]
-        image = self.images[galaxy_index] / pixel_scale_catalog ** 2
+        z_catalog = cosmology_params['cosmos_redshifts'][galaxy_index]
+        pixel_scale_catalog = (
+            cosmology_params['cosmos_pixel_sizes'][galaxy_index]
+        )
+        image = (cosmology_params['cosmos_images'][galaxy_index] /
+                 pixel_scale_catalog ** 2)
 
         # Force the image onto the default device (gpu if one is present).
         image = jax.device_put(image, jax.devices()[0])
@@ -307,10 +343,10 @@ class CosmosCatalog(Interpol):
              all_kwargs['catalog_ab_zeropoint']) / 2.5)
 
         # Calculate the new pixel scale and amplitude at the given redshift.
-        pixel_scale = pixel_scale_catalog * self.z_scale_factor(
+        pixel_scale = pixel_scale_catalog * CosmosCatalog.z_scale_factor(
             z_catalog, all_kwargs['z_source'], cosmology_params
         )
-        amp *= self.k_correct_image(z_catalog, all_kwargs['z_source'])
+        amp *= CosmosCatalog.k_correct_image(z_catalog, all_kwargs['z_source'])
 
         # Add the new keywords to the original dictionary.
         all_kwargs['image'] = image

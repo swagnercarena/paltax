@@ -34,8 +34,24 @@ class _LensModelBase():
     physical_parameters = ()
     parameters = ()
 
+    def modify_cosmology_params(
+            self: Any,
+            cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
+        ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
+        """Modify cosmology params to include information required by model.
+
+        Args:
+            cosmology_params: Cosmological parameters that define the universe's
+                expansion.
+
+        Returns:
+            Modified cosmology parameters.
+        """
+        return cosmology_params
+
+    @staticmethod
     def convert_to_angular(
-            self: Any, all_kwargs:  Mapping[str, jnp.ndarray],
+            all_kwargs:  Mapping[str, jnp.ndarray],
             cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
         ) -> Mapping[str, jnp.ndarray]:
         """Convert any parameters in physical units to angular units.

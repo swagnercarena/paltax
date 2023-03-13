@@ -299,6 +299,11 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
                 'm_min': encode_constant(1e7)
             }
         }
+        config['all_models'] = {
+            'all_source_models': (source_models.CosmosCatalog(
+                'test_files/cosmos_galaxies_testing.npz'
+                ),)
+        }
         rng = jax.random.PRNGKey(0)
 
         cosmology_params = input_pipeline.intialize_cosmology_params(
@@ -313,6 +318,10 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(cosmology_params['dz'], dz / 2)
         self.assertAlmostEqual(cosmology_params['r_min'], r_min, places=6)
         self.assertAlmostEqual(cosmology_params['r_max'], r_max, places=6)
+
+        # Test that the cosmos images are present
+        self.assertTupleEqual(cosmology_params['cosmos_images'].shape,
+                              (2, 256, 256))
 
     @chex.all_variants
     def test_draw_sample(self):
@@ -414,18 +423,21 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         config = {}
         config['cosmology_params'] = _perpare_cosmology_params()
         config['lensing_config'] = _prepare_lensing_config()
-        cosmology_params = input_pipeline.intialize_cosmology_params(config,
-                                                                     rng)
-        all_models = (
+        all_source_models = (
             source_models.SersicElliptic(),
             source_models.CosmosCatalog(
                 'test_files/cosmos_galaxies_testing.npz'
             )
         )
+        config['all_models'] = {
+            'all_source_models': all_source_models
+        }
+        cosmology_params = input_pipeline.intialize_cosmology_params(config,
+                                                                     rng)
 
         extract_multiple_models_angular = self.variant(functools.partial(
             input_pipeline.extract_multiple_models_angular,
-            all_models=all_models
+            all_models=all_source_models
         ))
 
         sampled_configuration = extract_multiple_models_angular(
@@ -434,7 +446,8 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         for image in sampled_configuration['image']:
             np.testing.assert_array_almost_equal(
                 image,
-                all_models[1].images[1] / all_models[1].pixel_sizes[1] ** 2
+                (cosmology_params['cosmos_images'][1] /
+                 cosmology_params['cosmos_pixel_sizes'][1] ** 2)
             )
         for amp in sampled_configuration['amp']:
             self.assertNotAlmostEqual(amp, 1e3)
@@ -483,19 +496,6 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         config = {}
         config['cosmology_params'] = _perpare_cosmology_params()
         config['lensing_config'] = _prepare_lensing_config()
-        rng = jax.random.PRNGKey(0)
-
-        cosmology_params = input_pipeline.intialize_cosmology_params(config,
-                                                                     rng)
-        n_x = 16
-        n_y = 16
-        config['kwargs_detector'] = {
-            'n_x': n_x, 'n_y': n_y, 'pixel_width': 0.4,
-            'supersampling_factor': 2, 'exposure_time': 1024,
-            'num_exposures': 1.0, 'sky_brightness': 22,
-            'magnitude_zero_point': 25, 'read_noise': 3.0
-        }
-        grid_x, grid_y = input_pipeline.generate_grids(config)
         all_models = {
             'all_los_models': (lens_models.NFW(),),
             'all_subhalo_models': (lens_models.TNFW(),),
@@ -513,6 +513,20 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             ),
             'all_psf_models': (psf_models.Gaussian(),)
         }
+        config['all_models'] = all_models
+        rng = jax.random.PRNGKey(0)
+
+        cosmology_params = input_pipeline.intialize_cosmology_params(config,
+                                                                     rng)
+        n_x = 16
+        n_y = 16
+        config['kwargs_detector'] = {
+            'n_x': n_x, 'n_y': n_y, 'pixel_width': 0.4,
+            'supersampling_factor': 2, 'exposure_time': 1024,
+            'num_exposures': 1.0, 'sky_brightness': 22,
+            'magnitude_zero_point': 25, 'read_noise': 3.0
+        }
+        grid_x, grid_y = input_pipeline.generate_grids(config)
         principal_md_index = 0
         principal_source_index = 0
         kwargs_simulation = {

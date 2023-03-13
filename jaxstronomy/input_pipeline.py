@@ -15,7 +15,6 @@
 network.
 """
 
-import functools
 from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
 import jax.numpy as jnp
@@ -182,13 +181,14 @@ def generate_grids(
 
 
 def intialize_cosmology_params(
-        config: Mapping[str, Mapping[str, jnp.ndarray]], rng: Sequence[int],
+        config: Mapping[str, Mapping[str, jnp.ndarray]], rng: Sequence[int]
 ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
     """Initialize the cosmology parameters as needed by the config.
 
     Args:
         config: Configuration dictionary for input generation.
         rng: jax PRNG key.
+        all_models: Tuple of model classes to consider for each component.
 
     Returns:
         Cosmological parameters with appropriate lookup table.
@@ -215,8 +215,16 @@ def intialize_cosmology_params(
     cosmology_params = cosmology_utils.add_lookup_tables_to_cosmology_params(
         cosmology_params_init, 1.5, dz / 2, r_min, r_max, 10000)
     extrenal_los_params = {'m_min': m_min, 'm_max': m_max, 'dz': dz}
-    return los.add_los_lookup_tables_to_cosmology_params(
-        extrenal_los_params, cosmology_params, max_source_z)
+    cosmology_params = los.add_los_lookup_tables_to_cosmology_params(
+        extrenal_los_params, cosmology_params, max_source_z
+    )
+
+    # Add the additional parameters required by the lens and source models.
+    for model_group in config['all_models']:
+        for model in config['all_models'][model_group]:
+            cosmology_params = model.modify_cosmology_params(cosmology_params)
+
+    return cosmology_params
 
 
 def draw_sample(
