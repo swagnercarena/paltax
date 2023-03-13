@@ -76,7 +76,7 @@ def get_config():
             'output_ab_zeropoint': encode_constant(25.0),
             'catalog_ab_zeropoint': encode_constant(25.0),
             'z_source': encode_constant(1.5),
-            'amp': encode_uniform(minimum=1.0, maximum=10.0),
+            'amp': encode_constant(1.0),
             'sersic_radius': encode_uniform(minimum=1.0, maximum=3.0),
             'n_sersic': encode_uniform(minimum=1.0, maximum=1.5),
             'axis_ratio': encode_normal(mean=1.0, std=0.05),
