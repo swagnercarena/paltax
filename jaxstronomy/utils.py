@@ -14,14 +14,14 @@
 """Strong lensing utility functions."""
 
 import functools
-from typing import Any, Callable, Mapping, Sequence, Tuple
+from typing import Any, Callable, Sequence, Tuple
 
 import jax.numpy as jnp
 
 
 def coordinates_evaluate(
-        n_x, n_y, pixel_width,
-        supersampling_factor):
+        n_x: int, n_y: int, pixel_width: float, supersampling_factor: int
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Returns the coordinate grid in the observer plane in angular units.
 
     Args:
@@ -29,8 +29,8 @@ def coordinates_evaluate(
         n_y: Number of pixels in y direction
         pixel_width: Size of a pixel in angular units. Pixels are assumed to be
             square.
-        supersampling_factor: Factor by which to supersample light rays. Number of
-            light rays will scale like supersampling_factor**2.
+        supersampling_factor: Factor by which to supersample light rays. Number
+            of light rays will scale like supersampling_factor**2.
 
     Returns:
         X- and y-coordinates at which to raytrace.
@@ -49,9 +49,8 @@ def coordinates_evaluate(
 
 
 def unpack_parameters_xy(
-        func,  # Use Concatenate once available internally.
-        parameters,
-):
+        func: Callable[[Any], Any], parameters:Sequence[str],
+) -> Callable[[Any], Any]:
     """Returns function wrapper that unpacks parameters for grid functions.
 
     Returns function wrapper that unpacks required parameters for functions whose
@@ -73,7 +72,7 @@ def unpack_parameters_xy(
     return functools.partial(derivative_wrapper, parameters=parameters)
 
 
-def downsample(image, supersampling_factor):
+def downsample(image: jnp.ndarray, supersampling_factor: int) -> jnp.ndarray:
     """Downsamples image to correct for supersampling factor.
 
     Args:
@@ -90,7 +89,7 @@ def downsample(image, supersampling_factor):
     return jnp.sum(jnp.sum(image, axis=3), axis=1)
 
 
-def magnitude_to_cps(magnitude, magnitude_zero_point):
+def magnitude_to_cps(magnitude: float, magnitude_zero_point: float) -> float:
     """Converts magnitude to counts per second.
 
     Args:
@@ -101,3 +100,20 @@ def magnitude_to_cps(magnitude, magnitude_zero_point):
         Counts per second corresponding to input magnitude.
     """
     return 10**(-(magnitude - magnitude_zero_point) / 2.5)
+
+
+def get_k_correction(z_light: float) -> float:
+    """Return k-correction for a galaxy source at given redshift.
+
+    Args:
+        z_light: Redshift of galaxy light source
+
+    Returns:
+        K-correction factor.
+
+    Notes:
+		This code assumes the galaxy has a flat spectral wavelength density (and
+		therefore 1/nu^2 spectral frequency density) and that the bandpass used
+		for the absolute and apparent magntidue is the same
+    """
+    return 2.5 * jnp.log(1 + z_light)

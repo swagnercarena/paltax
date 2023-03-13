@@ -99,11 +99,11 @@ def get_config():
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
     config['all_models'] = {
-        'all_los_models': (lens_models.NFW,),
-        'all_subhalo_models': (lens_models.TNFW,),
-        'all_main_deflector_models': (lens_models.EPL, lens_models.Shear),
-        'all_source_models': (source_models.SersicElliptic,),
-        'all_psf_models': (psf_models.Gaussian,)
+        'all_los_models': (lens_models.NFW(),),
+        'all_subhalo_models': (lens_models.TNFW(),),
+        'all_main_deflector_models': (lens_models.EPL(), lens_models.Shear()),
+        'all_source_models': (source_models.SersicElliptic(),),
+        'all_psf_models': (psf_models.Gaussian(),)
     }
     config['cosmology_params'] = {
         'omega_m_zero': encode_constant(0.3111),

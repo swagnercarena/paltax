@@ -14,12 +14,12 @@
 """Tests for image_simulation.py."""
 
 import functools
+import itertools
 
 from absl.testing import absltest
 from absl.testing import parameterized
 import chex
 from immutabledict import immutabledict
-import itertools
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -73,7 +73,8 @@ def _prepare_kwargs_psf():
         *[model.parameters for model in all_psf_models]))))
     kwargs_psf = {param: 0.05 for param in params}
     kwargs_psf['pixel_width'] = (
-        kwargs_detector['pixel_width'] / kwargs_detector['supersampling_factor'])
+        kwargs_detector['pixel_width'] / kwargs_detector['supersampling_factor']
+    )
     x = jnp.arange(-0.5, 0.5, 0.04) / 0.02
     kernel = jnp.outer(jnp.exp(-x**2), jnp.exp(-x**2))
     kwargs_psf['kernel_point_source'] = kernel
@@ -108,7 +109,7 @@ def _prepare_image():
 
 def _prepare_all_psf_models():
     models = psf_models.__all__
-    return tuple([psf_models.__getattribute__(model) for model in models])
+    return tuple([psf_models.__getattribute__(model)() for model in models])
 
 def _prepare_all_lens_models(model_group):
     if model_group == 'los':
@@ -126,10 +127,20 @@ def _prepare_all_lens_models(model_group):
 
 
 def _prepare_all_source_models():
-    all_source_models = tuple(
-        [source_models.__getattribute__(model)
-            for model in source_models.__all__])
-    return all_source_models
+    all_source_models = []
+    for model in source_models.__all__:
+        # CosmosCatalog model required initialization parameters.
+        if model != 'CosmosCatalog':
+            all_source_models.append(
+                source_models.__getattribute__(model)()
+            )
+        else:
+            all_source_models.append(
+                source_models.__getattribute__(model)(
+                    'test_files/cosmos_galaxies_testing.npz'
+                )
+            )
+    return tuple(all_source_models)
 
 
 def _prepare_all_models():
@@ -140,6 +151,7 @@ def _prepare_all_models():
     all_models['all_subhalo_models'] = all_lens_models
     all_models['all_main_deflector_models'] = all_lens_models
     all_models['all_source_models'] = _prepare_all_source_models()
+    all_models['all_lens_light_models'] = _prepare_all_source_models()
     all_models['all_psf_models'] = _prepare_all_psf_models()
 
     return all_models
@@ -254,17 +266,22 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         kwargs_detector = _prepare_kwargs_detector()
         kwargs_psf = _prepare_kwargs_psf()
         z_source = 0.5
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_LENSTRONOMY,
-                                                    z_source, 0.1)
+        cosmology_params = _prepare_cosmology_params(
+            COSMOLOGY_PARAMS_LENSTRONOMY, z_source, 0.1
+        )
         # Need to evaluate on coordinate grid to match lenstronomy.
         grid_x, grid_y = utils.coordinates_evaluate(
             kwargs_detector['n_x'], kwargs_detector['n_y'],
-            kwargs_detector['pixel_width'], kwargs_detector['supersampling_factor'])
-        expected = jnp.array([[0.00221893, 0.0030974], [0.00328375, 0.00458501]])
+            kwargs_detector['pixel_width'],
+            kwargs_detector['supersampling_factor'])
+        expected = jnp.array(
+            [[0.00221893, 0.0030974], [0.00328375, 0.00458501]]
+        )
 
         g_image = self.variant(
             functools.partial(
-                image_simulation.generate_image, kwargs_detector=kwargs_detector,
+                image_simulation.generate_image,
+                kwargs_detector=kwargs_detector,
                 all_models=all_models))
 
         result = utils.downsample(
@@ -285,12 +302,14 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
 
         # Default model is Pixel
         expected = psf_models.Pixel.convolve(image, kwargs_psf)
-        np.testing.assert_allclose(convolve(image, kwargs_psf), expected, rtol=1e-5)
+        np.testing.assert_allclose(convolve(image, kwargs_psf), expected,
+                                   rtol=1e-5)
 
         # Try Gaussian model
         kwargs_psf['model_index'] = psf_models.__all__.index('Gaussian')
         expected = psf_models.Gaussian.convolve(image, kwargs_psf)
-        np.testing.assert_allclose(convolve(image, kwargs_psf), expected, rtol=1e-5)
+        np.testing.assert_allclose(convolve(image, kwargs_psf), expected,
+                                   rtol=1e-5)
 
     @chex.all_variants
     def test_noise_realization(self):
@@ -301,22 +320,24 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         # random realization and lenstronomy uses numpy for it's random functions.
         # Instead we pull the magnitude of the normal draw from lenstronomy.
         background_noise = 0.0040833212572525535
-        flux_noise = jnp.array([[0.02159131, 0.02026811, 0.00825452, 0.01600841],
-                                [0.02006242, 0.01973204, 0.01489258, 0.01015701],
-                                [0.01921518, 0.01649803, 0.00997489, 0.01330792],
-                                [0.01392349, 0.00903829, 0.01201941, 0.01346962]])
+        flux_noise = jnp.array(
+            [[0.02159131, 0.02026811, 0.00825452, 0.01600841],
+             [0.02006242, 0.01973204, 0.01489258, 0.01015701],
+             [0.01921518, 0.01649803, 0.00997489, 0.01330792],
+             [0.01392349, 0.00903829, 0.01201941, 0.01346962]])
 
         rng_noise = jax.random.PRNGKey(0)
         rng_normal, rng_poisson = jax.random.split(rng_noise)
         expected = (
-            background_noise * jax.random.normal(rng_normal, shape=image.shape) +
-            flux_noise * jax.random.normal(rng_poisson, shape=image.shape))
+            background_noise * jax.random.normal(rng_normal, shape=image.shape)
+            + flux_noise * jax.random.normal(rng_poisson, shape=image.shape))
 
         noise = self.variant(image_simulation.noise_realization)
 
         # Noise matches very closely, but numbers are small so use atol.
         np.testing.assert_allclose(
-            noise(image, rng_noise, kwargs_detector), expected, rtol=0, atol=1e-7)
+            noise(image, rng_noise, kwargs_detector), expected, rtol=0,
+            atol=1e-7)
 
     @chex.all_variants
     def test_lens_light_surface_brightness(self):
@@ -326,8 +347,11 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         # Need to evaluate on coordinate grid to match lenstronomy.
         theta_x, theta_y = utils.coordinates_evaluate(
             kwargs_detector['n_x'], kwargs_detector['n_y'],
-            kwargs_detector['pixel_width'], kwargs_detector['supersampling_factor'])
-        expected = jnp.array([[0.00074752, 0.00076053], [0.00083884, 0.00086197]])
+            kwargs_detector['pixel_width'],
+            kwargs_detector['supersampling_factor'])
+        expected = jnp.array(
+            [[0.00074752, 0.00076053], [0.00083884, 0.00086197]]
+        )
 
         ll_surface_brightness = self.variant(functools.partial(
             image_simulation.lens_light_surface_brightness,
@@ -355,14 +379,18 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         kwargs_lens_all = _prepare_kwargs_lens_all()
         kwargs_source_slice = _prepare_kwargs_source_slice()
         z_source = 0.5
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_LENSTRONOMY,
-                                                    z_source, 0.1)
+        cosmology_params = _prepare_cosmology_params(
+            COSMOLOGY_PARAMS_LENSTRONOMY, z_source, 0.1
+        )
         kwargs_detector = _prepare_kwargs_detector()
         # Need to evaluate on coordinate grid to match lenstronomy.
         alpha_x, alpha_y = utils.coordinates_evaluate(
             kwargs_detector['n_x'], kwargs_detector['n_y'],
-            kwargs_detector['pixel_width'], kwargs_detector['supersampling_factor'])
-        expected = jnp.array([[0.00325632, 0.00348312], [0.00369543, 0.00387607]])
+            kwargs_detector['pixel_width'],
+            kwargs_detector['supersampling_factor'])
+        expected = jnp.array(
+            [[0.00325632, 0.00348312], [0.00369543, 0.00387607]]
+        )
 
         s_surface_brightness = self.variant(
             functools.partial(image_simulation.source_surface_brightness,
@@ -392,8 +420,9 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         kwargs_lens_all = _prepare_kwargs_lens_all()
         kwargs_source_slice = _prepare_kwargs_source_slice()
         z_source = 0.5
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_LENSTRONOMY,
-                                                    z_source, 0.1)
+        cosmology_params = _prepare_cosmology_params(
+            COSMOLOGY_PARAMS_LENSTRONOMY, z_source, 0.1
+        )
         expected = jnp.array([2.08355751e-01, 4.74442133e-05, 2.49857234e-04])
 
         image_flux = self.variant(functools.partial(
@@ -411,8 +440,9 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         all_models = _prepare_all_models()
         kwargs_lens_all = _prepare_kwargs_lens_all()
         z_source = 0.5
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_LENSTRONOMY,
-                                                    z_source, 0.1)
+        cosmology_params = _prepare_cosmology_params(
+            COSMOLOGY_PARAMS_LENSTRONOMY,  z_source, 0.1
+        )
         expected = jnp.array([[4268.8287053, 6375.01729267, -2325.55000691],
                             [-2971.59041917, -10392.18963907, 9207.33107629]])
 
@@ -435,8 +465,9 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         x, y, = _prepare_x_y()
         alpha_x, alpha_y = _prepare_alpha_x_alpha_y()
         z_lens_last = 0.05
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_LENSTRONOMY,
-                                                    z_source, z_lens_last)
+        cosmology_params = _prepare_cosmology_params(
+            COSMOLOGY_PARAMS_LENSTRONOMY, z_source, z_lens_last
+        )
         state = (x, y, alpha_x, alpha_y, z_lens_last)
         expected_state = state
         model_group = 'subhalos'
@@ -475,8 +506,9 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         x, y, = _prepare_x_y()
         alpha_x, alpha_y = _prepare_alpha_x_alpha_y()
         z_lens_last = 0.05
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_LENSTRONOMY,
-                                                    z_source, z_lens_last)
+        cosmology_params = _prepare_cosmology_params(
+            COSMOLOGY_PARAMS_LENSTRONOMY, z_source, z_lens_last
+        )
         state = (x, y, alpha_x, alpha_y, z_lens_last)
         model_group = 'subhalos'
         all_lens_models = _prepare_all_lens_models(model_group)
@@ -539,8 +571,9 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         kwargs_lens['model_index'] = 0
         kwargs_lens_slice['model_index'] = jnp.array([0] * 4)
 
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_LENSTRONOMY,
-                                                    z_source, z_lens)
+        cosmology_params = _prepare_cosmology_params(
+            COSMOLOGY_PARAMS_LENSTRONOMY, z_source, z_lens
+        )
 
         alpha_x_expected = jnp.copy(alpha_x)
         alpha_y_expected = jnp.copy(alpha_y)
@@ -572,8 +605,9 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         all_lens_models = _prepare_all_lens_models(model_group)
         kwargs_lens = _prepare_kwargs_lens(model_group)
         kwargs_lens['model_index'] = 0
-        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_LENSTRONOMY,
-                                                    z_source, z_lens)
+        cosmology_params = _prepare_cosmology_params(
+            COSMOLOGY_PARAMS_LENSTRONOMY, z_source, z_lens
+        )
 
         expected = _prepare__add_deflection_expected(z_lens, z_source)
 

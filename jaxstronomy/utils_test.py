@@ -105,6 +105,11 @@ class UtilsTest(chex.TestCase, parameterized.TestCase):
 
         self.assertAlmostEqual(magnitude_to_cps(mag, mzp), expected, places=5)
 
+    @chex.all_variants
+    @parameterized.named_parameters([(f'z_{z}', z) for z in [0.5, 0.2134]])
+    def test_get_k_correction(self, z):
+        get_k_correction = self.variant(utils.get_k_correction)
+        self.assertAlmostEqual(get_k_correction(z), 2.5 * jnp.log(1 + z))
 
 if __name__ == '__main__':
     absltest.main()

@@ -32,7 +32,7 @@ Implementation differs significantly from lenstronomy, but nomenclature is kept
 identical: https://github.com/lenstronomy/lenstronomy.
 """
 
-from typing import Mapping, Union
+from typing import Any, Mapping, Union
 
 import dm_pix
 import jax
@@ -41,7 +41,32 @@ import jax.numpy as jnp
 __all__ = ['Gaussian', 'Pixel']
 
 
-class Gaussian():
+class _PSFModelBase():
+    """Base source model.
+
+    Provides identity implementation of convert_to_angular for all source
+    models.
+    """
+
+    parameters = ()
+
+    def modify_cosmology_params(
+            self: Any,
+            cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
+        ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
+        """Modify cosmology params to include information required by model.
+
+        Args:
+            cosmology_params: Cosmological parameters that define the universe's
+                expansion.
+
+        Returns:
+            Modified cosmology parameters.
+        """
+        return cosmology_params
+
+
+class Gaussian(_PSFModelBase):
   """Implementation of Gaussian point spread function."""
 
   parameters = ('fwhm', 'pixel_width')
@@ -67,7 +92,7 @@ class Gaussian():
         jnp.expand_dims(image, axis=-1), sigma_pixel, kernel_size=30)[:, :, 0]
 
 
-class Pixel():
+class Pixel(_PSFModelBase):
   """Implementation of Pixel point spread function."""
 
   parameters = ('kernel_point_source',)

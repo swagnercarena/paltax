@@ -27,24 +27,96 @@ from jaxstronomy import lens_models
 from jaxstronomy import psf_models
 from jaxstronomy import source_models
 
-class InputPipelineTests(chex.TestCase, parameterized.TestCase):
-    """Runs tests of image simulation functions."""
 
-    def setUp(self):
-        # Set up the baseline configuration.
-        self.config = {}
-        encode_constant = input_pipeline.encode_constant
-        self.config['cosmology_params'] = {
-            'omega_m_zero': encode_constant(0.3089),
-            'omega_b_zero': encode_constant(0.0486),
-            'omega_de_zero': encode_constant(0.6910088292453472),
-            'omega_rad_zero': encode_constant(9.117075466e-5),
-            'temp_cmb_zero': encode_constant(2.7255),
-            'hubble_constant': encode_constant(67.74),
-            'n_s': encode_constant(0.9667),
-            'sigma_eight': encode_constant(0.8159),
+def _prepare_lensing_config():
+    encode_normal = input_pipeline.encode_normal
+    encode_uniform = input_pipeline.encode_uniform
+    encode_constant = input_pipeline.encode_constant
+    lensing_config = {
+            'los_params':{
+            'delta_los': encode_constant(10.0),
+            'r_min': encode_constant(0.5),
+            'r_max': encode_constant(10.0),
+            'm_min': encode_constant(1e8),
+            'm_max': encode_constant(1e10),
+            'dz': encode_constant(0.1),
+            'cone_angle': encode_constant(8.0),
+            'angle_buffer': encode_constant(0.8),
+            'c_zero': encode_constant(18),
+            'conc_zeta': encode_constant(-0.2),
+            'conc_beta': encode_constant(0.8),
+            'conc_m_ref': encode_constant(1e8),
+            'conc_dex_scatter': encode_constant(0.0)
+        },
+        'main_deflector_params': {
+            'mass': encode_constant(1e13),
+            'z_lens': encode_constant(0.5),
+            'theta_e': encode_constant(1.1),
+            'slope': encode_normal(mean=2.0, std=0.1),
+            'center_x': encode_normal(mean=0.0, std=0.16),
+            'center_y': encode_normal(mean=0.0, std=0.16),
+            'axis_ratio': encode_normal(mean=1.0, std=0.05),
+            'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
+            'gamma_ext': encode_normal(mean=0.0, std=0.05)
+        },
+        'subhalo_params':{
+            'sigma_sub': encode_normal(mean=2.0e-3, std=1.1e-3),
+            'shmf_plaw_index': encode_uniform(minimum=-2.02, maximum=-1.92),
+            'm_pivot': encode_constant(1e10),
+            'm_min': encode_constant(1e6),
+            'm_max': encode_constant(1e9),
+            'k_one': encode_constant(0.0),
+            'k_two': encode_constant(0.0),
+            'c_zero': encode_constant(18),
+            'conc_zeta': encode_constant(-0.2),
+            'conc_beta': encode_constant(0.8),
+            'conc_m_ref': encode_constant(1e8),
+            'conc_dex_scatter': encode_constant(0.0)
+        },
+        'source_params':{
+            'galaxy_index': encode_constant(0.7),
+            'output_ab_zeropoint': encode_constant(23.5),
+            'catalog_ab_zeropoint': encode_constant(25.6),
+            'z_source': encode_constant(1.5),
+            'amp': encode_uniform(minimum=1.0, maximum=10.0),
+            'sersic_radius': encode_uniform(minimum=1.0, maximum=4.0),
+            'n_sersic': encode_uniform(minimum=1.0, maximum=4.0),
+            'axis_ratio': encode_normal(mean=1.0, std=0.05),
+            'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
+            'center_x': encode_normal(mean=0.0, std=0.16),
+            'center_y': encode_normal(mean=0.0, std=0.16)
+        },
+        'lens_light_params':{
+            'galaxy_index': encode_constant(0.7),
+            'output_ab_zeropoint': encode_constant(23.5),
+            'catalog_ab_zeropoint': encode_constant(25.6),
+            'z_source': encode_constant(1.5),
+            'amp': encode_uniform(minimum=1.0, maximum=10.0),
+            'sersic_radius': encode_uniform(minimum=1.0, maximum=4.0),
+            'n_sersic': encode_uniform(minimum=1.0, maximum=4.0),
+            'axis_ratio': encode_normal(mean=1.0, std=0.05),
+            'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
+            'center_x': encode_normal(mean=0.0, std=0.16),
+            'center_y': encode_normal(mean=0.0, std=0.16)
         }
-        return super().setUp()
+    }
+    return lensing_config
+
+def _perpare_cosmology_params():
+    encode_constant = input_pipeline.encode_constant
+    return {
+        'omega_m_zero': encode_constant(0.3089),
+        'omega_b_zero': encode_constant(0.0486),
+        'omega_de_zero': encode_constant(0.6910088292453472),
+        'omega_rad_zero': encode_constant(9.117075466e-5),
+        'temp_cmb_zero': encode_constant(2.7255),
+        'hubble_constant': encode_constant(67.74),
+        'n_s': encode_constant(0.9667),
+        'sigma_eight': encode_constant(0.8159),
+    }
+
+class InputPipelineTests(chex.TestCase, parameterized.TestCase):
+    """Runs tests of input pipeline functions."""
 
     @chex.all_variants
     def test_encode_normal(self):
@@ -197,9 +269,9 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             'n_x': 128, 'n_y': 128, 'pixel_width': 0.04,
             'supersampling_factor': 2.0
         }
-        self.config['kwargs_detector'] = kd
+        config = {'kwargs_detector': kd}
 
-        grid_x, grid_y = input_pipeline.generate_grids(self.config)
+        grid_x, grid_y = input_pipeline.generate_grids(config)
 
         size = kd['n_x'] * kd['n_y'] * kd['supersampling_factor'] ** 2
         self.assertTupleEqual(grid_x.shape, (size,))
@@ -213,7 +285,9 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         # values defined by the config.
         encode_constant = input_pipeline.encode_constant
         dz = 0.01
-        self.config['lensing_config'] = {
+        config = {}
+        config['cosmology_params'] = _perpare_cosmology_params()
+        config['lensing_config'] = {
             'source_params': {'z_source': encode_constant(2.0)},
             'subhalo_params': {
                 'm_max': encode_constant(1e10),
@@ -225,10 +299,16 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
                 'm_min': encode_constant(1e7)
             }
         }
+        config['all_models'] = {
+            'all_source_models': (source_models.CosmosCatalog(
+                'test_files/cosmos_galaxies_testing.npz'
+                ),)
+        }
         rng = jax.random.PRNGKey(0)
 
         cosmology_params = input_pipeline.intialize_cosmology_params(
-            self.config, rng)
+            config, rng
+        )
 
         # Test that the cosmology params do not cause issues if the masses
         # are within the specified range.
@@ -238,6 +318,10 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(cosmology_params['dz'], dz / 2)
         self.assertAlmostEqual(cosmology_params['r_min'], r_min, places=6)
         self.assertAlmostEqual(cosmology_params['r_max'], r_max, places=6)
+
+        # Test that the cosmos images are present
+        self.assertTupleEqual(cosmology_params['cosmos_images'].shape,
+                              (2, 256, 256))
 
     @chex.all_variants
     def test_draw_sample(self):
@@ -316,6 +400,60 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
 
 
     @chex.all_variants(without_device=False)
+    def test_extract_multiple_models_angular(self):
+        # Test that the code draws the parameters for multiple models and
+        # converts the required parameters to angular units.
+        encode_normal = input_pipeline.encode_normal
+        encode_uniform = input_pipeline.encode_uniform
+        encode_constant = input_pipeline.encode_constant
+        encoded_configuration = {
+            'galaxy_index': encode_constant(0.7),
+            'output_ab_zeropoint': encode_constant(23.5),
+            'catalog_ab_zeropoint': encode_constant(25.6),
+            'z_source': encode_constant(1.5),
+            'amp': encode_constant(1e3),
+            'sersic_radius': encode_uniform(minimum=1.0, maximum=4.0),
+            'n_sersic': encode_uniform(minimum=1.0, maximum=4.0),
+            'axis_ratio': encode_normal(mean=1.0, std=0.05),
+            'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
+            'center_x': encode_normal(mean=0.0, std=0.16),
+            'center_y': encode_normal(mean=0.0, std=0.16)
+        }
+        rng = jax.random.PRNGKey(0)
+        config = {}
+        config['cosmology_params'] = _perpare_cosmology_params()
+        config['lensing_config'] = _prepare_lensing_config()
+        all_source_models = (
+            source_models.SersicElliptic(),
+            source_models.CosmosCatalog(
+                'test_files/cosmos_galaxies_testing.npz'
+            )
+        )
+        config['all_models'] = {
+            'all_source_models': all_source_models
+        }
+        cosmology_params = input_pipeline.intialize_cosmology_params(config,
+                                                                     rng)
+
+        extract_multiple_models_angular = self.variant(functools.partial(
+            input_pipeline.extract_multiple_models_angular,
+            all_models=all_source_models
+        ))
+
+        sampled_configuration = extract_multiple_models_angular(
+            encoded_configuration, rng, cosmology_params
+        )
+        for image in sampled_configuration['image']:
+            np.testing.assert_array_almost_equal(
+                image,
+                (cosmology_params['cosmos_images'][1] /
+                 cosmology_params['cosmos_pixel_sizes'][1] ** 2)
+            )
+        for amp in sampled_configuration['amp']:
+            self.assertNotAlmostEqual(amp, 1e3)
+
+
+    @chex.all_variants(without_device=False)
     def test_extract_truth_values(self):
         # Test that the extracted parameters match the values fed into the
         # dictionary.
@@ -355,90 +493,40 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
     def test_draw_image_and_truth(self):
         # Test that the images have reasonable shape and that the truth values
         # are drawn correctly.
-        encode_normal = input_pipeline.encode_normal
-        encode_uniform = input_pipeline.encode_uniform
-        encode_constant = input_pipeline.encode_constant
-        self.config['lensing_config'] = {
-            'los_params':{
-                'delta_los': encode_constant(10.0),
-                'r_min': encode_constant(0.5),
-                'r_max': encode_constant(10.0),
-                'm_min': encode_constant(1e8),
-                'm_max': encode_constant(1e10),
-                'dz': encode_constant(0.1),
-                'cone_angle': encode_constant(8.0),
-                'angle_buffer': encode_constant(0.8),
-                'c_zero': encode_constant(18),
-                'conc_zeta': encode_constant(-0.2),
-                'conc_beta': encode_constant(0.8),
-                'conc_m_ref': encode_constant(1e8),
-                'conc_dex_scatter': encode_constant(0.0)
-            },
-            'main_deflector_params': {
-                'mass': encode_constant(1e13),
-                'z_lens': encode_constant(0.5),
-                'theta_e': encode_constant(1.1),
-                'slope': encode_normal(mean=2.0, std=0.1),
-                'center_x': encode_normal(mean=0.0, std=0.16),
-                'center_y': encode_normal(mean=0.0, std=0.16),
-                'axis_ratio': encode_normal(mean=1.0, std=0.05),
-                'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
-                'gamma_ext': encode_normal(mean=0.0, std=0.05)
-            },
-            'subhalo_params':{
-                'sigma_sub': encode_normal(mean=2.0e-3, std=1.1e-3),
-                'shmf_plaw_index': encode_uniform(minimum=-2.02, maximum=-1.92),
-                'm_pivot': encode_constant(1e10),
-                'm_min': encode_constant(1e6),
-                'm_max': encode_constant(1e9),
-                'k_one': encode_constant(0.0),
-                'k_two': encode_constant(0.0),
-                'c_zero': encode_constant(18),
-                'conc_zeta': encode_constant(-0.2),
-                'conc_beta': encode_constant(0.8),
-                'conc_m_ref': encode_constant(1e8),
-                'conc_dex_scatter': encode_constant(0.0)
-            },
-            'source_params':{
-                'z_source': encode_constant(1.5),
-                'amp': encode_uniform(minimum=1.0, maximum=10.0),
-                'sersic_radius': encode_uniform(minimum=1.0, maximum=4.0),
-                'n_sersic': encode_uniform(minimum=1.0, maximum=4.0),
-                'axis_ratio': encode_normal(mean=1.0, std=0.05),
-                'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
-                'center_x': encode_normal(mean=0.0, std=0.16),
-                'center_y': encode_normal(mean=0.0, std=0.16)
-            },
-            'lens_light_params':{
-                'amp': encode_constant(0.0),
-                'sersic_radius': encode_uniform(minimum=1.0, maximum=3.0),
-                'n_sersic': encode_uniform(minimum=1.0, maximum=4.0),
-                'axis_ratio': encode_normal(mean=1.0, std=0.05),
-                'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
-                'center_x': encode_normal(mean=0.0, std=0.16),
-                'center_y': encode_normal(mean=0.0, std=0.16)
-            }
+        config = {}
+        config['cosmology_params'] = _perpare_cosmology_params()
+        config['lensing_config'] = _prepare_lensing_config()
+        all_models = {
+            'all_los_models': (lens_models.NFW(),),
+            'all_subhalo_models': (lens_models.TNFW(),),
+            'all_main_deflector_models': (lens_models.Shear(),
+                                          lens_models.EPL()),
+            'all_source_models': (source_models.SersicElliptic(),
+                                  source_models.CosmosCatalog(
+                                     'test_files/cosmos_galaxies_testing.npz'
+                                  )),
+            'all_lens_light_models': (
+                source_models.SersicElliptic(),
+                source_models.CosmosCatalog(
+                    'test_files/cosmos_galaxies_testing.npz'
+                )
+            ),
+            'all_psf_models': (psf_models.Gaussian(),)
         }
+        config['all_models'] = all_models
         rng = jax.random.PRNGKey(0)
 
-        cosmology_params = input_pipeline.intialize_cosmology_params(
-            self.config, rng)
+        cosmology_params = input_pipeline.intialize_cosmology_params(config,
+                                                                     rng)
         n_x = 16
         n_y = 16
-        self.config['kwargs_detector'] = {
+        config['kwargs_detector'] = {
             'n_x': n_x, 'n_y': n_y, 'pixel_width': 0.4,
             'supersampling_factor': 2, 'exposure_time': 1024,
             'num_exposures': 1.0, 'sky_brightness': 22,
             'magnitude_zero_point': 25, 'read_noise': 3.0
         }
-        grid_x, grid_y = input_pipeline.generate_grids(self.config)
-        all_models = {
-            'all_los_models': (lens_models.NFW,),
-            'all_subhalo_models': (lens_models.TNFW,),
-            'all_main_deflector_models': (lens_models.Shear, lens_models.EPL),
-            'all_source_models': (source_models.SersicElliptic,),
-            'all_psf_models': (psf_models.Gaussian,)
-        }
+        grid_x, grid_y = input_pipeline.generate_grids(config)
         principal_md_index = 0
         principal_source_index = 0
         kwargs_simulation = {
@@ -458,9 +546,9 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             principal_md_index=principal_md_index,
             principal_source_index=principal_source_index,
             kwargs_simulation=kwargs_simulation,
-            kwargs_detector=self.config['kwargs_detector'],
+            kwargs_detector=config['kwargs_detector'],
             kwargs_psf=kwargs_psf, truth_parameters=truth_parameters))
-        image, truth = draw_image_and_truth(self.config['lensing_config'],
+        image, truth = draw_image_and_truth(config['lensing_config'],
                                             cosmology_params, grid_x, grid_y,
                                             rng)
 

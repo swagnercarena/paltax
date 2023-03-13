@@ -15,7 +15,6 @@
 network.
 """
 
-import functools
 from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
 import jax.numpy as jnp
@@ -182,13 +181,14 @@ def generate_grids(
 
 
 def intialize_cosmology_params(
-        config: Mapping[str, Mapping[str, jnp.ndarray]], rng: Sequence[int],
+        config: Mapping[str, Mapping[str, jnp.ndarray]], rng: Sequence[int]
 ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
     """Initialize the cosmology parameters as needed by the config.
 
     Args:
         config: Configuration dictionary for input generation.
         rng: jax PRNG key.
+        all_models: Tuple of model classes to consider for each component.
 
     Returns:
         Cosmological parameters with appropriate lookup table.
@@ -215,8 +215,16 @@ def intialize_cosmology_params(
     cosmology_params = cosmology_utils.add_lookup_tables_to_cosmology_params(
         cosmology_params_init, 1.5, dz / 2, r_min, r_max, 10000)
     extrenal_los_params = {'m_min': m_min, 'm_max': m_max, 'dz': dz}
-    return los.add_los_lookup_tables_to_cosmology_params(
-        extrenal_los_params, cosmology_params, max_source_z)
+    cosmology_params = los.add_los_lookup_tables_to_cosmology_params(
+        extrenal_los_params, cosmology_params, max_source_z
+    )
+
+    # Add the additional parameters required by the lens and source models.
+    for model_group in config['all_models']:
+        for model in config['all_models'][model_group]:
+            cosmology_params = model.modify_cosmology_params(cosmology_params)
+
+    return cosmology_params
 
 
 def draw_sample(
@@ -263,6 +271,43 @@ def extract_multiple_models(
     draws = draw_sample_vmap(encoded_configuration, rng_list)
     # Add the model index list.
     draws['model_index'] = jnp.arange(n_models)
+    return draws
+
+
+def extract_multiple_models_angular(
+        encoded_configuration: Mapping[str, Mapping[str, float]],
+        rng: Sequence[int],
+        cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+        all_models: Sequence[Any]
+) -> Mapping[str, jnp.ndarray]:
+    """Extract multiple models and translate them to angular coordinates.
+
+    Args:
+        encoded_configuration: Encodings for each of the parameters of the
+            model(s).
+        rng: jax PRNG key.
+        all_models: Model classes to use for translation from physical to
+            angular units.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+
+    Returns:
+        Draws for the parameters for all the models. For each parameters, first
+        dimension will be the number of models.
+    """
+    n_models = len(all_models)
+
+    # Start by drawing the parameters directly from the config
+    draws = extract_multiple_models(encoded_configuration, rng, n_models)
+
+    # Convert those parameters using the conversion function included in
+    # each source model. This may often do nothing at all.
+    # Since different models add different properties to the config, we cannot
+    # use a switch statement here. Instead loop over all the models.
+    for model in all_models:
+        draws = jax.vmap(model.convert_to_angular, in_axes=[0, None])(
+            draws, cosmology_params
+        )
     return draws
 
 
@@ -331,24 +376,26 @@ def draw_image_and_truth(
     Notes:
         To jit compile, every parameter after rng must be fixed.
     """
-
+    # Pull out the padding and bins we will use while vmapping our simulation.
     num_z_bins = kwargs_simulation['num_z_bins']
     los_pad_length = kwargs_simulation['los_pad_length']
     subhalos_pad_length = kwargs_simulation['subhalos_pad_length']
     sampling_pad_length = kwargs_simulation['sampling_pad_length']
 
+    # Draw an instance of the parameter values for each object in our lensing
+    # system.
     rng_md, rng_source, rng_ll, rng_los, rng_sub, rng = jax.random.split(rng, 6)
-    main_deflector_params = extract_multiple_models(
-        lensing_config['main_deflector_params'], rng_md,
-        len(all_models['all_main_deflector_models'])
+    main_deflector_params = extract_multiple_models_angular(
+        lensing_config['main_deflector_params'], rng_md, cosmology_params,
+        all_models['all_main_deflector_models']
     )
-    source_params = extract_multiple_models(
-        lensing_config['source_params'], rng_source,
-        len(all_models['all_source_models'])
+    source_params = extract_multiple_models_angular(
+        lensing_config['source_params'], rng_source, cosmology_params,
+        all_models['all_source_models']
     )
-    lens_light_params = extract_multiple_models(
-        lensing_config['lens_light_params'], rng_ll,
-        len(all_models['all_source_models'])
+    lens_light_params = extract_multiple_models_angular(
+        lensing_config['lens_light_params'], rng_ll, cosmology_params,
+        all_models['all_lens_light_models']
     )
     los_params = draw_sample(lensing_config['los_params'], rng_los)
     subhalo_params = draw_sample(lensing_config['subhalo_params'], rng_sub)
@@ -372,7 +419,7 @@ def draw_image_and_truth(
         'main_deflector_params': main_deflector_params_sub
     }
 
-    rng_los, rng_sub = jax.random.split(rng)
+    rng_los, rng_sub, rng_noise = jax.random.split(rng, 3)
     los_before_tuple, los_after_tuple = los.draw_los(
         main_deflector_params_sub, source_params_sub, los_params,
         cosmology_params, rng_los, num_z_bins, los_pad_length)
@@ -396,6 +443,8 @@ def draw_image_and_truth(
         kwargs_detector, all_models)
     image = utils.downsample(image_supersampled,
                              kwargs_detector['supersampling_factor'])
+    image += image_simulation.noise_realization(image, rng_noise,
+                                                kwargs_detector)
     # Normalize and the image to have standard deviation 1.
     if normalize_image:
         image /= jnp.std(image)

@@ -63,10 +63,21 @@ class AllTest(absltest.TestCase):
     all_present = sorted(psf_models.__all__)
     all_required = []
     for name, value in inspect.getmembers(psf_models):
-      if inspect.isclass(value):
+      if inspect.isclass(value) and name != '_PSFModelBase':
         all_required.append(name)
 
     self.assertListEqual(all_present, sorted(all_required))
+
+
+class PSFModelBaseTest(chex.TestCase):
+    """Runs tests of __SourceModelBase functions."""
+
+    def test_modify_cosmology_params(self):
+        # Make sure the dict is modified by default.
+        input_dict = {'a': 20}
+        new_dict = psf_models._PSFModelBase().modify_cosmology_params(
+            input_dict)
+        self.assertDictEqual(input_dict, new_dict)
 
 
 class GaussianTest(chex.TestCase, parameterized.TestCase):
