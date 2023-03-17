@@ -1,7 +1,7 @@
 # coding=utf-8
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
+# you may not use this file exce=t in compliance with the License.
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
@@ -237,7 +237,9 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
         base_learning_rate)
 
     if isinstance(rng, Iterator):
-        rng_state = next(rng)
+        # Create the rng key we'll use to always insert a new random
+        # rotation.
+        rng_state, rng_rotation_seed = jax.random.split(next(rng), 2)
     else:
         rng, rng_state = jax.random.split(rng)
     state = create_train_state(rng_state, config, model, image_size,
@@ -283,8 +285,17 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
         # Generate truths and images
         if isinstance(rng, Iterator):
             rng_images = next(rng)
+            rng_rotation, rng_rotation_seed = jax.random.split(
+                rng_rotation_seed)
+            # If we're cycling over a fixed set, we should also include
+            # a random rotation.
+            rotation_angle = jax.random.uniform(rng_rotation) * 2 * jnp.pi
         else:
             rng, rng_images = jax.random.split(rng)
+            # If we're always drawing new images, we don't need an aditional
+            # rotation.
+            rotation_angle = 0.0
+
         rng_images = jax.random.split(
             rng_images, num=jax.device_count() * config.batch_size).reshape(
                 (jax.device_count(), config.batch_size, -1)
@@ -292,7 +303,8 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
 
         image, truth = draw_image_and_truth_pmap(input_config['lensing_config'],
                                                  cosmology_params, grid_x,
-                                                 grid_y, rng_images)
+                                                 grid_y, rng_images,
+                                                 rotation_angle=rotation_angle)
         image = jnp.expand_dims(image, axis=-1)
 
         batch = {'image': image, 'truth': truth}

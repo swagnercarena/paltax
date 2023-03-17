@@ -20,6 +20,7 @@ import chex
 import jax
 import jax.numpy as jnp
 import numpy as np
+from scipy import ndimage
 
 from jaxstronomy import cosmology_utils
 from jaxstronomy import input_pipeline
@@ -102,7 +103,7 @@ def _prepare_lensing_config():
     }
     return lensing_config
 
-def _perpare_cosmology_params():
+def _prepare_cosmology_params():
     encode_constant = input_pipeline.encode_constant
     return {
         'omega_m_zero': encode_constant(0.3089),
@@ -286,7 +287,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         encode_constant = input_pipeline.encode_constant
         dz = 0.01
         config = {}
-        config['cosmology_params'] = _perpare_cosmology_params()
+        config['cosmology_params'] = _prepare_cosmology_params()
         config['lensing_config'] = {
             'source_params': {'z_source': encode_constant(2.0)},
             'subhalo_params': {
@@ -421,7 +422,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         }
         rng = jax.random.PRNGKey(0)
         config = {}
-        config['cosmology_params'] = _perpare_cosmology_params()
+        config['cosmology_params'] = _prepare_cosmology_params()
         config['lensing_config'] = _prepare_lensing_config()
         all_source_models = (
             source_models.SersicElliptic(),
@@ -452,6 +453,34 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         for amp in sampled_configuration['amp']:
             self.assertNotAlmostEqual(amp, 1e3)
 
+    @chex.all_variants(without_device=False)
+    def test_rotate_params(self):
+        # Test that hard-coded rotations work.
+        all_params = {
+            'main_deflector': {'center_x': 1.0, 'center_y': 0.0,
+                  'angle':10.0,'something_else': 12.2},
+            'not_main_deflector': {'a': 1.0, 'b': 0.7,
+                  'c': 10.2}}
+        extract_objects = ['main_deflector', 'main_deflector',
+                    'main_deflector']
+        extract_keys = ['center_x', 'center_y', 'angle']
+        truth_parameters = (extract_objects, extract_keys)
+        rotation_angle = jnp.pi / 4
+        rotate_params = self.variant(
+            functools.partial(input_pipeline.rotate_params,
+                              truth_parameters=truth_parameters,
+                              rotation_angle=rotation_angle)
+        )
+
+        all_params = rotate_params(all_params)
+
+        self.assertAlmostEqual(all_params['main_deflector']['center_x'],
+                               1 / np.sqrt(2))
+        self.assertAlmostEqual(all_params['main_deflector']['center_y'],
+                               1 / np.sqrt(2))
+        self.assertAlmostEqual(all_params['main_deflector']['angle'],
+                               10.0 + rotation_angle)
+
 
     @chex.all_variants(without_device=False)
     def test_extract_truth_values(self):
@@ -459,7 +488,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         # dictionary.
         all_params = {
             'a': {'a': 0.0, 'b': 0.5,
-                  'c': 12.2},
+                  'c': 12.2, 'angle': 0.0},
             'b': {'a': 1.0, 'b': 0.7,
                   'c': 10.2}}
         constant = 1.0
@@ -467,25 +496,28 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         std = 1.0
         minimum = -1.0
         maximum = 12.0
+        rotation_angle = jnp.pi / 4
         lensing_config = {
             'a': {'a': input_pipeline.encode_constant(constant),
                   'b': input_pipeline.encode_normal(mean, std),
-                  'c': input_pipeline.encode_uniform(minimum, maximum)},
+                  'c': input_pipeline.encode_uniform(minimum, maximum),
+                  'angle': input_pipeline.encode_uniform(0.0, 1.0)},
             'b': {'a': input_pipeline.encode_constant(constant),
                   'b': input_pipeline.encode_normal(mean, std),
                   'c': input_pipeline.encode_uniform(minimum, maximum)}}
-        extract_objects = ['a','a','b']
-        extract_keys = ['a','b','c']
+        extract_objects = ['a', 'a', 'b', 'a']
+        extract_keys = ['a', 'b', 'c', 'angle']
         truth_parameters = (extract_objects, extract_keys)
         extract_truth_values = self.variant(functools.partial(
             input_pipeline.extract_truth_values,
-            truth_parameters=truth_parameters))
+            truth_parameters=truth_parameters, rotation_angle=rotation_angle))
 
         parameter_array = extract_truth_values(all_params, lensing_config)
-        self.assertTupleEqual(parameter_array.shape, (3,))
+        self.assertTupleEqual(parameter_array.shape, (4,))
         np.testing.assert_array_almost_equal(
             parameter_array, np.array([0.0, (0.5 - mean) / std,
-                                       (10.2 - minimum) / (maximum - minimum)])
+                                       (10.2 - minimum) / (maximum - minimum),
+                                       jnp.pi / 4])
         )
 
 
@@ -494,7 +526,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         # Test that the images have reasonable shape and that the truth values
         # are drawn correctly.
         config = {}
-        config['cosmology_params'] = _perpare_cosmology_params()
+        config['cosmology_params'] = _prepare_cosmology_params()
         config['lensing_config'] = _prepare_lensing_config()
         all_models = {
             'all_los_models': (lens_models.NFW(),),
@@ -522,9 +554,9 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         n_y = 16
         config['kwargs_detector'] = {
             'n_x': n_x, 'n_y': n_y, 'pixel_width': 0.4,
-            'supersampling_factor': 2, 'exposure_time': 1024,
-            'num_exposures': 1.0, 'sky_brightness': 22,
-            'magnitude_zero_point': 25, 'read_noise': 3.0
+            'supersampling_factor': 2, 'exposure_time': 1e8,
+            'num_exposures': 1.0, 'sky_brightness': 220,
+            'magnitude_zero_point': 25, 'read_noise': 1e-8
         }
         grid_x, grid_y = input_pipeline.generate_grids(config)
         principal_md_index = 0
@@ -558,3 +590,18 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(1.0, jnp.std(image), places=6)
         self.assertTupleEqual(truth.shape, (2,))
         self.assertEqual(truth[0], 0.0)
+
+        # Test that inserting a rotation returns a rotated image
+        rotation_angle = jnp.pi / 2
+        image_rot, _ = draw_image_and_truth(
+            config['lensing_config'], cosmology_params, grid_x, grid_y, rng,
+            rotation_angle=rotation_angle
+        )
+
+        # Due to noise and floating point error, the rotated image is not
+        # identical, so we have to be generous with the decimal.
+        np.testing.assert_array_almost_equal(
+            image_rot,
+            ndimage.rotate(image, -rotation_angle / np.pi * 180, reshape=False),
+            decimal=2
+        )

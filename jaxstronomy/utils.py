@@ -117,3 +117,19 @@ def get_k_correction(z_light: float) -> float:
 		for the absolute and apparent magntidue is the same
     """
     return 2.5 * jnp.log(1 + z_light)
+
+def rotate_coordinates(
+        grid_x: jnp.ndarray, grid_y: jnp.ndarray, angle: float
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Rotate grid by rotation angle.
+
+    Args:
+        grid_x: X-coordinates to rotate.
+        grid_y: Y-coordinates to rotate.
+        angle: Angle of counterclockwise rotation.
+
+    Returns:
+        Rotated x- and y-coordinates.
+    """
+    complex_coords = jnp.exp(1j * angle) * ((grid_x) + (grid_y) * 1j)
+    return complex_coords.real, complex_coords.imag

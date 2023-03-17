@@ -111,5 +111,17 @@ class UtilsTest(chex.TestCase, parameterized.TestCase):
         get_k_correction = self.variant(utils.get_k_correction)
         self.assertAlmostEqual(get_k_correction(z), 2.5 * jnp.log(1 + z))
 
+    @chex.all_variants
+    def test_rotate_coordinates(self):
+        rotate_coordinates = self.variant(utils.rotate_coordinates)
+        grid_x = jnp.ones(10)
+        grid_y = jnp.zeros(10)
+        angle = jnp.pi/4
+        grid_x, grid_y = rotate_coordinates(grid_x, grid_y, angle)
+
+        # Make sure rotation is counterclockwise.
+        np.testing.assert_array_almost_equal(grid_x, np.ones(10) / np.sqrt(2))
+        np.testing.assert_array_almost_equal(grid_y, np.ones(10) / np.sqrt(2))
+
 if __name__ == '__main__':
     absltest.main()

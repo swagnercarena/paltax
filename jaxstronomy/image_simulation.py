@@ -19,7 +19,7 @@ from lenstronomy: https://github.com/lenstronomy/lenstronomy.
 """
 
 import functools
-from typing import Any, Mapping, Sequence, Tuple, Union
+from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -39,7 +39,7 @@ def generate_image(
     z_source: float,
     kwargs_detector: Mapping[str, Union[float, int]],
     all_models: Mapping[str, Sequence[Any]],
-    apply_psf: bool = True,
+    apply_psf: Optional[bool] = True,
 ) -> jnp.ndarray:
     """Generate an image given the source, lens light, and mass profiles.
 
@@ -95,6 +95,7 @@ def generate_image(
 
     if apply_psf:
         image = psf_convolution(image, kwargs_psf, all_models['all_psf_models'])
+
     return image
 
 

@@ -311,10 +311,51 @@ def extract_multiple_models_angular(
     return draws
 
 
+def rotate_params(all_params: Mapping[str, Mapping[str, jnp.ndarray]],
+                  truth_parameters: Tuple[Sequence[str], Sequence[str]],
+                  rotation_angle: float) -> jnp.ndarray:
+    """Rotate the parameter as required by the physical type of the parameter.
+
+    Args:
+        all_params: All of the parameters grouped by object.
+        truth_parameters: List of the lensing objects and corresponding
+            parameters to extract.
+        rotation_angle: Counterclockwise angle of rotation.
+
+    Returns:
+        All of the parameters grouped by object with the rotation applied.
+
+    Notes:
+        The relationship between parameter name and rotation is hard coded here.
+        Also only supports there being one of each type of parameter. Pretty
+        fragile code, but the rotations are only relevant for comparison
+        exmperiments.
+    """
+    extract_objects, extract_keys = truth_parameters
+
+    if 'center_x' in extract_keys or 'center_y' in extract_keys:
+        index_x = extract_keys.index('center_x')
+        index_y = extract_keys.index('center_y')
+        center_x = all_params[extract_objects[index_x]]['center_x']
+        center_y = all_params[extract_objects[index_y]]['center_y']
+        center_x, center_y = utils.rotate_coordinates(center_x, center_y,
+                                                      rotation_angle)
+        all_params[extract_objects[index_x]]['center_x'] = center_x
+        all_params[extract_objects[index_y]]['center_y'] = center_y
+
+    if 'angle' in extract_keys:
+        index = extract_keys.index('angle')
+        angle = all_params[extract_objects[index]]['angle']
+        all_params[extract_objects[index]]['angle'] = angle + rotation_angle
+
+    return all_params
+
+
 def extract_truth_values(
         all_params: Mapping[str, Mapping[str, jnp.ndarray]],
         lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
-        truth_parameters: Tuple[Sequence[str], Sequence[str]]) -> jnp.ndarray:
+        truth_parameters: Tuple[Sequence[str], Sequence[str]],
+        rotation_angle: Optional[float] = 0.0) -> jnp.ndarray:
     """Extract the truth parameters and normalize them according to the config.
 
     Args:
@@ -322,11 +363,17 @@ def extract_truth_values(
         lensing_config: Distribution encodings for each of the parameters.
         truth_parameters: List of the lensing objects and corresponding
             parameters to extract.
+        rotation_angle: Counterclockwise angle by which to rotate truths.
 
     Returns:
         Truth values for each of the requested parameters.
     """
     extract_objects, extract_keys = truth_parameters
+
+    # Begin by adding the rotation applied to the image.
+    rotate_params(all_params, truth_parameters, rotation_angle)
+
+    # Now normalize the parameters.
     return jnp.array(jax.tree_util.tree_map(
         lambda x, y: normalize_param(all_params[x][y],
                                      lensing_config[x][y]),
@@ -343,7 +390,8 @@ def draw_image_and_truth(
         kwargs_detector:  Mapping[str, Union[int, float]],
         kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
         truth_parameters: Tuple[Sequence[str], Sequence[str]],
-        normalize_image: Optional[bool] = True
+        normalize_image: Optional[bool] = True,
+        rotation_angle: Optional[float] = 0.0
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Draw image and truth values for a realization of the lensing config.
 
@@ -369,6 +417,8 @@ def draw_image_and_truth(
             parameters to extract.
         normalize_image: If True, the image will be normalized to have
             standard deviation 1.
+        rotation_angle: Counterclockwise angle by which to rotate images and
+            truths.
 
     Returns:
         Image and corresponding truth values.
@@ -437,6 +487,10 @@ def draw_image_and_truth(
         'z_array_subhalos': subhalos_z, 'kwargs_subhalos': subhalos_kwargs}
     z_source = source_params_sub['z_source']
 
+    # Apply the rotation angle to the image through the grid. This requires
+    # rotating the coordinates by the negative angle.
+    grid_x, grid_y = utils.rotate_coordinates(grid_x, grid_y, -rotation_angle)
+
     image_supersampled = image_simulation.generate_image(
         grid_x, grid_y, kwargs_lens_all, source_params,
         lens_light_params, kwargs_psf, cosmology_params, z_source,
@@ -450,6 +504,7 @@ def draw_image_and_truth(
         image /= jnp.std(image)
 
     # Extract the truth values and normalize them.
-    truth = extract_truth_values(all_params, lensing_config, truth_parameters)
+    truth = extract_truth_values(all_params, lensing_config, truth_parameters,
+                                 rotation_angle)
 
     return image, truth
