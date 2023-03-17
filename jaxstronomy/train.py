@@ -355,9 +355,9 @@ def _get_config(config_path: str) -> Any:
         Loaded configuration file.
     """
     # Get the dictionary from the .py file.
-    config_dir, _ = os.path.split(os.path.abspath(config_path))
+    config_dir, config_file = os.path.split(os.path.abspath(config_path))
     sys.path.insert(0, config_dir)
-    config_name, _ = os.path.splitext(config_name)
+    config_name, _ = os.path.splitext(config_file)
     config_module = import_module(config_name)
     return config_module.get_config()
 
