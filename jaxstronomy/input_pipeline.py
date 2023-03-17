@@ -384,6 +384,7 @@ def draw_image_and_truth(
         lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
         cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
         grid_x: jnp.ndarray, grid_y: jnp.ndarray, rng: Sequence[int],
+        rotation_angle: float,
         all_models: Mapping[str, Sequence[Any]],
         principal_md_index: int, principal_source_index: int,
         kwargs_simulation: Mapping[str, int],
@@ -391,7 +392,6 @@ def draw_image_and_truth(
         kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
         truth_parameters: Tuple[Sequence[str], Sequence[str]],
         normalize_image: Optional[bool] = True,
-        rotation_angle: Optional[float] = 0.0
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Draw image and truth values for a realization of the lensing config.
 
@@ -403,6 +403,8 @@ def draw_image_and_truth(
         grid_x: x-grid in units of arcseconds.
         grid_y: y-grid in units of arcseconds.
         rng: jax PRNG key.
+        rotation_angle: Counterclockwise angle by which to rotate images and
+            truths.
         all_models: Tuple of model classes to consider for each component.
         principal_md_index: Index of the main deflector model to consider when
             determining the position of the source and substructure.
@@ -417,8 +419,6 @@ def draw_image_and_truth(
             parameters to extract.
         normalize_image: If True, the image will be normalized to have
             standard deviation 1.
-        rotation_angle: Counterclockwise angle by which to rotate images and
-            truths.
 
     Returns:
         Image and corresponding truth values.

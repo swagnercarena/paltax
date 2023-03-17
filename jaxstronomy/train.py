@@ -263,8 +263,8 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
             kwargs_detector=input_config['kwargs_detector'],
             kwargs_psf=input_config['kwargs_psf'],
             truth_parameters=input_config['truth_parameters']),
-        in_axes=(None, None, None, None, 0))),
-        in_axes=(None, None, None, None, 0)
+        in_axes=(None, None, None, None, 0, None))),
+        in_axes=(None, None, None, None, 0, None)
     )
     if isinstance(rng, Iterator):
         rng_cosmo = next(rng)
@@ -304,7 +304,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
         image, truth = draw_image_and_truth_pmap(input_config['lensing_config'],
                                                  cosmology_params, grid_x,
                                                  grid_y, rng_images,
-                                                 rotation_angle=rotation_angle)
+                                                 rotation_angle)
         image = jnp.expand_dims(image, axis=-1)
 
         batch = {'image': image, 'truth': truth}

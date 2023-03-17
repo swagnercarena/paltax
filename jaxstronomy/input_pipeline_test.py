@@ -580,9 +580,10 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             kwargs_simulation=kwargs_simulation,
             kwargs_detector=config['kwargs_detector'],
             kwargs_psf=kwargs_psf, truth_parameters=truth_parameters))
+        rotation_angle = 0.0
         image, truth = draw_image_and_truth(config['lensing_config'],
                                             cosmology_params, grid_x, grid_y,
-                                            rng)
+                                            rng, rotation_angle)
 
         # Just test that the data and truths vary and that they are normalized
         # as expected.
@@ -595,7 +596,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         rotation_angle = jnp.pi / 2
         image_rot, _ = draw_image_and_truth(
             config['lensing_config'], cosmology_params, grid_x, grid_y, rng,
-            rotation_angle=rotation_angle
+            rotation_angle
         )
 
         # Due to noise and floating point error, the rotated image is not
