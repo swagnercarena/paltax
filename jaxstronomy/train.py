@@ -14,7 +14,10 @@
 """Training script for dark matter substructure inference."""
 
 import functools
+from importlib import import_module
 import itertools
+import os
+import sys
 import time
 from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple, Union
 
@@ -38,10 +41,14 @@ from jaxstronomy import models
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('workdir', None, 'working directory')
-flags.DEFINE_float('learning_rate', 0.001, 'learning rate')
+flags.DEFINE_string('workdir', None, 'working directory.')
+flags.DEFINE_float('learning_rate', 0.001, 'learning rate.')
 flags.DEFINE_integer('num_unique_batches', 0,
     'number of unique batches of data to draw. If 0 produces infinite data.')
+flags.DEFINE_string('train_config_path', './train_config.py',
+    'path to the training configuration.')
+flags.DEFINE_string('input_config_path', './input_config.py',
+    'path to the input configuration.')
 
 
 def initialized(
@@ -338,19 +345,34 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
     return state
 
 
-def main(_):
-    from jaxstronomy import train_config
-    from jaxstronomy import input_config
+def _get_config(config_path: str) -> Any:
+    """Return config from provided path.
 
-    config = train_config.get_config()
-    ic = input_config.get_config()
-    image_size = ic['kwargs_detector']['n_x']
+    Args:
+        config_path: Path to configuration file.
+
+    Returns:
+        Loaded configuration file.
+    """
+    # Get the dictionary from the .py file.
+    config_dir, _ = os.path.split(os.path.abspath(config_path))
+    sys.path.insert(0, config_dir)
+    config_name, _ = os.path.splitext(config_name)
+    config_module = import_module(config_name)
+    return config_module.get_config()
+
+
+def main(_):
+
+    train_config = _get_config(FLAGS.train_config_path)
+    input_config = _get_config(FLAGS.input_config_path)
+    image_size = input_config['kwargs_detector']['n_x']
     rng = jax.random.PRNGKey(0)
     if FLAGS.num_unique_batches > 0:
         rng_list = jax.random.split(rng, FLAGS.num_unique_batches)
         rng = itertools.cycle(rng_list)
-    train_and_evaluate(config, ic, FLAGS.workdir, rng, image_size,
-                       FLAGS.learning_rate)
+    train_and_evaluate(train_config, input_config, FLAGS.workdir, rng,
+                       image_size, FLAGS.learning_rate)
 
 
 if __name__ == '__main__':
