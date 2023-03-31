@@ -98,7 +98,7 @@ def get_config():
     # The remaining parameters should not be drawn from random distributions.
     config['kwargs_detector'] = {
         'n_x': 32, 'n_y': 32, 'pixel_width': 0.2, 'supersampling_factor': 2,
-        'exposure_time': 1024, 'num_exposures': 46.0, 'sky_brightness': 20.48,
+        'exposure_time': 15, 'num_exposures': 460.0, 'sky_brightness': 20.48,
         'magnitude_zero_point': 27.79, 'read_noise': 10.0
     }
     cosmos_path = '/scratch/users/swagnerc/datasets/cosmos/cosmos_galaxies_train.npz'
