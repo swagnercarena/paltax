@@ -126,14 +126,29 @@ def get_learning_rate_schedule(
     Returns:
         Mapping from step to learning rate according to the schedule.
     """
-    warmup_fn = optax.linear_schedule(init_value=0.0,
-        end_value=base_learning_rate,
-        transition_steps=config.warmup_steps)
-    cosine_steps = max(config.num_train_steps - config.warmup_steps, 1)
-    cosine_fn = optax.cosine_decay_schedule(init_value=base_learning_rate,
-        decay_steps=cosine_steps)
-    schedule_fn = optax.join_schedules(schedules=[warmup_fn, cosine_fn],
-        boundaries=[config.warmup_steps])
+    schedule_function_type = config.schedule_function_type
+
+    if schedule_function_type is 'cosine':
+        # Cosine decay with linear warmup.
+        warmup_fn = optax.linear_schedule(init_value=0.0,
+            end_value=base_learning_rate,
+            transition_steps=config.warmup_steps)
+        cosine_steps = max(config.num_train_steps - config.warmup_steps, 1)
+        cosine_fn = optax.cosine_decay_schedule(init_value=base_learning_rate,
+            decay_steps=cosine_steps)
+        schedule_fn = optax.join_schedules(schedules=[warmup_fn, cosine_fn],
+            boundaries=[config.warmup_steps])
+    elif schedule_function_type is 'constant':
+        # Constant learning rate.
+        schedule_fn = optax.constant_schedule(base_learning_rate)
+    elif schedule_function_type is 'exp_decay':
+        # Exponential decay learning rate.
+        schedule_fn = optax.exponential_decay(base_learning_rate,
+                                              config.steps_per_epoch,
+                                              config.decay_rate)
+    else:
+        raise ValueError(f'{schedule_function_type} is not a valid learning ' +
+                         'rate schedule valid type.')
     return schedule_fn
 
 
