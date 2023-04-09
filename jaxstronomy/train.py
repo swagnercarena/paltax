@@ -128,7 +128,7 @@ def get_learning_rate_schedule(
     """
     schedule_function_type = config.schedule_function_type
 
-    if schedule_function_type is 'cosine':
+    if schedule_function_type == 'cosine':
         # Cosine decay with linear warmup.
         warmup_fn = optax.linear_schedule(init_value=0.0,
             end_value=base_learning_rate,
@@ -138,10 +138,10 @@ def get_learning_rate_schedule(
             decay_steps=cosine_steps)
         schedule_fn = optax.join_schedules(schedules=[warmup_fn, cosine_fn],
             boundaries=[config.warmup_steps])
-    elif schedule_function_type is 'constant':
+    elif schedule_function_type == 'constant':
         # Constant learning rate.
         schedule_fn = optax.constant_schedule(base_learning_rate)
-    elif schedule_function_type is 'exp_decay':
+    elif schedule_function_type == 'exp_decay':
         # Exponential decay learning rate.
         schedule_fn = optax.exponential_decay(base_learning_rate,
                                               config.steps_per_epoch,
