@@ -123,5 +123,21 @@ class UtilsTest(chex.TestCase, parameterized.TestCase):
         np.testing.assert_array_almost_equal(grid_x, np.ones(10) / np.sqrt(2))
         np.testing.assert_array_almost_equal(grid_y, np.ones(10) / np.sqrt(2))
 
+    def test_random_permutation_iterator(self):
+        # Test that the iterator cycles over all values and returns a random
+        # permutation.
+        array_to_cycle = jnp.linspace(0, 10, 11)
+        rng = jax.random.PRNGKey(0)
+        generator = utils.random_permutation_iterator(array_to_cycle, rng)
+
+        cycle_one = []
+        cycle_two = []
+        for cycle in [cycle_one, cycle_two]:
+            for _ in range(len(array_to_cycle)):
+                cycle.append(float(next(generator)))
+
+        self.assertNotEqual(cycle_one, cycle_two)
+        self.assertEqual(set(cycle_one), set(cycle_two))
+
 if __name__ == '__main__':
     absltest.main()

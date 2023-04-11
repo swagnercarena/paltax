@@ -16,6 +16,7 @@
 import functools
 from typing import Any, Callable, Sequence, Tuple
 
+import jax
 import jax.numpy as jnp
 
 
@@ -118,6 +119,7 @@ def get_k_correction(z_light: float) -> float:
     """
     return 2.5 * jnp.log(1 + z_light)
 
+
 def rotate_coordinates(
         grid_x: jnp.ndarray, grid_y: jnp.ndarray, angle: float
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -133,3 +135,24 @@ def rotate_coordinates(
     """
     complex_coords = jnp.exp(1j * angle) * ((grid_x) + (grid_y) * 1j)
     return complex_coords.real, complex_coords.imag
+
+
+def random_permutation_iterator(
+        array_to_cycle: jnp.ndarray, rng: Sequence[int]) -> Any:
+    """Yield a generator that cycles through random permutation of an array.
+
+    Args:
+        array_to_cycle: Array that to cycle over random permutations of.
+        rng: jax PRNG key.
+
+    Returns:
+        Generator function that cycles over random permutation of the array.
+    """
+    # Will loop forever.
+    while True:
+        rng_shuffle, rng = jax.random.split(rng)
+
+        # Shuffle the array randomly and cycle through the list.
+        shuffled_array = jax.random.shuffle(rng_shuffle, array_to_cycle)
+        for item in shuffled_array:
+            yield item
