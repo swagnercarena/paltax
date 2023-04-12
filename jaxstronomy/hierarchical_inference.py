@@ -37,8 +37,6 @@ PREDICT_SAMPS_HIER = None
 # performance.
 MU_PRED_ARRAY = None
 PREC_PRED_ARRAY = None
-MU_PRED_ARRAY_ENSEMBLE = None
-PREC_PRED_ARRAY_ENSEMBLE = None
 
 
 def log_p_omega(hyperparameters: np.array, eval_func_omega: Any) -> float:

@@ -355,7 +355,8 @@ def extract_truth_values(
         all_params: Mapping[str, Mapping[str, jnp.ndarray]],
         lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
         truth_parameters: Tuple[Sequence[str], Sequence[str]],
-        rotation_angle: Optional[float] = 0.0) -> jnp.ndarray:
+        rotation_angle: Optional[float] = 0.0,
+        normalize_truths: Optional[bool] = True) -> jnp.ndarray:
     """Extract the truth parameters and normalize them according to the config.
 
     Args:
@@ -364,6 +365,8 @@ def extract_truth_values(
         truth_parameters: List of the lensing objects and corresponding
             parameters to extract.
         rotation_angle: Counterclockwise angle by which to rotate truths.
+        normalize_truths: If true, normalize parameters according to the
+            encoded distribtion.
 
     Returns:
         Truth values for each of the requested parameters.
@@ -373,11 +376,15 @@ def extract_truth_values(
     # Begin by adding the rotation applied to the image.
     rotate_params(all_params, truth_parameters, rotation_angle)
 
-    # Now normalize the parameters.
+    # Now normalize the parameters if requested.
+    if normalize_truths:
+        return jnp.array(jax.tree_util.tree_map(
+            lambda x, y: normalize_param(all_params[x][y],
+                                        lensing_config[x][y]),
+            extract_objects, extract_keys))
+
     return jnp.array(jax.tree_util.tree_map(
-        lambda x, y: normalize_param(all_params[x][y],
-                                     lensing_config[x][y]),
-        extract_objects, extract_keys))
+        lambda x, y: all_params[x][y], extract_objects, extract_keys))
 
 
 def draw_image_and_truth(
@@ -392,6 +399,7 @@ def draw_image_and_truth(
         kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
         truth_parameters: Tuple[Sequence[str], Sequence[str]],
         normalize_image: Optional[bool] = True,
+        normalize_truths: Optional[bool] = True
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Draw image and truth values for a realization of the lensing config.
 
@@ -419,6 +427,8 @@ def draw_image_and_truth(
             parameters to extract.
         normalize_image: If True, the image will be normalized to have
             standard deviation 1.
+        normalize_truths: If true, normalize parameters according to the
+            encoded distribtion.
 
     Returns:
         Image and corresponding truth values.
@@ -505,6 +515,6 @@ def draw_image_and_truth(
 
     # Extract the truth values and normalize them.
     truth = extract_truth_values(all_params, lensing_config, truth_parameters,
-                                 rotation_angle)
+                                 rotation_angle, normalize_truths)
 
     return image, truth

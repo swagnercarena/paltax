@@ -483,7 +483,10 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
 
 
     @chex.all_variants(without_device=False)
-    def test_extract_truth_values(self):
+    @parameterized.named_parameters(
+            [(f'normalize_{normalize}',normalize) for normalize in
+             [True, False]])
+    def test_extract_truth_values(self, normalize):
         # Test that the extracted parameters match the values fed into the
         # dictionary.
         all_params = {
@@ -510,16 +513,21 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         truth_parameters = (extract_objects, extract_keys)
         extract_truth_values = self.variant(functools.partial(
             input_pipeline.extract_truth_values,
-            truth_parameters=truth_parameters, rotation_angle=rotation_angle))
+            truth_parameters=truth_parameters, rotation_angle=rotation_angle,
+            normalize_truths=normalize))
 
         parameter_array = extract_truth_values(all_params, lensing_config)
         self.assertTupleEqual(parameter_array.shape, (4,))
-        np.testing.assert_array_almost_equal(
-            parameter_array, np.array([0.0, (0.5 - mean) / std,
-                                       (10.2 - minimum) / (maximum - minimum),
-                                       jnp.pi / 4])
-        )
-
+        if normalize:
+            np.testing.assert_array_almost_equal(
+                parameter_array, np.array([0.0, (0.5 - mean) / std,
+                                        (10.2 - minimum) / (maximum - minimum),
+                                        jnp.pi / 4])
+            )
+        else:
+            np.testing.assert_array_almost_equal(
+                parameter_array, np.array([0.0, 0.5, 10.2, jnp.pi / 4])
+            )
 
     @chex.all_variants(without_device=False)
     def test_draw_image_and_truth(self):

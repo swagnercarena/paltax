@@ -23,7 +23,7 @@ from scipy import integrate
 from jaxstronomy import hierarchical_inference
 
 
-def _prepare_means_precisions(problem):
+def _prepare_test_gaussian_product_analytical(problem):
     # Return different combinations of precision matrices and means to test.
     mu_pred = np.ones(2)
     prec_pred = np.identity(2)
@@ -55,8 +55,18 @@ def _prepare_means_precisions(problem):
     return ([mu_pred, mu_omega, mu_omega_i],
             [prec_pred, prec_omega, prec_omega_i])
 
+['simple', 'invalid', 'covariance']
+def _perpare_test_log_post_omega(problem):
+    # Return hyperparameters to test.
+    if problem == 'simple':
+        return np.zeros(20)
+    elif problem == 'invalid':
+        return -np.ones(20)
+    elif problem == 'covariance':
+        return np.random.rand(20)
 
-class HierarchicalInference(parameterized.TestCase):
+
+class HierarchicalInferenceTest(parameterized.TestCase):
     """Runs tests of various hierarchical inference functions."""
 
     def test_log_p_omega(self):
@@ -83,7 +93,8 @@ class HierarchicalInference(parameterized.TestCase):
              ['identity', 'cov', 'mean_shift', 'cov_complex', 'invalid']])
     def test_gaussian_product_analytical(self, problem):
         # Compare analytic results with numerical integration.
-        means, precisions = _prepare_means_precisions(problem)
+        means, precisions = _prepare_test_gaussian_product_analytical(
+            problem)
         mu_pred, mu_omega, mu_omega_i = means
         prec_pred, prec_omega, prec_omega_i = precisions
 
@@ -119,6 +130,102 @@ class HierarchicalInference(parameterized.TestCase):
                     mu_pred,prec_pred,mu_omega_i,prec_omega_i,mu_omega,
                     prec_omega)
             )
+
+
+class ProbabilityClassAnalyticalTest(parameterized.TestCase):
+    """Runs tests of various ProbabilityClassAnalytical functions."""
+
+    def setUp(self):
+        np.random.seed(2)
+        return super().setUp()
+
+    def test_set_predictions(self):
+        # Test that setting the samples saves it globally.
+        n_lenses = 1000
+        mu_pred_array_input = np.random.randn(n_lenses, 10)
+        prec_pred_array_input = np.tile(
+            np.expand_dims(np.identity(10), axis=0), (n_lenses, 1, 1)
+        )
+        mu_omega_i = np.ones(10)
+        cov_omega_i = np.identity(10)
+        eval_func_omega = None
+
+        # Establish our ProbabilityClassAnalytical
+        prob_class = hierarchical_inference.ProbabilityClassAnalytical(
+            mu_omega_i, cov_omega_i, eval_func_omega)
+
+        # Try setting the predictions
+        prob_class.set_predictions(mu_pred_array_input, prec_pred_array_input)
+        np.testing.assert_array_almost_equal(
+            hierarchical_inference.MU_PRED_ARRAY, mu_pred_array_input)
+        np.testing.assert_array_almost_equal(
+            hierarchical_inference.PREC_PRED_ARRAY, prec_pred_array_input)
+
+    def test_log_integral_product(self):
+        # Test that the log integral product just sums the log of each integral.
+        n_lenses = 1000
+        mu_pred_array = np.random.randn(n_lenses, 10)
+        prec_pred_array = np.tile(
+            np.expand_dims(np.identity(10), axis=0),(n_lenses, 1, 1))
+        mu_omega_i = np.ones(10)
+        prec_omega_i = np.identity(10)
+        mu_omega = np.ones(10)
+        prec_omega = np.identity(10)
+
+        # Calculate the value by hand.
+        hand_integral = 0
+        for mu_pred, prec_pred in zip(mu_pred_array, prec_pred_array):
+            hand_integral += hierarchical_inference.gaussian_product_analytical(
+                    mu_pred, prec_pred, mu_omega_i, prec_omega_i, mu_omega,
+                    prec_omega)
+
+        # Now use the class.
+        prob_class = hierarchical_inference.ProbabilityClassAnalytical
+        integral = prob_class.log_integral_product(
+            mu_pred_array, prec_pred_array, mu_omega_i, prec_omega_i, mu_omega,
+            prec_omega)
+
+        self.assertAlmostEqual(integral, hand_integral)
+
+    @parameterized.named_parameters(
+            [(f'{problem}',problem) for problem in
+             ['simple', 'invalid', 'covariance']])
+    def test_log_post_omega(self, problem):
+        # Test that the log_post_omega calculation includes both the integral
+        # and the prior.
+        n_lenses = 1000
+        mu_pred_array_input = np.random.randn(n_lenses, 10)
+        prec_pred_array_input = np.tile(np.expand_dims(np.identity(10), axis=0),
+            (n_lenses, 1, 1))
+        mu_omega_i = np.ones(10)
+        cov_omega_i = np.identity(10)
+        prec_omega_i = cov_omega_i
+
+        @numba.njit()
+        def eval_func_omega(hyperparameters):
+            if np.any(hyperparameters[len(hyperparameters) // 2:] < 0):
+                return -np.inf
+            return 0
+
+        # Establish our ProbabilityClassAnalytical
+        prob_class = hierarchical_inference.ProbabilityClassAnalytical(
+            mu_omega_i, cov_omega_i, eval_func_omega
+        )
+        prob_class.set_predictions(mu_pred_array_input, prec_pred_array_input)
+
+        # Test a simple array of zeros
+        hyperparameters = _perpare_test_log_post_omega(problem)
+        mu_omega = hyperparameters[:10]
+        prec_omega = np.linalg.inv(np.diag(np.exp(hyperparameters[10:]) ** 2))
+
+        if problem == 'invalid':
+            self.assertEqual(-np.inf,prob_class.log_post_omega(hyperparameters))
+        else:
+            hand_calc = prob_class.log_integral_product(
+                mu_pred_array_input, prec_pred_array_input, mu_omega_i,
+                prec_omega_i, mu_omega, prec_omega)
+            self.assertAlmostEqual(
+                hand_calc, prob_class.log_post_omega(hyperparameters))
 
 
 if __name__ == '__main__':

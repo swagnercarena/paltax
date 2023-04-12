@@ -38,6 +38,7 @@ import optax
 
 from jaxstronomy import input_pipeline
 from jaxstronomy import models
+from jaxstronomy import utils
 
 
 FLAGS = flags.FLAGS
@@ -385,7 +386,7 @@ def main(_):
     rng = jax.random.PRNGKey(0)
     if FLAGS.num_unique_batches > 0:
         rng_list = jax.random.split(rng, FLAGS.num_unique_batches)
-        rng = itertools.cycle(rng_list)
+        rng = utils.random_permutation_iterator(rng_list, rng)
     train_and_evaluate(train_config, input_config, FLAGS.workdir, rng,
                        image_size, FLAGS.learning_rate)
 

@@ -138,7 +138,8 @@ def rotate_coordinates(
 
 
 def random_permutation_iterator(
-        array_to_cycle: jnp.ndarray, rng: Sequence[int]) -> Any:
+        array_to_cycle: jnp.ndarray, rng: Sequence[int]
+    ) -> Any:
     """Yield a generator that cycles through random permutation of an array.
 
     Args:
