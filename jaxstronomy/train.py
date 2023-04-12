@@ -15,7 +15,6 @@
 
 import functools
 from importlib import import_module
-import itertools
 import os
 import sys
 import time
@@ -23,7 +22,6 @@ from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple, Union
 
 from absl import app
 from absl import flags
-
 from clu import metric_writers
 from clu import periodic_actions
 from flax import jax_utils
@@ -379,7 +377,7 @@ def _get_config(config_path: str) -> Any:
 
 
 def main(_):
-
+    """Train neural network model with configuration defined by flags."""
     train_config = _get_config(FLAGS.train_config_path)
     input_config = _get_config(FLAGS.input_config_path)
     image_size = input_config['kwargs_detector']['n_x']
