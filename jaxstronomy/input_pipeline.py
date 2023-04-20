@@ -399,7 +399,8 @@ def draw_image_and_truth(
         kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
         truth_parameters: Tuple[Sequence[str], Sequence[str]],
         normalize_image: Optional[bool] = True,
-        normalize_truths: Optional[bool] = True
+        normalize_truths: Optional[bool] = True,
+        normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Draw image and truth values for a realization of the lensing config.
 
@@ -429,6 +430,8 @@ def draw_image_and_truth(
             standard deviation 1.
         normalize_truths: If true, normalize parameters according to the
             encoded distribtion.
+        normalize_config: The lensing config to use for normalization. If None
+            will default to the lensing config.
 
     Returns:
         Image and corresponding truth values.
@@ -436,6 +439,11 @@ def draw_image_and_truth(
     Notes:
         To jit compile, every parameter after rng must be fixed.
     """
+    # If no normalization config is specified, assume the input lensing
+    # configuration.
+    if normalize_config is None:
+        normalize_config = lensing_config
+
     # Pull out the padding and bins we will use while vmapping our simulation.
     num_z_bins = kwargs_simulation['num_z_bins']
     los_pad_length = kwargs_simulation['los_pad_length']
@@ -514,7 +522,7 @@ def draw_image_and_truth(
         image /= jnp.std(image)
 
     # Extract the truth values and normalize them.
-    truth = extract_truth_values(all_params, lensing_config, truth_parameters,
+    truth = extract_truth_values(all_params, normalize_config, truth_parameters,
                                  rotation_angle, normalize_truths)
 
     return image, truth

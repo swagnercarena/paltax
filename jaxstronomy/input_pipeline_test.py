@@ -556,6 +556,12 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         config['all_models'] = all_models
         rng = jax.random.PRNGKey(0)
 
+        # Generate a normalizing config that is different in one of the truth
+        # parameters
+        normalize_config = _prepare_lensing_config()
+        normalize_config['main_deflector_params']['theta_e'] = (
+            input_pipeline.encode_uniform(minimum=1.0, maximum=1.2))
+
         cosmology_params = input_pipeline.intialize_cosmology_params(config,
                                                                      rng)
         n_x = 16
@@ -587,7 +593,8 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             principal_source_index=principal_source_index,
             kwargs_simulation=kwargs_simulation,
             kwargs_detector=config['kwargs_detector'],
-            kwargs_psf=kwargs_psf, truth_parameters=truth_parameters))
+            kwargs_psf=kwargs_psf, truth_parameters=truth_parameters,
+            normalize_config=normalize_config))
         rotation_angle = 0.0
         image, truth = draw_image_and_truth(config['lensing_config'],
                                             cosmology_params, grid_x, grid_y,
@@ -598,7 +605,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         self.assertTupleEqual(image.shape, (n_x, n_y))
         self.assertAlmostEqual(1.0, jnp.std(image), places=6)
         self.assertTupleEqual(truth.shape, (2,))
-        self.assertEqual(truth[0], 0.0)
+        self.assertEqual(truth[0], 0.5)
 
         # Test that inserting a rotation returns a rotated image
         rotation_angle = jnp.pi / 2
