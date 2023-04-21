@@ -231,13 +231,19 @@ def create_train_state(rng, config: ml_collections.ConfigDict,
     return state
 
 
-def train_and_evaluate(config: ml_collections.ConfigDict,
-                       input_config: dict,
-                       workdir: str,
-                       rng: Union[Iterator[Sequence[int]], Sequence[int]],
-                       image_size: int, learning_rate: float) -> TrainState:
+def train_and_evaluate(
+        config: ml_collections.ConfigDict,
+        input_config: dict,
+        workdir: str,
+        rng: Union[Iterator[Sequence[int]], Sequence[int]],
+        image_size: int, learning_rate: float,
+        normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
+) -> TrainState:
     """
     """
+
+    if normalize_config is None:
+        normalize_config = input_config
 
     writer = metric_writers.create_default_writer(
         logdir=workdir, just_logging=jax.process_index() != 0)
@@ -283,7 +289,8 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
             kwargs_simulation=input_config['kwargs_simulation'],
             kwargs_detector=input_config['kwargs_detector'],
             kwargs_psf=input_config['kwargs_psf'],
-            truth_parameters=input_config['truth_parameters']),
+            truth_parameters=input_config['truth_parameters'],
+            normalize_config=normalize_config),
         in_axes=(None, None, None, None, 0, None))),
         in_axes=(None, None, None, None, 0, None)
     )
