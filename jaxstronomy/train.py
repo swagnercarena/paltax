@@ -243,7 +243,7 @@ def train_and_evaluate(
     """
 
     if normalize_config is None:
-        normalize_config = input_config
+        normalize_config = input_config['lensing_config']
 
     writer = metric_writers.create_default_writer(
         logdir=workdir, just_logging=jax.process_index() != 0)
