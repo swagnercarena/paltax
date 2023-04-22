@@ -91,6 +91,50 @@ def gaussian_loss(outputs: jnp.ndarray, truth: jnp.ndarray) -> jnp.ndarray:
     return jnp.mean(loss)
 
 
+def snpe_c_loss(
+        outputs: jnp.ndarray, truth: jnp.ndarray, mu_prop: jnp.ndarray,
+        prec_prop: jnp.ndarray, mu_prior: jnp.ndarray, prec_prior: jnp.ndarray
+) -> jnp.ndarray:
+    """Gaussian loss weighted by ratio of proposal to prior for SNPE type c.
+
+    Args:
+        outputs: Values outputted by the model.
+        truth: True value of the parameters.
+        mu_prop: Mean of the proposal distribution.
+        prec_prop: Precision matrix for the proposal distribution.
+        mu_prior: Mean of the prior distribution.
+        prec_prior: Precision matrix for the prior distribution. For a infinite
+            uniform prior this can be a matrix of zeros. While not techinically
+            a well-defined prior, it is equivalent to a Gaussian with infinite
+            variance in each variable.
+
+    Returns:
+        Gaussian loss multiplied by ratio of proposal to prior and normalized
+            to be a well-defined pdf.
+
+    Notes:
+        Loss does not inlcude constant factor of 1 / (2 * pi) ^ (d/2)
+    """
+    # Break out the mean and log variance predictions from our network
+    # posterior.
+    mu_post, log_var_post = jnp.split(outputs, 2, axis=-1)
+    prec_post = jax.vmap(jnp.diag)(jnp.exp(-log_var_post))
+
+    prec_comb = prec_post + prec_prop - prec_prior
+    cov_comb = jnp.linalg.inv(prec_comb)
+    eta_comb = jax.vmap(jnp.dot)(prec_post, mu_post)
+    eta_comb += jnp.dot(prec_prop, mu_prop)
+    eta_comb -= jnp.dot(prec_prior, mu_prior)
+    mu_comb = jax.vmap(jnp.dot)(cov_comb, eta_comb)
+
+    # For now our loss function only accepts the log variance and not a full
+    # covariance matrix.
+    log_var_comb = -jnp.log(jax.vmap(jnp.diag)(prec_comb))
+    outputs_comb = jnp.concatenate([mu_comb, log_var_comb], axis=-1)
+
+    return gaussian_loss(outputs_comb, truth)
+
+
 def compute_metrics(
         outputs: jnp.ndarray, truth: jnp.ndarray) -> Mapping[str, jnp.ndarray]:
     """Compute the performance metrics of the output.
@@ -161,13 +205,7 @@ def train_step(state, batch, learning_rate_schedule):
             batch['image'],
             mutable=['batch_stats'])
         loss = gaussian_loss(outputs, batch['truth'])
-        # weight_penalty_params = jax.tree_util.tree_leaves(params)
-        # weight_decay = 0.0001
-        # weight_l2 = sum(jnp.sum(x ** 2)
-        #                 for x in weight_penalty_params
-        #                 if x.ndim > 1)
-        # weight_penalty = weight_decay * 0.5 * weight_l2
-        # loss = loss + weight_penalty
+
         return loss, (new_model_state, outputs)
 
     step = state.step

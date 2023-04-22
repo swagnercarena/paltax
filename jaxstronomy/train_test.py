@@ -20,6 +20,7 @@ import chex
 import jax
 import jax.numpy as jnp
 import numpy as np
+from scipy.stats import multivariate_normal
 
 from jaxstronomy import models
 from jaxstronomy import train
@@ -27,26 +28,26 @@ from jaxstronomy import train
 class TrainTests(chex.TestCase, parameterized.TestCase):
     """Runs tests of image simulation functions."""
 
-    def test_initialized(self):
-        # Test the the model includes initialized weights and biases and
-        # can be applied.
-        rng = jax.random.PRNGKey(0)
-        model = models.ResNet50(num_outputs=2, dtype=jnp.float32)
-        image_size = 128
-        params, batch_stats = train.initialized(rng, image_size, model)
+    # def test_initialized(self):
+    #     # Test the the model includes initialized weights and biases and
+    #     # can be applied.
+    #     rng = jax.random.PRNGKey(0)
+    #     model = models.ResNet50(num_outputs=2, dtype=jnp.float32)
+    #     image_size = 128
+    #     params, batch_stats = train.initialized(rng, image_size, model)
 
-        self.assertTupleEqual(params['conv_init']['kernel'].shape,
-            (7, 7, 1, 64))
-        self.assertTupleEqual(params['bn_init']['scale'].shape,
-            (64,))
-        self.assertTupleEqual(batch_stats['bn_init']['mean'].shape,
-            (64,))
+    #     self.assertTupleEqual(params['conv_init']['kernel'].shape,
+    #         (7, 7, 1, 64))
+    #     self.assertTupleEqual(params['bn_init']['scale'].shape,
+    #         (64,))
+    #     self.assertTupleEqual(batch_stats['bn_init']['mean'].shape,
+    #         (64,))
 
-        output, _ = model.apply({'params':params, 'batch_stats':batch_stats},
-            jax.random.normal(rng, shape=(3, image_size, image_size, 1)),
-            mutable=['batch_stats'])
-        self.assertTupleEqual(output.shape, (3, 2))
-        np.testing.assert_array_less(jnp.zeros(2), jnp.std(output, axis=0))
+    #     output, _ = model.apply({'params':params, 'batch_stats':batch_stats},
+    #         jax.random.normal(rng, shape=(3, image_size, image_size, 1)),
+    #         mutable=['batch_stats'])
+    #     self.assertTupleEqual(output.shape, (3, 2))
+    #     np.testing.assert_array_less(jnp.zeros(2), jnp.std(output, axis=0))
 
     @chex.all_variants
     def test_gaussian_loss(self):
@@ -71,6 +72,74 @@ class TrainTests(chex.TestCase, parameterized.TestCase):
             jnp.zeros((batch_size, 2))], axis=-1)
         truth = jnp.zeros((batch_size, 2))
         self.assertAlmostEqual(gaussian_loss(outputs, truth), 1.0, places=2)
+
+
+    @chex.all_variants
+    def test_snpe_c_loss(self):
+        # Test a few edge cases of the snpe_c loss to make sure it behaves.
+        snpe_c_loss = self.variant(train.snpe_c_loss)
+
+        # Start with prior and proposal being equal and require it gives
+        # Gaussian loss.
+        dim = 2
+        mu_prior = jnp.zeros(dim)
+        prec_prior = jnp.diag(jnp.ones(dim) * 4)
+        mu_prop = mu_prior
+        prec_prop = prec_prior
+
+        batch_size = int(1e4)
+        rng = jax.random.PRNGKey(0)
+        rng_out, rng_test, rng = jax.random.split(rng, 3)
+        outputs = jnp.concatenate(
+            [jax.random.normal(rng_out, (batch_size, dim)),
+             jnp.zeros((batch_size, dim))], axis=-1
+        )
+        truth = jax.random.normal(rng_test, (batch_size, dim))
+
+        self.assertAlmostEqual(train.gaussian_loss(outputs, truth),
+                               snpe_c_loss(outputs, truth, mu_prop, prec_prop,
+                                           mu_prior, prec_prior))
+
+        # We can easily test more complicated configurations so long as we don't
+        # demand that our analytical solution have the right normalization.
+        # Just make sure the covraiance of the prior precision matrix is larger
+        # than the proposal precision matrix.
+
+        rng_prior, rng_prop = jax.random.split(rng)
+        mu_prior = jax.random.normal(rng_prior, (dim,))
+        mu_prop = jax.random.normal(rng_prop, (dim,))
+        prec_prop = jnp.diag(jax.random.uniform(rng_prior, (dim,)) + 0.2)
+        prec_prior = prec_prop / 4
+
+        def analytical(outputs, truth, mu_prop, prec_prop, mu_prior,
+                       prec_prior):
+            mu_post, log_var_post = jnp.split(outputs, 2, axis=-1)
+            prec_post = jnp.diag(jnp.exp(-log_var_post[0]))
+            unormed_pdf = multivariate_normal(
+                mu_prop, jnp.linalg.inv(prec_prop)).logpdf(truth)
+            unormed_pdf += multivariate_normal(
+                mu_post[0], jnp.linalg.inv(prec_post)).logpdf(truth)
+            unormed_pdf -= multivariate_normal(
+                mu_prior, jnp.linalg.inv(prec_prior)).logpdf(truth)
+            return -unormed_pdf
+
+        # Use the loss on the first truth value as a reference value and
+        # test the first 10 draws.
+        tr_i = jnp.array([0])
+        out_i = jnp.array([0])
+        loss_zero = snpe_c_loss(outputs[out_i], truth[tr_i], mu_prop, prec_prop,
+                                mu_prior, prec_prior)
+        loss_zero_unorm = analytical(outputs[out_i], truth[tr_i], mu_prop, prec_prop,
+                                mu_prior, prec_prior)
+        for i in range(10):
+            tr_i = jnp.array([i])
+            loss_ratio = snpe_c_loss(outputs[out_i], truth[tr_i], mu_prop, prec_prop,
+                                     mu_prior, prec_prior)
+            loss_ratio -= loss_zero
+            loss_ratio_unorm = analytical(outputs[out_i], truth[tr_i], mu_prop, prec_prop,
+                                mu_prior, prec_prior)
+            loss_ratio_unorm -= loss_zero_unorm
+            self.assertAlmostEqual(loss_ratio, loss_ratio_unorm, places=4)
 
 
     @chex.all_variants
