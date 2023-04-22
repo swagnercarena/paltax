@@ -195,6 +195,14 @@ def get_learning_rate_schedule(
     return schedule_fn
 
 
+def get_outputs(state, batch):
+    """Get the outputs for a batch"""
+    return state.apply_fn(
+            {'params': state.params, 'batch_stats': state.batch_stats},
+            batch['image'],
+            mutable=['batch_stats'])
+
+
 def train_step(state, batch, learning_rate_schedule):
     """Perform a single training step."""
 
