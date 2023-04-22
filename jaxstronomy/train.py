@@ -13,6 +13,7 @@
 # limitations under the License.
 """Training script for dark matter substructure inference."""
 
+import copy
 import functools
 from importlib import import_module
 import os
@@ -289,7 +290,7 @@ def train_and_evaluate(
     """
 
     if normalize_config is None:
-        normalize_config = input_config['lensing_config']
+        normalize_config = copy.deepcopy(input_config['lensing_config'])
 
     writer = metric_writers.create_default_writer(
         logdir=workdir, just_logging=jax.process_index() != 0)

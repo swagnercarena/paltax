@@ -14,6 +14,7 @@
 """Training script for dark matter substructure inference."""
 
 import bisect
+import copy
 import functools
 import time
 from typing import Iterator, Mapping, Optional, Sequence, Union
@@ -110,7 +111,7 @@ def train_and_evaluate_snpe(
     """
 
     if normalize_config is None:
-        normalize_config = input_config['lensing_config']
+        normalize_config = copy.deepcopy(input_config['lensing_config'])
 
     writer = metric_writers.create_default_writer(
         logdir=workdir, just_logging=jax.process_index() != 0)
