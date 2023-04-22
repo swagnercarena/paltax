@@ -20,7 +20,7 @@ def get_config():
     config.steps_per_epoch = 15600
     config.num_initial_train_steps = 3213600
     config.num_steps_per_refinement = config.steps_per_epoch * 10
-    config.num_refinements = 5
+    config.num_refinements = 30
 
     config.num_train_steps = config.num_initial_train_steps
     config.num_train_steps += config.num_steps_per_refinement * config.num_refinements
