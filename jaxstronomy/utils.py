@@ -154,6 +154,6 @@ def random_permutation_iterator(
         rng_shuffle, rng = jax.random.split(rng)
 
         # Shuffle the array randomly and cycle through the list.
-        shuffled_array = jax.random.shuffle(rng_shuffle, array_to_cycle)
+        shuffled_array = jax.random.permutation(rng_shuffle, array_to_cycle)
         for item in shuffled_array:
             yield item

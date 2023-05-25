@@ -185,6 +185,12 @@ def get_learning_rate_schedule(
     elif schedule_function_type == 'constant':
         # Constant learning rate.
         schedule_fn = optax.constant_schedule(base_learning_rate)
+    elif schedule_function_type == 'linear':
+        # Constant learning rate.
+        schedule_fn = optax.linear_schedule(
+            base_learning_rate,
+            base_learning_rate * config.config.end_value_multiplier,
+            config.num_train_steps)
     elif schedule_function_type == 'exp_decay':
         # Exponential decay learning rate.
         schedule_fn = optax.exponential_decay(base_learning_rate,

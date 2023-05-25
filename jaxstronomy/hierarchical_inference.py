@@ -61,7 +61,8 @@ def log_p_omega(hyperparameters: np.array, eval_func_omega: Any) -> float:
 @numba.njit
 def gaussian_product_analytical(
     mu_pred: np.array, prec_pred: np.array, mu_omega_i: np.array,
-    prec_omega_i: np.array, mu_omega,prec_omega: np.array) -> float:  # pragma: no cover
+    prec_omega_i: np.array, mu_omega: np.array,
+    prec_omega: np.array) -> float:  # pragma: no cover
     """Calculate the log of the integral of importance sampling ratio.
 
     Calculate the log of the integral of p(xi_k|omega)*p(xi_k|d_k,omega_int)/
@@ -98,9 +99,9 @@ def gaussian_product_analytical(
         return -np.inf
 
     cov_comb = np.linalg.inv(prec_comb)
-    eta_pred = np.dot(prec_pred,mu_pred)
-    eta_omega_i = np.dot(prec_omega_i,mu_omega_i)
-    eta_omega = np.dot(prec_omega,mu_omega)
+    eta_pred = np.dot(prec_pred, mu_pred)
+    eta_omega_i = np.dot(prec_omega_i, mu_omega_i)
+    eta_omega = np.dot(prec_omega, mu_omega)
     eta_comb = eta_pred + eta_omega - eta_omega_i
 
     # Now calculate each of the terms in our exponent
@@ -109,12 +110,12 @@ def gaussian_product_analytical(
     exponent -= np.log(abs(np.linalg.det(prec_omega)))
     exponent += np.log(abs(np.linalg.det(prec_omega_i)))
     exponent += np.log(abs(np.linalg.det(prec_comb)))
-    exponent += np.dot(mu_pred.T,np.dot(prec_pred,mu_pred))
-    exponent += np.dot(mu_omega.T,np.dot(prec_omega,mu_omega))
-    exponent -= np.dot(mu_omega_i.T,np.dot(prec_omega_i,mu_omega_i))
-    exponent -= np.dot(eta_comb.T,np.dot(cov_comb,eta_comb))
+    exponent += np.dot(mu_pred.T, np.dot(prec_pred, mu_pred))
+    exponent += np.dot(mu_omega.T, np.dot(prec_omega, mu_omega))
+    exponent -= np.dot(mu_omega_i.T, np.dot(prec_omega_i, mu_omega_i))
+    exponent -= np.dot(eta_comb.T, np.dot(cov_comb, eta_comb))
 
-    return -0.5*exponent
+    return -0.5 * exponent
 
 
 class ProbabilityClassAnalytical:
