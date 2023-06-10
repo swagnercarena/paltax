@@ -45,7 +45,7 @@ def main(_):
 
     # Hardcoded interim prior.
     train_mean = 2.0e-3
-    train_std = 1.1e-3
+    train_std = 5.5e-3
     mu_omega_i = np.array([train_mean])
     cov_omega_i = np.diag(np.array([train_std]) ** 2)
 
