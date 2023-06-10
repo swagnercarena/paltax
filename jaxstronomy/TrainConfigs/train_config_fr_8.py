@@ -6,7 +6,7 @@ def get_config():
     config = ml_collections.ConfigDict()
 
     # As defined in the `models` module.
-    config.model = 'ResNet18Small'
+    config.model = 'ResNet18VerySmall'
 
     config.momentum = 0.9
     config.batch_size = 32
