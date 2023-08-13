@@ -273,9 +273,17 @@ def create_train_state(rng, config: ml_collections.ConfigDict,
                        model, image_size, learning_rate_schedule):
     """Create initial training state."""
     params, batch_stats = initialized(rng, image_size, model)
-    tx = optax.adam(
-        learning_rate=learning_rate_schedule
-    )
+    optimizer = config.get('optimizer', 'adam')
+    if optimizer == 'adam':
+        tx = optax.adam(
+            learning_rate=learning_rate_schedule
+        )
+    elif optimizer == 'sgd':
+        tx = optax.sgd(
+            learning_rate=learning_rate_schedule
+        )
+    else:
+        raise ValueError(f'Optimizer {optimizer} is not an option.')
     state = TrainState.create(
         apply_fn=model.apply,
         params=params,

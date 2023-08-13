@@ -42,6 +42,33 @@ def _prepare_kwargs_detector():
     return {'n_x': 2, 'n_y': 2, 'pixel_width': 0.04, 'supersampling_factor': 2}
 
 
+def _prepare_ellip_to_angle_expected():
+    angle = jnp.array([
+        -0.78539816, -0.77996359, -0.77377235, -0.76665695, -0.75839741,
+        -0.7486995 , -0.73716128, -0.72322067, -0.70607053, -0.68451699,
+        -0.65673631, -0.61985013, -0.56919428, -0.49721055, -0.39269908,
+        -0.24497866, -0.0621775 ,  0.11554533,  0.25354925,  0.34994643,
+        0.41649063,  0.46364761,  0.49824575,  0.52448102,  0.54495452,
+        0.56132568,  0.57468856,  0.58578778,  0.59514497,  0.60313516,
+        0.61003419,  0.61604912,  0.62133822,  0.62602438,  0.63020446,
+        0.63395573,  0.63734059,  0.64040996,  0.64320578,  0.6457629 ,
+        0.64811052,  0.65027329,  0.65227214,  0.65412496,  0.65584715,
+        0.65745202,  0.65895113,  0.66035458,  0.66167121,  0.66290883])
+    axis_ratio = jnp.array([
+        0.66666667, 0.68383307, 0.70132021, 0.71912865, 0.7372559 ,
+        0.7556948 , 0.77443124, 0.79344031, 0.81268003, 0.8320804 ,
+        0.85152379, 0.87080793, 0.88957318, 0.90715754, 0.92232629,
+        0.93293886, 0.93628242, 0.93117052, 0.91934347, 0.90350591,
+        0.88558669, 0.86666667, 0.8473246 , 0.82787707, 0.80850352,
+        0.78930892, 0.77035595, 0.75168218, 0.73330975, 0.71525102,
+        0.69751196, 0.68009431, 0.66299695, 0.64621684, 0.62974962,
+        0.61359003, 0.59773223, 0.58216998, 0.56689685, 0.55190624,
+        0.53719156, 0.52274621, 0.50856366, 0.49463746, 0.4809613 ,
+        0.46752897, 0.45433443, 0.44137175, 0.42863519, 0.41611913])
+
+    return axis_ratio, angle
+
+
 class UtilsTest(chex.TestCase, parameterized.TestCase):
     """Runs tests of utility functions."""
 
@@ -138,6 +165,20 @@ class UtilsTest(chex.TestCase, parameterized.TestCase):
 
         self.assertNotEqual(cycle_one, cycle_two)
         self.assertEqual(set(cycle_one), set(cycle_two))
+
+    @chex.all_variants
+    def test_ellip_to_angle(self):
+        # Compare conversion values to lenstornomy
+        ellip_x = np.linspace(0.0, 0.1)
+        ellip_xy = np.linspace(-0.2, 0.4)
+        ellip_to_angle = self.variant(utils.ellip_to_angle)
+
+        axis_ratio, angle = ellip_to_angle(ellip_x, ellip_xy)
+        axis_ratio_expected, angle_expected = _prepare_ellip_to_angle_expected()
+
+        np.testing.assert_array_almost_equal(axis_ratio, axis_ratio_expected)
+        np.testing.assert_array_almost_equal(angle, angle_expected)
+
 
 if __name__ == '__main__':
     absltest.main()

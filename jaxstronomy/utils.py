@@ -143,7 +143,7 @@ def random_permutation_iterator(
     """Yield a generator that cycles through random permutation of an array.
 
     Args:
-        array_to_cycle: Array that to cycle over random permutations of.
+        array_to_cycle: Array to cycle over random permutations of.
         rng: jax PRNG key.
 
     Returns:
@@ -157,3 +157,26 @@ def random_permutation_iterator(
         shuffled_array = jax.random.permutation(rng_shuffle, array_to_cycle)
         for item in shuffled_array:
             yield item
+
+
+def ellip_to_angle(
+        ellip_x: jnp.ndarray, ellip_xy: jnp.ndarray
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Convert from complex ellipticity moduli to angle and axis ratio.
+
+    Args:
+        ellip_x: Eccentricity in the x-direction.
+        ellip_xy: Eccentricity in the xy-direction.
+
+    Returns:
+        Axis ratio and angle.
+    """
+    # Angle is encoded in the arctangent.
+    angle = jnp.arctan2(ellip_xy, ellip_x) / 2
+
+    # Axis ratio is a function of the magnitude.
+    ellip_mag = jnp.sqrt(ellip_x ** 2 + ellip_xy ** 2)
+    ellip_mag = jnp.minimum(ellip_mag, 0.9999)
+    axis_ratio = (1 - ellip_mag) / (1 + ellip_mag)
+
+    return axis_ratio, angle

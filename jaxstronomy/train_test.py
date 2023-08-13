@@ -13,16 +13,12 @@
 # limitations under the License.
 """Tests for train.py."""
 
-import functools
-
 from absl.testing import parameterized
 import chex
 import jax
 import jax.numpy as jnp
-import numpy as np
 from scipy.stats import multivariate_normal
 
-from jaxstronomy import models
 from jaxstronomy import train
 
 class TrainTests(chex.TestCase, parameterized.TestCase):

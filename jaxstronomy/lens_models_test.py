@@ -25,7 +25,8 @@ import chex
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jaxstronomy import lens_models
+
+from jaxstronomy import lens_models, utils
 
 
 def _prepare_epl_parameters():
@@ -38,6 +39,16 @@ def _prepare_epl_parameters():
             'center_y': -0.2,
     }
 
+
+def _prepare_epl_ellip_parameters():
+    return {
+            'theta_e': 1.3,
+            'slope': 2.1,
+            'ellip_x': 0.2,
+            'ellip_xy': -0.3,
+            'center_x': 0.1,
+            'center_y': -0.1,
+    }
 
 def _prepare_nfw_parameters():
     return {
@@ -144,12 +155,12 @@ class EPLTest(chex.TestCase, parameterized.TestCase):
         x, y = _prepare_x_y()
         parameters = _prepare_epl_parameters()
         expected = jnp.array([[-0.28093671, 0.50107465, -0.92706789],
-                                                    [1.07278208, -1.03556666, -0.31412716]])
+                              [1.07278208, -1.03556666, -0.31412716]])
 
         derivatives = self.variant(lens_models.EPL.derivatives)
 
-        np.testing.assert_allclose(
-                jnp.asarray(derivatives(x, y, **parameters)), expected, rtol=1e-6)
+        np.testing.assert_allclose(jnp.asarray(derivatives(x, y, **parameters)),
+                                   expected, rtol=1e-6)
 
     @chex.all_variants
     def test__complex_derivative(self):
@@ -187,6 +198,33 @@ class EPLTest(chex.TestCase, parameterized.TestCase):
                                                             parameters['axis_ratio']), expected)
 
 
+class EPLEllipTest(chex.TestCase):
+    """Runs tests of EPLEllipTest derivative functions."""
+
+    def test_parameters(self):
+        annotated_parameters = sorted(lens_models.EPLEllip.parameters)
+        correct_parameters = sorted(_prepare_epl_ellip_parameters().keys())
+        self.assertListEqual(annotated_parameters, correct_parameters)
+
+    @chex.all_variants
+    def test_derivatives(self):
+        # Ensure that the results are the same as EPL after conversion.
+        x, y = _prepare_x_y()
+        epl_ellip_parameters = _prepare_epl_ellip_parameters()
+        epl_parameters = _prepare_epl_ellip_parameters()
+        axis_ratio, angle = utils.ellip_to_angle(
+            epl_parameters.pop('ellip_x'), epl_parameters.pop('ellip_xy'))
+        epl_parameters['axis_ratio'] = axis_ratio
+        epl_parameters['angle'] = angle
+
+        derivatives = self.variant(lens_models.EPLEllip.derivatives)
+
+        np.testing.assert_allclose(
+            jnp.asarray(derivatives(x, y, **epl_ellip_parameters)),
+            jnp.asarray(lens_models.EPL.derivatives(x, y, **epl_parameters)),
+            rtol=1e-6)
+
+
 class NFWTest(chex.TestCase, parameterized.TestCase):
     """Runs tests of NFW derivative functions."""
 
@@ -200,7 +238,7 @@ class NFWTest(chex.TestCase, parameterized.TestCase):
         x, y = _prepare_x_y()
         nfw_parameters = _prepare_nfw_parameters()
         expected = jnp.array([[-0.18378359, 1.1456927, -3.3447392],
-                                                    [4.0263114, -3.7813387, -1.7911061]])
+                              [4.0263114, -3.7813387, -1.7911061]])
 
         derivatives = self.variant(lens_models.NFW.derivatives)
 
@@ -246,7 +284,7 @@ class NFWTest(chex.TestCase, parameterized.TestCase):
 
 
 class ShearTest(chex.TestCase, parameterized.TestCase):
-    """Runs tests of Shear derivative functions."""
+    """Runs tests of Shear and ShearCart derivative functions."""
 
     def test_parameters(self):
         annotated_parameters = sorted(lens_models.Shear.parameters)
@@ -258,26 +296,26 @@ class ShearTest(chex.TestCase, parameterized.TestCase):
         x, y = _prepare_x_y()
         parameters = _prepare_shear_parameters()
         expected = jnp.array([[1.2095041, -0.7264168, -0.9143843],
-                                                    [-1.0582784, 1.0540832, -0.393031]])
+                              [-1.0582784, 1.0540832, -0.393031]])
 
         derivatives = self.variant(lens_models.Shear.derivatives)
 
         np.testing.assert_allclose(
-                jnp.asarray(derivatives(x, y, **parameters)), expected, rtol=1e-5)
+                jnp.asarray(derivatives(x, y, **parameters)), expected,
+                rtol=1e-5)
 
     @chex.all_variants
     @parameterized.named_parameters([
             (f'_ge_{ge}_ang_{ang}', ge, ang)
-            for ge, ang in zip([0.1, 2.0, 20.3], [np.pi / 6, -np.pi / 3, np.pi / 22])
+            for ge, ang in zip([0.1, 2.0, 20.3],
+                               [np.pi / 6, -np.pi / 3, np.pi / 22])
     ])
     def test__polar_to_cartesian(self, gamma_ext, angle):
         expected = _prepare__polar_to_cartesian_expected(gamma_ext, angle)
+        polar_to_cartesian = self.variant(lens_models.Shear._polar_to_cartesian)
 
         np.testing.assert_allclose(
-                jnp.array(
-                        self.variant(lens_models.Shear._polar_to_cartesian)(gamma_ext,
-                                                                                                                                angle)),
-                expected,
+                jnp.array(polar_to_cartesian(gamma_ext, angle)), expected,
                 rtol=1e-5)
 
 
