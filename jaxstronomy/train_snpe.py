@@ -17,7 +17,7 @@ import bisect
 import copy
 import functools
 import time
-from typing import Iterator, Mapping, Optional, Sequence, Union
+from typing import Any, Iterator, Mapping, Optional, Sequence, Union
 
 from absl import app
 from absl import flags
@@ -29,6 +29,7 @@ import jax
 from jax import lax
 import jax.numpy as jnp
 import ml_collections
+import optax
 
 from jaxstronomy import input_pipeline
 from jaxstronomy import models
@@ -63,6 +64,41 @@ def compute_metrics(
     }
     metrics = lax.pmean(metrics, axis_name='batch')
     return metrics
+
+
+def get_learning_rate_schedule(
+        config: ml_collections.ConfigDict,
+        base_learning_rate: float) -> Any:
+    """Return the learning rate schedule function.
+
+    Args:
+        config: Training configuration.
+        base_learning_rate: Base learning rate for the schedule.
+
+    Returns:
+        Mapping from step to learning rate according to the schedule.
+    """
+
+    # Cosine decay with linear warmup up until refinement begins.
+    warmup_fn = optax.linear_schedule(init_value=0.0,
+        end_value=base_learning_rate,
+        transition_steps=config.warmup_steps)
+    cosine_steps = max(config.num_initial_train_steps - config.warmup_steps,
+                        1)
+    cosine_fn = optax.cosine_decay_schedule(init_value=base_learning_rate,
+        decay_steps=cosine_steps)
+
+    # After refinment, cosine decay with the base value multiplier.
+    post_steps = max(config.num_train_steps -
+                     config.num_initial_train_steps, 1)
+    cosine_fn_post = optax.cosine_decay_schedule(
+        init_value=base_learning_rate * config.refinement_base_value_multiplier,
+        decay_steps=post_steps)
+    schedule_fn = optax.join_schedules(
+        schedules=[warmup_fn, cosine_fn, cosine_fn_post],
+        boundaries=[config.warmup_steps, config.num_initial_train_steps])
+
+    return schedule_fn
 
 
 def train_step(state, batch, mu_prop, prec_prop, mu_prior, prec_prior,
@@ -137,7 +173,7 @@ def train_and_evaluate_snpe(
     num_outputs = len(input_config['truth_parameters'][0]) * 2
     model = model_cls(num_outputs=num_outputs, dtype=jnp.float32)
 
-    learning_rate_schedule = train.get_learning_rate_schedule(config,
+    learning_rate_schedule = get_learning_rate_schedule(config,
         base_learning_rate)
 
     if isinstance(rng, Iterator):

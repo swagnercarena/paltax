@@ -18,7 +18,7 @@ def get_config():
     # Need to set the boundaries of how long the model will train generically
     # and when the sequential training will turn on.
     config.steps_per_epoch = 15600
-    config.num_initial_train_steps = config.steps_per_epoch * 50
+    config.num_initial_train_steps = config.steps_per_epoch * 200
     config.num_steps_per_refinement = config.steps_per_epoch * 10
     config.num_train_steps = config.steps_per_epoch * 500
     config.num_refinements = int((
