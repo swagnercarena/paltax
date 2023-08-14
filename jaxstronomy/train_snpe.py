@@ -234,8 +234,10 @@ def train_and_evaluate_snpe(
     mu_prop = mu_prop_init
     prec_prop = prec_prop_init
     target_batch = jax_utils.replicate({'image': target_image})
-    std_norm = jnp.array([0.15, 0.1, 0.16, 0.16, 1.1e-3])
-    mean_norm = jnp.array([1.1, 2.0, 0.0, 0.0, 2e-3])
+    std_norm = jnp.array([0.15, 0.1, 0.16, 0.16, 0.1, 0.1, 0.05, 0.05, 0.16,
+                          0.16, 1.1e-3])
+    mean_norm = jnp.array([1.1, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                           2e-3])
 
     if bisect.bisect_left(refinement_step_list, step_offset) > 0:
         # This restart isn't perfect, but we're not going to load weights again
