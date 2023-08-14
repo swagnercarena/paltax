@@ -32,9 +32,9 @@ def get_config():
     config.warmup_steps = 10 * config.steps_per_epoch
     config.refinement_base_value_multiplier = 1e-4
 
-    config.mu_prior = jnp.zeros(5)
+    config.mu_prior = jnp.zeros(11)
     config.prec_prior = jnp.diag(jnp.ones(config.mu_prior.shape)) / 25
-    config.mu_prop_init = jnp.zeros(5)
+    config.mu_prop_init = jnp.zeros(11)
     config.prec_prop_init = jnp.diag(jnp.ones(config.mu_prop_init.shape))
 
     return config
