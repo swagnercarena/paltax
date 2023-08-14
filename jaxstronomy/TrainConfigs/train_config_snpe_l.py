@@ -30,7 +30,7 @@ def get_config():
 
     # Parameters of the learning rate schedule
     config.warmup_steps = 10 * config.steps_per_epoch
-    config.refinement_base_value_multiplier = 1e-4
+    config.refinement_base_value_multiplier = 1e-1
 
     config.mu_prior = jnp.zeros(11)
     config.prec_prior = jnp.diag(jnp.ones(config.mu_prior.shape)) / 25
