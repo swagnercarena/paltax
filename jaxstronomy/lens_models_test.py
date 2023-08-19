@@ -63,8 +63,8 @@ def _prepare_shear_parameters():
     return {
             'gamma_ext': 1.2,
             'angle': np.pi / 7,
-            'center_x': 0.2,
-            'center_y': -0.2,
+            'zero_x': 0.2,
+            'zero_y': -0.2,
     }
 
 

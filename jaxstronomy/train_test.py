@@ -17,9 +17,11 @@ from absl.testing import parameterized
 import chex
 import jax
 import jax.numpy as jnp
+import numpy as np
 from scipy.stats import multivariate_normal
 
 from jaxstronomy import train
+from jaxstronomy import models
 
 class TrainTests(chex.TestCase, parameterized.TestCase):
     """Runs tests of training functions."""

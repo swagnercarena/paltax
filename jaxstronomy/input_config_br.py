@@ -57,6 +57,8 @@ def get_config():
             'ellip_xy': encode_normal(mean=0.0, std=0.1),
             'gamma_one': encode_normal(mean=0.0, std=0.05),
             'gamma_two': encode_normal(mean=0.0, std=0.05),
+            'zero_x': encode_constant(0.0),
+            'zero_y': encode_constant(0.0)
         },
         'subhalo_params':{
             'sigma_sub': encode_normal(mean=2.0e-3, std=1.1e-3),

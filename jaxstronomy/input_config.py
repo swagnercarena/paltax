@@ -55,7 +55,9 @@ def get_config():
             'center_y': encode_normal(mean=0.0, std=0.16),
             'axis_ratio': encode_normal(mean=1.0, std=0.1),
             'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
-            'gamma_ext': encode_normal(mean=0.0, std=0.1)
+            'gamma_ext': encode_normal(mean=0.0, std=0.1),
+            'zero_x': encode_constant(0.0),
+            'zero_y': encode_constant(0.0)
         },
         'subhalo_params':{
             'sigma_sub': encode_normal(mean=2.0e-3, std=1.1e-3),

@@ -314,12 +314,12 @@ class ShearCart(_LensModelBase):
     ShearGammaPsi class in Lenstronomy.
     """
 
-    parameters = ('gamma_one', 'gamma_two', 'center_x', 'center_y')
+    parameters = ('gamma_one', 'gamma_two', 'zero_x', 'zero_y')
 
     @staticmethod
     def derivatives(
         x: jnp.ndarray, y: jnp.ndarray, gamma_one: float, gamma_two: float,
-        center_x: float, center_y: float
+        zero_x: float, zero_y: float
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the shear profile derivatives.
 
@@ -328,14 +328,14 @@ class ShearCart(_LensModelBase):
             y: Y-coordinates at which to evaluate the derivative
             gamma_one: Diagonal component of shear.
             gamma_two: Off-diagonal component of shear.
-            center_x: X-coordinate where shear is 0.
-            center_y: Y-coordinate where shear is 0.
+            zero_x: X-coordinate where shear is 0.
+            zero_y: Y-coordinate where shear is 0.
 
         Returns:
             X- and y-component of the derivative.
         """
-        x_centered = x - center_x
-        y_centered = y - center_y
+        x_centered = x - zero_x
+        y_centered = y - zero_y
         return (gamma_one * x_centered + gamma_two * y_centered,
                         gamma_two * x_centered - gamma_one * y_centered)
 
@@ -347,12 +347,12 @@ class Shear(_LensModelBase):
     ShearGammaPsi class in Lenstronomy.
     """
 
-    parameters = ('gamma_ext', 'angle', 'center_x', 'center_y')
+    parameters = ('gamma_ext', 'angle', 'zero_x', 'zero_y')
 
     @staticmethod
     def derivatives(
         x: jnp.ndarray, y: jnp.ndarray, gamma_ext: float, angle: float,
-        center_x: float, center_y: float
+        zero_x: float, zero_y: float
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the shear profile derivatives.
 
@@ -362,15 +362,14 @@ class Shear(_LensModelBase):
             gamma_ext: Strength of the shear profile.
             angle: Clockwise angle of the shear vector with respect to the
                 simulation grid.
-            center_x: X-coordinate where shear is 0.
-            center_y: Y-coordinate where shear is 0.
+            zero_x: X-coordinate where shear is 0.
+            zero_y: Y-coordinate where shear is 0.
 
         Returns:
             X- and y-component of the derivative.
         """
         gamma_one, gamma_two = Shear._polar_to_cartesian(gamma_ext, angle)
-        return ShearCart.derivatives(x, y, gamma_one, gamma_two, center_x,
-                                     center_y)
+        return ShearCart.derivatives(x, y, gamma_one, gamma_two, zero_x, zero_y)
 
     @staticmethod
     def _polar_to_cartesian(
