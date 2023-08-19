@@ -180,7 +180,7 @@ def generate_grids(
     return grid_x, grid_y
 
 
-def intialize_cosmology_params(
+def initialize_cosmology_params(
         config: Mapping[str, Mapping[str, jnp.ndarray]], rng: Sequence[int]
 ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
     """Initialize the cosmology parameters as needed by the config.

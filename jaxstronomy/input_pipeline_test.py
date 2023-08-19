@@ -307,7 +307,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         }
         rng = jax.random.PRNGKey(0)
 
-        cosmology_params = input_pipeline.intialize_cosmology_params(
+        cosmology_params = input_pipeline.initialize_cosmology_params(
             config, rng
         )
 
@@ -433,7 +433,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         config['all_models'] = {
             'all_source_models': all_source_models
         }
-        cosmology_params = input_pipeline.intialize_cosmology_params(config,
+        cosmology_params = input_pipeline.initialize_cosmology_params(config,
                                                                      rng)
 
         extract_multiple_models_angular = self.variant(functools.partial(
@@ -562,7 +562,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         normalize_config['main_deflector_params']['theta_e'] = (
             input_pipeline.encode_uniform(minimum=1.0, maximum=1.2))
 
-        cosmology_params = input_pipeline.intialize_cosmology_params(config,
+        cosmology_params = input_pipeline.initialize_cosmology_params(config,
                                                                      rng)
         n_x = 16
         n_y = 16

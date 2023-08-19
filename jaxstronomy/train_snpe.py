@@ -17,7 +17,7 @@ import bisect
 import copy
 import functools
 import time
-from typing import Any, Iterator, Mapping, Optional, Sequence, Union
+from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple, Union
 
 from absl import app
 from absl import flags
@@ -134,6 +134,49 @@ def train_step(state, batch, mu_prop, prec_prop, mu_prior, prec_prior,
     return new_state, metrics
 
 
+def proposal_distribution_update(
+        current_posterior: jnp.ndarray, mean_norm: jnp.ndarray,
+        std_norm: jnp.ndarray, log_var_bound: jnp.ndarray, input_config: dict
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Update the input configuration and return new proposl distribution.
+
+    Args:
+        current_posterior: The outputs from the network representing the
+            current network posterior for the observed image.
+        mean_norm: The mean of each distribution before normalization.
+        std_norm: The standard deviation of each distribution before
+            normalization.
+        log_var_bound: Maximum boundary on the variance of the new
+            proposal distribution.
+        input_config: Configuration used to generate simulations specific
+            in seperate configuration file.
+
+    Returns:
+        Mean and precision matrix for the new proposal distribution.
+    """
+    #TODO mean_norm and std_norm should not be hardcoded.
+    # Get the new proposal distribution.
+    mu_prop, log_var_prop = jnp.split(current_posterior[0], 2, axis=-1)
+    # Bound the variance by the desired maximum.
+    log_var_prop = jnp.minimum(log_var_prop, log_var_bound)
+    prec_prop = jnp.diag(jnp.exp(-log_var_prop))
+
+    # Modify the input config.
+    # TODO this is hard coded and needs to be fixed.
+    mu_prop_unormalized = mu_prop * std_norm + mean_norm
+    std_prop_unormalized = jnp.exp(log_var_prop/2) * std_norm
+
+    for truth_i in range(len(input_config['truth_parameters'][0])):
+        rewrite_object = input_config['truth_parameters'][0][truth_i]
+        rewrite_key = input_config['truth_parameters'][1][truth_i]
+        input_config['lensing_config'][rewrite_object][rewrite_key] = (
+            input_pipeline.encode_normal(
+                mean=mu_prop_unormalized[truth_i],
+                std=std_prop_unormalized[truth_i])
+        )
+
+    return jax_utils.replicate(mu_prop), jax_utils.replicate(prec_prop)
+
 def train_and_evaluate_snpe(
         config: ml_collections.ConfigDict,
         input_config: dict,
@@ -218,7 +261,7 @@ def train_and_evaluate_snpe(
         rng_cosmo = next(rng)
     else:
         rng, rng_cosmo = jax.random.split(rng)
-    cosmology_params = input_pipeline.intialize_cosmology_params(input_config,
+    cosmology_params = input_pipeline.initialize_cosmology_params(input_config,
                                                                  rng_cosmo)
     grid_x, grid_y = input_pipeline.generate_grids(input_config)
 
@@ -233,6 +276,7 @@ def train_and_evaluate_snpe(
     # Get our initial proposal. May be in the midst of refinement here.
     mu_prop = mu_prop_init
     prec_prop = prec_prop_init
+    log_var_prop_init = jnp.diag(jnp.log(prec_prop_init)) * -1.0
     target_batch = jax_utils.replicate({'image': target_image})
     std_norm = jnp.array([0.15, 0.1, 0.16, 0.16, 0.1, 0.1, 0.05, 0.05, 0.16,
                           0.16, 1.1e-3])
@@ -242,30 +286,11 @@ def train_and_evaluate_snpe(
     if bisect.bisect_left(refinement_step_list, step_offset) > 0:
         # This restart isn't perfect, but we're not going to load weights again
         # so we'll just use whatever model we have now.
-        # TODO This should be a seperate function. Need to change this.
         current_posterior = train.cross_replica_mean(
             p_get_outputs(state, target_batch)[0])[0]
-
-        # Get the new proposal distribution.
-        mu_prop, log_var_prop = jnp.split(current_posterior[0], 2, axis=-1)
-        prec_prop = jnp.diag(jnp.exp(-log_var_prop))
-
-        # Modify the input config.
-        # TODO this is hard coded and needs to be fixed.
-        mu_prop_unormalized = mu_prop * std_norm + mean_norm
-        std_prop_unormalized = jnp.exp(log_var_prop/2) * std_norm
-
-        for truth_i in range(len(input_config['truth_parameters'][0])):
-            rewrite_object = input_config['truth_parameters'][0][truth_i]
-            rewrite_key = input_config['truth_parameters'][1][truth_i]
-            input_config['lensing_config'][rewrite_object][rewrite_key] = (
-                input_pipeline.encode_normal(
-                    mean=mu_prop_unormalized[truth_i],
-                    std=std_prop_unormalized[truth_i])
-            )
-
-        mu_prop = jax_utils.replicate(mu_prop)
-        prec_prop = jax_utils.replicate(prec_prop)
+        mu_prop, prec_prop = proposal_distribution_update(
+            current_posterior, mean_norm, std_norm, log_var_prop_init,
+            input_config)
 
     for step in range(step_offset, num_steps):
 
@@ -279,25 +304,9 @@ def train_and_evaluate_snpe(
                 p_get_outputs(state, target_batch)[0])[0]
 
             # Get the new proposal distribution.
-            mu_prop, log_var_prop = jnp.split(current_posterior[0], 2, axis=-1)
-            prec_prop = jnp.diag(jnp.exp(-log_var_prop))
-
-            # Modify the input config.
-            # TODO this is hard coded and needs to be fixed.
-            mu_prop_unormalized = mu_prop * std_norm + mean_norm
-            std_prop_unormalized = jnp.exp(log_var_prop/2) * std_norm
-
-            for truth_i in range(len(input_config['truth_parameters'][0])):
-                rewrite_object = input_config['truth_parameters'][0][truth_i]
-                rewrite_key = input_config['truth_parameters'][1][truth_i]
-                input_config['lensing_config'][rewrite_object][rewrite_key] = (
-                    input_pipeline.encode_normal(
-                        mean=mu_prop_unormalized[truth_i],
-                        std=std_prop_unormalized[truth_i])
-                )
-
-            mu_prop = jax_utils.replicate(mu_prop)
-            prec_prop = jax_utils.replicate(prec_prop)
+            mu_prop, prec_prop = proposal_distribution_update(
+                current_posterior, mean_norm, std_norm, log_var_prop_init,
+                input_config)
 
         # Generate truths and images
         if isinstance(rng, Iterator):

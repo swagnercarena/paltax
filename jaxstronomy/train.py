@@ -359,7 +359,7 @@ def train_and_evaluate(
         rng_cosmo = next(rng)
     else:
         rng, rng_cosmo = jax.random.split(rng)
-    cosmology_params = input_pipeline.intialize_cosmology_params(input_config,
+    cosmology_params = input_pipeline.initialize_cosmology_params(input_config,
                                                                  rng_cosmo)
     grid_x, grid_y = input_pipeline.generate_grids(input_config)
 
