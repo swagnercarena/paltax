@@ -276,7 +276,9 @@ def train_and_evaluate_snpe(
     # Get our initial proposal. May be in the midst of refinement here.
     mu_prop = mu_prop_init
     prec_prop = prec_prop_init
-    log_var_prop_init = jnp.diag(jnp.log(prec_prop_init)) * -1.0
+    # Use the initial proposal as a bound for the width of future proposals.
+    log_var_prop_init = jnp.diag(
+        jnp.log(train.cross_replica_mean(prec_prop_init))) * -1.0
     target_batch = jax_utils.replicate({'image': target_image})
     std_norm = jnp.array([0.15, 0.1, 0.16, 0.16, 0.1, 0.1, 0.05, 0.05, 0.16,
                           0.16, 1.1e-3])
