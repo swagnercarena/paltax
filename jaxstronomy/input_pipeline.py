@@ -331,7 +331,7 @@ def rotate_params(all_params: Mapping[str, Mapping[str, jnp.ndarray]],
         fragile code, but the rotations are only relevant for comparison
         exmperiments.
     """
-    extract_objects, extract_keys = truth_parameters
+    extract_objects, extract_keys, _ = truth_parameters
 
     if 'center_x' in extract_keys or 'center_y' in extract_keys:
         index_x = extract_keys.index('center_x')
@@ -371,7 +371,7 @@ def extract_truth_values(
     Returns:
         Truth values for each of the requested parameters.
     """
-    extract_objects, extract_keys = truth_parameters
+    extract_objects, extract_keys, extract_indices = truth_parameters
 
     # Begin by adding the rotation applied to the image.
     rotate_params(all_params, truth_parameters, rotation_angle)
@@ -379,12 +379,13 @@ def extract_truth_values(
     # Now normalize the parameters if requested.
     if normalize_truths:
         return jnp.array(jax.tree_util.tree_map(
-            lambda x, y: normalize_param(all_params[x][y],
-                                        lensing_config[x][y]),
-            extract_objects, extract_keys))
+            lambda x, y, z: normalize_param(all_params[x][y][z],
+                                            lensing_config[x][y]),
+            extract_objects, extract_keys, extract_indices))
 
     return jnp.array(jax.tree_util.tree_map(
-        lambda x, y: all_params[x][y], extract_objects, extract_keys))
+        lambda x, y, z: all_params[x][y][z], extract_objects, extract_keys,
+        extract_indices))
 
 
 def draw_image_and_truth(
@@ -393,7 +394,7 @@ def draw_image_and_truth(
         grid_x: jnp.ndarray, grid_y: jnp.ndarray, rng: Sequence[int],
         rotation_angle: float,
         all_models: Mapping[str, Sequence[Any]],
-        principal_md_index: int, principal_source_index: int,
+        principal_model_indices: Mapping[str, int],
         kwargs_simulation: Mapping[str, int],
         kwargs_detector:  Mapping[str, Union[int, float]],
         kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
@@ -465,35 +466,43 @@ def draw_image_and_truth(
         lensing_config['lens_light_params'], rng_ll, cosmology_params,
         all_models['all_lens_light_models']
     )
-    los_params = draw_sample(lensing_config['los_params'], rng_los)
-    subhalo_params = draw_sample(lensing_config['subhalo_params'], rng_sub)
-
-    # Extract the principle model for redshifts and substructure draws.
-    main_deflector_params_sub = jax.tree_util.tree_map(
-        lambda x: x[principal_md_index], main_deflector_params
+    los_params = extract_multiple_models(
+        lensing_config['los_params'], rng_los,
+        len(all_models['all_los_models'])
     )
-    source_params_sub = jax.tree_util.tree_map(
-        lambda x: x[principal_source_index], source_params
-    )
-    lens_light_params_sub = jax.tree_util.tree_map(
-        lambda x: x[principal_source_index], lens_light_params
+    subhalo_params = extract_multiple_models(
+        lensing_config['subhalo_params'], rng_sub,
+        len(all_models['all_subhalo_models'])
     )
 
     # Repackage the parameters.
     all_params = {
-        'source_params': source_params_sub,
-        'lens_light_params': lens_light_params_sub,
+        'source_params': source_params,
+        'lens_light_params': lens_light_params,
         'los_params': los_params, 'subhalo_params': subhalo_params,
-        'main_deflector_params': main_deflector_params_sub
+        'main_deflector_params': main_deflector_params
+    }
+    # Get the principal model for each lensing object.
+    all_params_principal = {
+        lens_obj: jax.tree_util.tree_map(
+            lambda x: x[principal_model_indices[lens_obj]], all_params[lens_obj]
+        ) for lens_obj in all_params
     }
 
     rng_los, rng_sub, rng_noise = jax.random.split(rng, 3)
     los_before_tuple, los_after_tuple = los.draw_los(
-        main_deflector_params_sub, source_params_sub, los_params,
-        cosmology_params, rng_los, num_z_bins, los_pad_length)
+        main_deflector_params=all_params_principal['main_deflector_params'],
+        source_params=all_params_principal['source_params'],
+        los_params=all_params_principal['los_params'],
+        cosmology_params=cosmology_params, rng=rng_los, num_z_bins=num_z_bins,
+        los_pad_length=los_pad_length)
     subhalos_z, subhalos_kwargs = subhalos.draw_subhalos(
-        main_deflector_params_sub, source_params_sub, subhalo_params,
-        cosmology_params, rng_sub, subhalos_pad_length, sampling_pad_length)
+        main_deflector_params=all_params_principal['main_deflector_params'],
+        source_params=all_params_principal['source_params'],
+        subhalo_params=all_params_principal['subhalo_params'],
+        cosmology_params=cosmology_params, rng=rng_sub,
+        subhalos_pad_length=subhalos_pad_length,
+        sampling_pad_length=sampling_pad_length)
 
     kwargs_lens_all = {
         'z_array_los_before': los_before_tuple[0],
@@ -503,7 +512,7 @@ def draw_image_and_truth(
         'kwargs_main_deflector': main_deflector_params,
         'z_array_main_deflector': main_deflector_params['z_lens'],
         'z_array_subhalos': subhalos_z, 'kwargs_subhalos': subhalos_kwargs}
-    z_source = source_params_sub['z_source']
+    z_source = all_params_principal['source_params']['z_source']
 
     # Apply the rotation angle to the image through the grid. This requires
     # rotating the coordinates by the negative angle.
@@ -522,7 +531,8 @@ def draw_image_and_truth(
         image /= jnp.std(image)
 
     # Extract the truth values and normalize them.
-    truth = extract_truth_values(all_params, normalize_config, truth_parameters,
-                                 rotation_angle, normalize_truths)
+    truth = extract_truth_values(
+        all_params, normalize_config, truth_parameters,
+        rotation_angle, normalize_truths)
 
     return image, truth

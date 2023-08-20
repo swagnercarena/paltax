@@ -23,8 +23,8 @@ import numpy as np
 from jaxstronomy import train
 from jaxstronomy import train_snpe
 
-TEST_INPUT_CONFIG_PATH = os.path.join(os.path.abspath(__file__),
-                                      'input_config_test.py')
+TEST_INPUT_CONFIG_PATH = os.path.join(os.path.dirname(__file__),
+                                      'InputConfigs/input_config_test.py')
 
 class TrainSNPETests(chex.TestCase, parameterized.TestCase):
     """Runs tests of image simulation functions."""

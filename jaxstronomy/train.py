@@ -345,8 +345,7 @@ def train_and_evaluate(
         functools.partial(
             input_pipeline.draw_image_and_truth,
             all_models=input_config['all_models'],
-            principal_md_index=input_config['principal_md_index'],
-            principal_source_index=input_config['principal_source_index'],
+            principal_model_indices=input_config['principal_model_indices'],
             kwargs_simulation=input_config['kwargs_simulation'],
             kwargs_detector=input_config['kwargs_detector'],
             kwargs_psf=input_config['kwargs_psf'],
@@ -438,6 +437,7 @@ def _get_config(config_path: str) -> Any:
     """
     # Get the dictionary from the .py file.
     config_dir, config_file = os.path.split(os.path.abspath(config_path))
+    print(config_dir)
     sys.path.insert(0, config_dir)
     config_name, _ = os.path.splitext(config_file)
     config_module = import_module(config_name)

@@ -34,7 +34,7 @@ def _prepare_lensing_config():
     encode_uniform = input_pipeline.encode_uniform
     encode_constant = input_pipeline.encode_constant
     lensing_config = {
-            'los_params':{
+        'los_params':{
             'delta_los': encode_constant(10.0),
             'r_min': encode_constant(0.5),
             'r_max': encode_constant(10.0),
@@ -58,7 +58,9 @@ def _prepare_lensing_config():
             'center_y': encode_normal(mean=0.0, std=0.16),
             'axis_ratio': encode_normal(mean=1.0, std=0.05),
             'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
-            'gamma_ext': encode_normal(mean=0.0, std=0.05)
+            'gamma_ext': encode_normal(mean=0.0, std=0.05),
+            'zero_x': encode_constant(0.0),
+            'zero_y': encode_constant(0.0)
         },
         'subhalo_params':{
             'sigma_sub': encode_normal(mean=2.0e-3, std=1.1e-3),
@@ -457,14 +459,20 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
     def test_rotate_params(self):
         # Test that hard-coded rotations work.
         all_params = {
-            'main_deflector': {'center_x': 1.0, 'center_y': 0.0,
-                  'angle':10.0,'something_else': 12.2},
-            'not_main_deflector': {'a': 1.0, 'b': 0.7,
-                  'c': 10.2}}
+            'main_deflector': {
+                'center_x': jnp.array([1.0,0.0]),
+                'center_y': jnp.array([0.0,1.0]),
+                'angle': jnp.array([10.0,0.0]),
+                'something_else': jnp.array([1.0,0.0])},
+            'not_main_deflector': {
+                'a': jnp.array([1.0,0.0]),
+                'b': jnp.array([0.7,0.0]),
+                'c': jnp.array([10.2,0.0])}}
         extract_objects = ['main_deflector', 'main_deflector',
                     'main_deflector']
         extract_keys = ['center_x', 'center_y', 'angle']
-        truth_parameters = (extract_objects, extract_keys)
+        extract_indices = [0, 0, 0]
+        truth_parameters = (extract_objects, extract_keys, extract_indices)
         rotation_angle = jnp.pi / 4
         rotate_params = self.variant(
             functools.partial(input_pipeline.rotate_params,
@@ -474,11 +482,11 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
 
         all_params = rotate_params(all_params)
 
-        self.assertAlmostEqual(all_params['main_deflector']['center_x'],
+        self.assertAlmostEqual(all_params['main_deflector']['center_x'][0],
                                1 / np.sqrt(2))
-        self.assertAlmostEqual(all_params['main_deflector']['center_y'],
+        self.assertAlmostEqual(all_params['main_deflector']['center_y'][0],
                                1 / np.sqrt(2))
-        self.assertAlmostEqual(all_params['main_deflector']['angle'],
+        self.assertAlmostEqual(all_params['main_deflector']['angle'][0],
                                10.0 + rotation_angle)
 
 
@@ -490,10 +498,10 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         # Test that the extracted parameters match the values fed into the
         # dictionary.
         all_params = {
-            'a': {'a': 0.0, 'b': 0.5,
-                  'c': 12.2, 'angle': 0.0},
-            'b': {'a': 1.0, 'b': 0.7,
-                  'c': 10.2}}
+            'a': {'a': jnp.array([0.0, 0.0]), 'b': jnp.array([0.5, 0.5]),
+                  'c': jnp.array([12.2, 0.0]), 'angle': jnp.array([2.0, 0.0])},
+            'b': {'a': jnp.array([1.0, 0.0]), 'b': jnp.array([0.7, 0.0]),
+                  'c': jnp.array([10.2, 0.0])}}
         constant = 1.0
         mean = 2.0
         std = 1.0
@@ -510,7 +518,8 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
                   'c': input_pipeline.encode_uniform(minimum, maximum)}}
         extract_objects = ['a', 'a', 'b', 'a']
         extract_keys = ['a', 'b', 'c', 'angle']
-        truth_parameters = (extract_objects, extract_keys)
+        extract_indices = [0, 0, 0, 1]
+        truth_parameters = (extract_objects, extract_keys, extract_indices)
         extract_truth_values = self.variant(functools.partial(
             input_pipeline.extract_truth_values,
             truth_parameters=truth_parameters, rotation_angle=rotation_angle,
@@ -553,6 +562,14 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             ),
             'all_psf_models': (psf_models.Gaussian(),)
         }
+        principal_model_indices = {
+            'los_params': 0,
+            'subhalo_params': 0,
+            'main_deflector_params': 0,
+            'source_params': 0,
+            'lens_light_params': 0,
+            'psf_params': 0
+        }
         config['all_models'] = all_models
         rng = jax.random.PRNGKey(0)
 
@@ -573,8 +590,6 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             'magnitude_zero_point': 25, 'read_noise': 1e-8
         }
         grid_x, grid_y = input_pipeline.generate_grids(config)
-        principal_md_index = 0
-        principal_source_index = 0
         kwargs_simulation = {
             'num_z_bins': 1000,
             'los_pad_length': 10,
@@ -584,13 +599,13 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         kwargs_psf = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 0.02}
         truth_parameters = (
             ['main_deflector_params', 'subhalo_params'],
-            ['theta_e', 'sigma_sub']
+            ['theta_e', 'sigma_sub'],
+            [0, 0]
         )
 
         draw_image_and_truth = self.variant(functools.partial(
             input_pipeline.draw_image_and_truth, all_models=all_models,
-            principal_md_index=principal_md_index,
-            principal_source_index=principal_source_index,
+            principal_model_indices=principal_model_indices,
             kwargs_simulation=kwargs_simulation,
             kwargs_detector=config['kwargs_detector'],
             kwargs_psf=kwargs_psf, truth_parameters=truth_parameters,

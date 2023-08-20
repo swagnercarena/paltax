@@ -247,8 +247,7 @@ def train_and_evaluate_snpe(
         functools.partial(
             input_pipeline.draw_image_and_truth,
             all_models=input_config['all_models'],
-            principal_md_index=input_config['principal_md_index'],
-            principal_source_index=input_config['principal_source_index'],
+            principal_model_indices=input_config['principal_model_indices'],
             kwargs_simulation=input_config['kwargs_simulation'],
             kwargs_detector=input_config['kwargs_detector'],
             kwargs_psf=input_config['kwargs_psf'],

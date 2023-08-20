@@ -97,11 +97,11 @@ def get_config():
 
     # The remaining parameters should not be drawn from random distributions.
     config['kwargs_detector'] = {
-        'n_x': 32, 'n_y': 32, 'pixel_width': 0.2, 'supersampling_factor': 2,
-        'exposure_time': 15, 'num_exposures': 460.0, 'sky_brightness': 20.48,
-        'magnitude_zero_point': 27.79, 'read_noise': 10.0
+        'n_x': 128, 'n_y': 128, 'pixel_width': 0.04, 'supersampling_factor': 2,
+        'exposure_time': 1024, 'num_exposures': 2.0, 'sky_brightness': 22,
+        'magnitude_zero_point': 25, 'read_noise': 3.0
     }
-    cosmos_path = '/scratch/users/swagnerc/datasets/cosmos/cosmos_galaxies_train.npz'
+    cosmos_path = '/Users/sebastianwagner-carena/Documents/Grad_School/Research/jaxstronomy/datasets/cosmos/cosmos_galaxies_train.npz'
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),
@@ -109,6 +109,17 @@ def get_config():
         'all_source_models': (source_models.CosmosCatalog(cosmos_path),),
         'all_lens_light_models': (source_models.SersicElliptic(),),
         'all_psf_models': (psf_models.Gaussian(),)
+    }
+    # Some objects (subhalos for example) want to know the properties of another
+    # object (main deflector). There can be multiple objects belonging to
+    # that category, so we need to specify the principal object to call.
+    config['principal_model_indices'] = {
+        'los_models': 0,
+        'subhalo_models': 0,
+        'main_deflector_models': 0,
+        'source_models': 0,
+        'lens_light_models': 0,
+        'psf_models': 0
     }
     config['cosmology_params'] = {
         'omega_m_zero': encode_constant(0.3089),
@@ -129,13 +140,12 @@ def get_config():
 
     config['rng'] = jax.random.PRNGKey(0)
 
-    config['kwargs_psf'] = {'model_index': 0, 'fwhm': 0.71, 'pixel_width': 0.1}
+    config['kwargs_psf'] = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 0.02}
 
-    config['principal_md_index'] = 0
-    config['principal_source_index'] = 0
     config['truth_parameters'] = (
         ['main_deflector_params', 'main_deflector_params',
          'main_deflector_params', 'main_deflector_params', 'subhalo_params'],
-        ['theta_e', 'slope', 'center_x', 'center_y', 'sigma_sub'])
+        ['theta_e', 'slope', 'center_x', 'center_y', 'sigma_sub'],
+        [0, 0, 0, 0, 0])
 
     return config

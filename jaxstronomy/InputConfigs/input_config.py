@@ -112,6 +112,17 @@ def get_config():
         'all_lens_light_models': (source_models.SersicElliptic(),),
         'all_psf_models': (psf_models.Gaussian(),)
     }
+    # Some objects (subhalos for example) want to know the properties of another
+    # object (main deflector). There can be multiple objects belonging to
+    # that category, so we need to specify the principal object to call.
+    config['principal_model_indices'] = {
+        'los_params': 0,
+        'subhalo_params': 0,
+        'main_deflector_params': 0,
+        'source_params': 0,
+        'lens_light_params': 0,
+        'psf_params': 0
+    }
     config['cosmology_params'] = {
         'omega_m_zero': encode_constant(0.3089),
         'omega_b_zero': encode_constant(0.0486),
@@ -133,11 +144,10 @@ def get_config():
 
     config['kwargs_psf'] = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 0.02}
 
-    config['principal_md_index'] = 0
-    config['principal_source_index'] = 0
     config['truth_parameters'] = (
         ['main_deflector_params', 'main_deflector_params',
          'main_deflector_params', 'main_deflector_params', 'subhalo_params'],
-        ['theta_e', 'slope', 'center_x', 'center_y', 'sigma_sub'])
+        ['theta_e', 'slope', 'center_x', 'center_y', 'sigma_sub'],
+        [0, 0, 0, 0, 0])
 
     return config
