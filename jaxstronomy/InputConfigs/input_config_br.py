@@ -115,12 +115,12 @@ def get_config():
     # object (main deflector). There can be multiple objects belonging to
     # that category, so we need to specify the principal object to call.
     config['principal_model_indices'] = {
-        'los_models': 0,
-        'subhalo_models': 0,
-        'main_deflector_models': 0,
-        'source_models': 0,
-        'lens_light_models': 0,
-        'psf_models': 0
+        'los_params': 0,
+        'subhalo_params': 0,
+        'main_deflector_params': 0,
+        'source_params': 0,
+        'lens_light_params': 0,
+        'psf_params': 0
     }
     config['cosmology_params'] = {
         'omega_m_zero': encode_constant(0.3089),
