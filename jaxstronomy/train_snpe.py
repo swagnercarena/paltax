@@ -136,7 +136,8 @@ def train_step(state, batch, mu_prop, prec_prop, mu_prior, prec_prior,
 
 def proposal_distribution_update(
         current_posterior: jnp.ndarray, mean_norm: jnp.ndarray,
-        std_norm: jnp.ndarray, log_var_bound: jnp.ndarray, input_config: dict
+        std_norm: jnp.ndarray, mu_prop_init: jnp.ndarray,
+        prec_prop_init: jnp.ndarray, input_config: dict
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Update the input configuration and return new proposl distribution.
 
@@ -146,19 +147,29 @@ def proposal_distribution_update(
         mean_norm: The mean of each distribution before normalization.
         std_norm: The standard deviation of each distribution before
             normalization.
-        log_var_bound: Maximum boundary on the variance of the new
-            proposal distribution.
+        mu_prop_init: Initial mean for the proposal distribution.
+        prec_prop_init: Initial precision matrix for the porposal distribution.
         input_config: Configuration used to generate simulations specific
             in seperate configuration file.
 
     Returns:
         Mean and precision matrix for the new proposal distribution.
+
+    Notes:
+        mu_prop_init and prec_prop_init are used to overwrite proposals that
+        are wider than the initial proposal.
     """
-    #TODO mean_norm and std_norm should not be hardcoded.
     # Get the new proposal distribution.
-    mu_prop, log_var_prop = jnp.split(current_posterior[0], 2, axis=-1)
-    # Bound the variance by the desired maximum.
-    log_var_prop = jnp.minimum(log_var_prop, log_var_bound)
+    mu_prop, log_var_prop = jnp.split(current_posterior, 2, axis=-1)
+
+    # Any parameter that has larger variance than the initial proposal is
+    # overwritten to the initial proposal distirbution.
+    log_var_bound = jnp.log(1 / jnp.diag(prec_prop_init))
+    overwrite_prop_bool = log_var_prop > log_var_bound
+    mu_prop = (mu_prop_init * overwrite_prop_bool +
+               mu_prop * jnp.logical_not(overwrite_prop_bool))
+    log_var_prop = (log_var_bound * overwrite_prop_bool +
+                    log_var_prop * jnp.logical_not(overwrite_prop_bool))
     prec_prop = jnp.diag(jnp.exp(-log_var_prop))
 
     # Modify the input config.
@@ -175,7 +186,7 @@ def proposal_distribution_update(
                 std=std_prop_unormalized[truth_i])
         )
 
-    return jax_utils.replicate(mu_prop), jax_utils.replicate(prec_prop)
+    return mu_prop, prec_prop
 
 def train_and_evaluate_snpe(
         config: ml_collections.ConfigDict,
@@ -275,10 +286,6 @@ def train_and_evaluate_snpe(
     # Get our initial proposal. May be in the midst of refinement here.
     mu_prop = mu_prop_init
     prec_prop = prec_prop_init
-    # Use the initial proposal as a bound for the width of future proposals.
-    log_var_prop_init = jnp.diag(
-        jnp.log(train.cross_replica_mean(prec_prop_init)[0])) * -1.0
-    target_batch = jax_utils.replicate({'image': target_image})
     std_norm = jnp.array([0.15, 0.1, 0.16, 0.16, 0.1, 0.1, 0.05, 0.05, 0.16,
                           0.16, 1.1e-3])
     mean_norm = jnp.array([1.1, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -287,11 +294,28 @@ def train_and_evaluate_snpe(
     if bisect.bisect_left(refinement_step_list, step_offset) > 0:
         # This restart isn't perfect, but we're not going to load weights again
         # so we'll just use whatever model we have now.
+        # We want to generate a batch from the current proposal distribution
+        # to ensure the batch normalization performs correctly.
+        rng_images = jax.random.split(
+            jax.random.PRNGKey(0),
+            num=jax.device_count() * config.batch_size).reshape(
+                (jax.device_count(), config.batch_size, -1)
+            )
+        image, _ = draw_image_and_truth_pmap(
+            input_config['lensing_config'], cosmology_params, grid_x, grid_y,
+            rng_images, 0.0
+        )
+        target_batch = {
+            'image': jnp.expand_dims(image.at[0,0].set(target_image), axis=-1)
+        }
         current_posterior = train.cross_replica_mean(
-            p_get_outputs(state, target_batch)[0])[0]
-        mu_prop, prec_prop = proposal_distribution_update(
-            current_posterior, mean_norm, std_norm, log_var_prop_init,
-            input_config)
+            p_get_outputs(state, target_batch)[0])[0,0] # Remove batch indices.
+        mu_prop, prec_prop = jax_utils.replicate(
+            proposal_distribution_update(
+                current_posterior, mean_norm, std_norm, mu_prop_init[0],
+                prec_prop_init[0], input_config
+            )
+        )
 
     for step in range(step_offset, num_steps):
 
@@ -301,13 +325,29 @@ def train_and_evaluate_snpe(
 
             # Get the predictions for the derised image and turn it into a new
             # proposal distribution
+            rng_images = jax.random.split(
+                jax.random.PRNGKey(0),
+                num=jax.device_count() * config.batch_size).reshape(
+                    (jax.device_count(), config.batch_size, -1)
+                )
+            image, _ = draw_image_and_truth_pmap(
+                input_config['lensing_config'], cosmology_params, grid_x,
+                grid_y, rng_images, 0.0
+            )
+            target_batch = {
+                'image': jnp.expand_dims(image.at[0,0].set(target_image),
+                                         axis=-1)
+            }
             current_posterior = train.cross_replica_mean(
-                p_get_outputs(state, target_batch)[0])[0]
+                p_get_outputs(state, target_batch)[0])[0,0]
 
             # Get the new proposal distribution.
-            mu_prop, prec_prop = proposal_distribution_update(
-                current_posterior, mean_norm, std_norm, log_var_prop_init,
-                input_config)
+            mu_prop, prec_prop = jax_utils.replicate(
+                proposal_distribution_update(
+                    current_posterior, mean_norm, std_norm, mu_prop_init[0],
+                    prec_prop_init[0], input_config
+                )
+            )
 
         # Generate truths and images
         if isinstance(rng, Iterator):

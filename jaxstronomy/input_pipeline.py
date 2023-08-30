@@ -416,10 +416,8 @@ def draw_image_and_truth(
         rotation_angle: Counterclockwise angle by which to rotate images and
             truths.
         all_models: Tuple of model classes to consider for each component.
-        principal_md_index: Index of the main deflector model to consider when
-            determining the position of the source and substructure.
-        principal_source_index: Index of the source model to consider when
-            determining the position of the substructure.
+        principal_model_indices: Indices for the principal model of each
+            lensing component.
         kwargs_simulation: Keyword arguments for the draws of the substructure.
         kwargs_detector: Keyword arguments defining the detector configuration.
         kwargs_psf: Keyword arguments defining the point spread function. The
