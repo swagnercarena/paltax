@@ -413,7 +413,6 @@ def main(_):
     input_config = train._get_config(FLAGS.input_config_path)
     image_size = input_config['kwargs_detector']['n_x']
     target_image = jnp.load(FLAGS.target_image_path)
-    target_image = jnp.expand_dims(target_image, axis=(0,-1))
 
     rng = jax.random.PRNGKey(0)
     if FLAGS.num_unique_batches > 0:
