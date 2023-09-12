@@ -1,0 +1,12 @@
+#absl-py  # jax already depends on it
+--find-links https://storage.googleapis.com/jax-releases/jax_releases.html
+jax[cuda112]==0.3.25
+tensorflow
+chex
+dm-pix
+immutabledict
+clu
+flax
+ml_collections
+optax
+numba

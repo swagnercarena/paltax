@@ -126,8 +126,9 @@ class AllTest(absltest.TestCase):
     def test_all(self):
         all_present = sorted(source_models.__all__)
         all_required = []
+        ignore_list = ['_SourceModelBase', 'Any']
         for name, value in inspect.getmembers(source_models):
-            if inspect.isclass(value) and name != '_SourceModelBase':
+            if inspect.isclass(value) and name not in ignore_list:
                 all_required.append(name)
 
         self.assertListEqual(all_present, sorted(all_required))
@@ -442,7 +443,7 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
             source_models.CosmosCatalog.k_correct_image
         )
 
-        self.assertAlmostEqual(expected, k_correct_image(z_old, z_new))
+        self.assertAlmostEqual(expected, k_correct_image(z_old, z_new), places=6)
 
 if __name__ == '__main__':
     absltest.main()

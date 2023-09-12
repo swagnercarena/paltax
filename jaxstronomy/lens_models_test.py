@@ -109,8 +109,9 @@ class AllTest(chex.TestCase):
     def test_all(self):
         all_present = sorted(lens_models.__all__)
         all_required = []
+        ignore_list = ['_LensModelBase', 'Any']
         for name, value in inspect.getmembers(lens_models):
-            if inspect.isclass(value) and name != '_LensModelBase':
+            if inspect.isclass(value) and name not in ignore_list:
                 all_required.append(name)
 
         self.assertListEqual(all_present, sorted(all_required))
