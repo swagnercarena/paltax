@@ -228,7 +228,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(jnp.mean(uniform_draws < 4.0), 1.0, places=2)
 
     @chex.all_variants
-    def test_normalize_params(self):
+    def test_normalize_param(self):
         # Test that the draws are normalized as expected.
         normalize_param = self.variant(input_pipeline.normalize_param)
         normalize_param_vmap = jax.vmap(normalize_param, in_axes=[0, None])
@@ -265,6 +265,48 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(jnp.mean(normalized_draws < 0.75), 0.75,
                                places=2)
         self.assertAlmostEqual(jnp.mean(normalized_draws < 1.00), 1.0, places=2)
+
+    @chex.all_variants
+    def test_unnormalize_param(self):
+        # Make sure the normalize + unormalize is the identity map.
+        normalize_param = self.variant(input_pipeline.normalize_param)
+        normalize_param_vmap = jax.vmap(normalize_param, in_axes=[0, None])
+        unnormalize_param = self.variant(input_pipeline.unnormalize_param)
+        unnormalize_param_vmap = jax.vmap(unnormalize_param, in_axes=[0, None])
+        draw_from_encoding_vmap = jax.jit(jax.vmap(
+            input_pipeline.draw_from_encoding, in_axes=[None, 0]))
+
+        n_draws = 100000
+        rng_list = jax.random.split(jax.random.PRNGKey(0), n_draws)
+
+        constant = 12.0
+        constant_encoding = input_pipeline.encode_constant(constant)
+        constant_draws = draw_from_encoding_vmap(constant_encoding, rng_list)
+        normalized_draws = normalize_param_vmap(constant_draws,
+                                                constant_encoding)
+        unormalized_draws = unnormalize_param_vmap(normalized_draws,
+                                                   constant_encoding)
+        np.testing.assert_array_almost_equal(unormalized_draws, constant_draws)
+
+        mean = 1.8
+        std = 1.0
+        normal_encoding = input_pipeline.encode_normal(mean=mean, std=std)
+        normal_draws = draw_from_encoding_vmap(normal_encoding, rng_list)
+        normalized_draws = normalize_param_vmap(normal_draws, normal_encoding)
+        unormalized_draws = unnormalize_param_vmap(normalized_draws,
+                                                   normal_encoding)
+        np.testing.assert_array_almost_equal(normal_draws, unormalized_draws)
+
+        minimum = 0.0
+        maximum = 4.0
+        uniform_encoding = input_pipeline.encode_uniform(minimum=minimum,
+                                                         maximum=maximum)
+        uniform_draws = draw_from_encoding_vmap(uniform_encoding, rng_list)
+        normalized_draws = normalize_param_vmap(uniform_draws, uniform_encoding)
+        unormalized_draws = unnormalize_param_vmap(normalized_draws,
+                                                   uniform_encoding)
+        np.testing.assert_array_almost_equal(uniform_draws, unormalized_draws)
+
 
     def test_generate_grids(self):
         # Test that the grid has the expected dimensions.

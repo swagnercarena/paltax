@@ -26,7 +26,6 @@ from jaxstronomy import subhalos
 from jaxstronomy import image_simulation
 from jaxstronomy import utils
 
-
 def encode_normal(mean: float, std: float) -> jnp.ndarray:
     """Generate the jax array that encodes a normal distribution.
 
@@ -142,7 +141,7 @@ def normalize_param(parameter: float, encoding: jnp.ndarray) -> float:
     """Return parameter normalized by encoded distribution.
 
     Args:
-        parameter: Parameter value to normalize
+        parameter: Parameter value to normalize.
         encoding: Encoding defining the distribution.
 
     Returns:
@@ -160,6 +159,31 @@ def normalize_param(parameter: float, encoding: jnp.ndarray) -> float:
     # Constant will be normalzied to 0.0 by default.
 
     return normalized_param
+
+def unnormalize_param(normalized_parameter: float,
+                      encoding: jnp.ndarray) -> float:
+    """Return parameter with the normalization removed.
+
+    Args:
+        normalized_parameter: Parameter value that has been normalized.
+        encoding: Encoding defining the distribution.
+
+    Returns:
+        Parameter without normalization.
+    """
+    # This reverse the procedures specified in normalize_param.
+    # Uniform distribution was normlaized to be between 0 and 1.
+    param = jax.lax.select(
+        encoding[0] > 0.0,
+        normalized_parameter * (encoding[2] - encoding[1]) +  encoding[1], 0.0)
+    # Normal distribution was given mean 0 and standard deviation 1.0.
+    param += jax.lax.select(
+        encoding[3] > 0.0,
+        normalized_parameter * encoding[5] + encoding[4], 0.0)
+    # Constant value must be restored
+    param += encoding[6]
+
+    return param
 
 def generate_grids(
         config: Mapping[str, Mapping[str, jnp.ndarray]]
