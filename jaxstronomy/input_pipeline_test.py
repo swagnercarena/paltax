@@ -122,13 +122,40 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
     """Runs tests of input pipeline functions."""
 
     @chex.all_variants
+    def test__generate_blank_encoding(self):
+        # Test that it has the correct length.
+        blank_encoding = self.variant(input_pipeline._generate_blank_encoding)()
+        np.testing.assert_array_almost_equal(
+            blank_encoding,
+            np.zeros(4 + input_pipeline.NUM_NORMAL_DISTRIBUTIONS * 3)
+        )
+
+    @chex.all_variants(without_device=False)
+    def test__encode_normal(self):
+        # Test that it updates the encoding and adds the weight.
+        encode_normal = self.variant(input_pipeline._encode_normal)
+        mean = -1.1
+        std = 0.2
+        weight = 0.6
+        encoded = encode_normal(input_pipeline._generate_blank_encoding(),
+                                mean, std, weight)
+        expected = np.array(
+            [0.0, 0.0, 0.0, 0.0, weight, mean, std] +
+            [0.0] * (input_pipeline.NUM_NORMAL_DISTRIBUTIONS - 1) * 3
+        )
+        np.testing.assert_array_almost_equal(encoded, expected)
+
+    @chex.all_variants
     def test_encode_normal(self):
-        # Test that the encoding behaves as expected
+        # Test that the encoding behaves as expected.
         encode_normal = self.variant(input_pipeline.encode_normal)
         mean = 1.2
         std = 0.4
         encoded = encode_normal(mean=mean, std=std)
-        expected = np.array([0.0, 0.0, 0.0, 1.0, mean, std, 0.0])
+        expected = np.array(
+            [0.0, 0.0, 0.0, 0.0, 1.0, mean, std] +
+            [0.0] * (input_pipeline.NUM_NORMAL_DISTRIBUTIONS - 1) * 3
+        )
         np.testing.assert_array_almost_equal(encoded, expected)
 
     @chex.all_variants
@@ -138,7 +165,10 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         minimum = 0.2
         maximum = 2.01
         encoded = encode_uniform(minimum=minimum, maximum=maximum)
-        expected = np.array([1.0, minimum, maximum, 0.0, 0.0, 0.0, 0.0])
+        expected = np.array(
+            [1.0, minimum, maximum, 0.0, 0.0, 0.0, 0.0] +
+            [0.0] * (input_pipeline.NUM_NORMAL_DISTRIBUTIONS - 1) * 3
+        )
         np.testing.assert_array_almost_equal(encoded, expected)
 
     @chex.all_variants
@@ -147,8 +177,139 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         encode_constant = self.variant(input_pipeline.encode_constant)
         constant = 1.43
         encoded = encode_constant(constant=constant)
-        expected = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, constant])
+        expected = np.array(
+            [0.0, 0.0, 0.0, constant, 0.0, 0.0, 0.0] +
+            [0.0] * (input_pipeline.NUM_NORMAL_DISTRIBUTIONS - 1) * 3
+        )
         np.testing.assert_array_almost_equal(encoded, expected)
+
+    @chex.all_variants
+    def test__get_normal_mean_indices(self):
+        # Test that the indices match expectations.
+        expected = [
+            input_pipeline.NORMAL_ENCODING_START + 1 + i*3
+            for i in range(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        ]
+        indices = self.variant(input_pipeline._get_normal_mean_indices)()
+        np.testing.assert_array_almost_equal(expected, indices)
+
+    @chex.all_variants
+    def test__get_normal_mean(self):
+        get_normal_mean = self.variant(input_pipeline._get_normal_mean)
+        encoding = input_pipeline._generate_blank_encoding()
+        encoding = encoding.at[input_pipeline._get_normal_mean_indices()].set(
+            jnp.arange(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        )
+        np.testing.assert_array_almost_equal(
+            get_normal_mean(encoding),
+            np.arange(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        )
+
+    @chex.all_variants
+    def test__get_normal_std_indices(self):
+        # Test that the indices match expectations.
+        expected = [
+            input_pipeline.NORMAL_ENCODING_START + 2 + i*3
+            for i in range(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        ]
+        indices = self.variant(input_pipeline._get_normal_std_indices)()
+        np.testing.assert_array_almost_equal(expected, indices)
+
+    @chex.all_variants
+    def test__get_normal_std(self):
+        get_normal_std = self.variant(input_pipeline._get_normal_std)
+        encoding = input_pipeline._generate_blank_encoding()
+        encoding = encoding.at[input_pipeline._get_normal_std_indices()].set(
+            jnp.arange(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        )
+        np.testing.assert_array_almost_equal(
+            get_normal_std(encoding),
+            np.arange(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        )
+
+    @chex.all_variants
+    def test__get_normal_weight_indices(self):
+        # Test that the indices match expectations.
+        expected = [
+            input_pipeline.NORMAL_ENCODING_START + i*3
+            for i in range(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        ]
+        indices = self.variant(input_pipeline._get_normal_weights_indices)()
+        np.testing.assert_array_almost_equal(expected, indices)
+
+    @chex.all_variants
+    def test__get_normal_weights(self):
+        get_normal_weights = self.variant(input_pipeline._get_normal_weights)
+        encoding = input_pipeline._generate_blank_encoding()
+        encoding = (
+            encoding.at[input_pipeline._get_normal_weights_indices()].set(
+                jnp.arange(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        ))
+        np.testing.assert_array_almost_equal(
+            get_normal_weights(encoding),
+            np.arange(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        )
+
+    @chex.all_variants(without_device=False)
+    def test_add_normal_to_encoding(self):
+        # Test that the normal appends were expected and that the some of the
+        # mixtures is still 1.
+        add_normal_to_encoding = self.variant(
+            input_pipeline.add_normal_to_encoding
+        )
+
+        encoding = input_pipeline._generate_blank_encoding()
+        rng_w, rng_m, rng_s = jax.random.split(jax.random.PRNGKey(0), 3)
+
+        # Set up the old encoding manually.
+        # Weights must be initialized to sum to zero.
+        old_weights = jax.random.uniform(
+            rng_w, (input_pipeline.NUM_NORMAL_DISTRIBUTIONS,)
+        )
+        old_weights /= jnp.sum(old_weights)
+        old_mean = jax.random.normal(
+            rng_m, (input_pipeline.NUM_NORMAL_DISTRIBUTIONS,)
+        )
+        old_std = jax.random.uniform(
+            rng_s, (input_pipeline.NUM_NORMAL_DISTRIBUTIONS,)
+        )
+        encoding = (
+            encoding.at[input_pipeline._get_normal_weights_indices()].set(
+                old_weights
+                )
+            )
+        encoding = (
+            encoding.at[input_pipeline._get_normal_mean_indices()].set(
+                old_mean
+                )
+            )
+        encoding = (
+            encoding.at[input_pipeline._get_normal_std_indices()].set(
+                old_std
+                )
+            )
+
+        mean = 1.2
+        std = 0.4
+        decay_factor = 0.7
+        encoding = add_normal_to_encoding(encoding, mean, std, decay_factor)
+
+        # Test each component.
+        new_mean = input_pipeline._get_normal_mean(encoding)
+        self.assertAlmostEqual(new_mean[0], mean)
+        np.testing.assert_array_almost_equal(new_mean[1:], old_mean[:-1])
+
+        new_std = input_pipeline._get_normal_std(encoding)
+        self.assertAlmostEqual(new_std[0], std)
+        np.testing.assert_array_almost_equal(new_std[1:], old_std[:-1])
+
+        new_weights = input_pipeline._get_normal_weights(encoding)
+        self.assertAlmostEqual(jnp.sum(new_weights), 1.0, places=6)
+        self.assertAlmostEqual(new_weights[0], 1 - decay_factor)
+        # There is a normalizing factor, but it should be applied evenly
+        ratio = new_weights[1:] / old_weights[:-1]
+        np.testing.assert_array_almost_equal(ratio,
+                                             np.ones(len(ratio)) * ratio[0])
 
     @chex.all_variants
     def test_decode_maximum(self):
@@ -156,6 +317,9 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         # the constant, the maximum, and the mean plus five sigma.
         mean = 1.8
         std = 1.0
+        mixture_mean = 10.0
+        mixture_std = 2.0
+        decay_factor = 0.2
         minimum = 0.8
         maximum = 12.0
         constant = 13.4
@@ -163,6 +327,9 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         uniform_encoding = input_pipeline.encode_uniform(minimum=minimum,
                                                          maximum=maximum)
         normal_encoding = input_pipeline.encode_normal(mean=mean, std=std)
+        mixture_encoding = input_pipeline.add_normal_to_encoding(
+            normal_encoding, mixture_mean, mixture_std, decay_factor
+        )
         decode_maximum = self.variant(input_pipeline.decode_maximum)
 
         self.assertAlmostEqual(decode_maximum(constant_encoding), constant,
@@ -171,6 +338,8 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
                                places=6)
         self.assertAlmostEqual(decode_maximum(normal_encoding), mean + 5 * std,
                                places=6)
+        self.assertAlmostEqual(decode_maximum(mixture_encoding),
+                               mixture_mean + 5 * mixture_std, places=6)
 
     @chex.all_variants
     def test_decode_minimum(self):
@@ -178,6 +347,9 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         # the constant, the maximum, and the mean plus five sigma.
         mean = 1.8
         std = 1.0
+        mixture_mean = -10.0
+        mixture_std = 2.0
+        decay_factor = 0.3
         minimum = 0.8
         maximum = 12.0
         constant = 13.4
@@ -185,6 +357,9 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         uniform_encoding = input_pipeline.encode_uniform(minimum=minimum,
                                                          maximum=maximum)
         normal_encoding = input_pipeline.encode_normal(mean=mean, std=std)
+        mixture_encoding = input_pipeline.add_normal_to_encoding(
+            normal_encoding, mixture_mean, mixture_std, decay_factor
+        )
         decode_minimum = self.variant(input_pipeline.decode_minimum)
 
         self.assertAlmostEqual(decode_minimum(constant_encoding), constant,
@@ -193,15 +368,17 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
                                places=6)
         self.assertAlmostEqual(decode_minimum(normal_encoding), mean - 5 * std,
                                places=6)
+        self.assertAlmostEqual(decode_minimum(mixture_encoding),
+                               mixture_mean - 5 * mixture_std, places=6)
 
-    @chex.all_variants
+    @chex.all_variants(without_device=False)
     def test_draw_from_encoding(self):
         # Test that the encoding gives reasonable draws from the distribution
         # for the normal, uniform, and constant encoding.
         draw_from_encoding = self.variant(input_pipeline.draw_from_encoding)
         draw_from_encoding_vmap = jax.vmap(draw_from_encoding,
                                            in_axes=[None, 0])
-        n_draws = 100000
+        n_draws = 1000000
         rng_list = jax.random.split(jax.random.PRNGKey(0), n_draws)
 
         constant = 12.0
@@ -216,6 +393,24 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         normal_draws = draw_from_encoding_vmap(normal_encoding, rng_list)
         self.assertAlmostEqual(jnp.mean(normal_draws), mean, places=2)
         self.assertAlmostEqual(jnp.std(normal_draws), std, places=2)
+
+        mixture_mean = -10.0
+        mixture_std = 0.5
+        decay_factor = 0.2
+        mixture_encoding = input_pipeline.add_normal_to_encoding(
+            normal_encoding, mixture_mean, mixture_std, decay_factor
+        )
+        mixture_draws = draw_from_encoding_vmap(mixture_encoding, rng_list)
+        # 80 percent of draws should come from new Gaussian
+        self.assertAlmostEqual(jnp.mean(mixture_draws < -3.2), 0.8, places=3)
+        self.assertAlmostEqual(jnp.mean(mixture_draws[mixture_draws < -3.2]),
+                               mixture_mean, places=2)
+        self.assertAlmostEqual(jnp.mean(mixture_draws[mixture_draws > -3.2]),
+                               mean, places=2)
+        self.assertAlmostEqual(jnp.std(mixture_draws[mixture_draws < -3.2]),
+                               mixture_std, places=2)
+        self.assertAlmostEqual(jnp.std(mixture_draws[mixture_draws > -3.2]),
+                               std, places=2)
 
         minimum = 0.0
         maximum = 4.0
@@ -250,6 +445,16 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         normal_encoding = input_pipeline.encode_normal(mean=mean, std=std)
         normal_draws = draw_from_encoding_vmap(normal_encoding, rng_list)
         normalized_draws = normalize_param_vmap(normal_draws, normal_encoding)
+        self.assertAlmostEqual(jnp.mean(normalized_draws), 0.0, places=2)
+        self.assertAlmostEqual(jnp.std(normalized_draws), 1.0, places=2)
+
+        new_mean = 1.0
+        new_std = 2.0
+        decay = 0.5
+        mixture_encoding = input_pipeline.add_normal_to_encoding(
+            normal_encoding, new_mean, new_std, decay)
+        mixture_draws = draw_from_encoding_vmap(mixture_encoding, rng_list)
+        normalized_draws = normalize_param_vmap(mixture_draws, mixture_encoding)
         self.assertAlmostEqual(jnp.mean(normalized_draws), 0.0, places=2)
         self.assertAlmostEqual(jnp.std(normalized_draws), 1.0, places=2)
 
@@ -368,7 +573,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         self.assertTupleEqual(cosmology_params['cosmos_images'].shape,
                               (2, 256, 256))
 
-    @chex.all_variants
+    @chex.all_variants(without_device=False)
     def test_draw_sample(self):
         # Test that the samples drawn match the expected distribution.
         mean = 1.0
@@ -404,7 +609,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             jnp.std(sampled_configuration['node_a']['node_ab']), std,
             places=2)
 
-    @chex.all_variants
+    @chex.all_variants(without_device=False)
     def test_extract_multiple_models(self):
         # Test that the code scales well to multiple models and a single model.
         constant = 12.0

@@ -26,6 +26,55 @@ from jaxstronomy import subhalos
 from jaxstronomy import image_simulation
 from jaxstronomy import utils
 
+
+NUM_NORMAL_DISTRIBUTIONS = 100
+UNIFORM_ENCODING_START = 0
+CONSTANT_ENCODING_START = 3
+NORMAL_ENCODING_START = 4
+
+
+def _generate_blank_encoding() -> jnp.ndarray:
+    """Allocate a blank encoding to be used by the encode functions.
+
+    Returns:
+        Encoding with all values set to zero.
+
+    Notes:
+        The number of normal distributions is a global variable defined in the
+        file.
+    """
+    # Number of parameters for uniform
+    total_size = 3
+    # Number of parameters for constant
+    total_size += 1
+    # Number of paramters for mixture of normal distributions
+    total_size += 3 * NUM_NORMAL_DISTRIBUTIONS
+
+    return jnp.zeros(total_size)
+
+
+def _encode_normal(encoding: jnp.ndarray, mean: float,
+                   std: float, weight: float) -> jnp.ndarray:
+    """Update encoding to include a normal distribution.
+
+    Args:
+        encoding: Current encoding without a mean (should be either zeros or
+            this should be called within add_normal_to_encoding).
+        mean: Mean of the normal distribution.
+        std: Standard deviation of the normal distribution.
+        weight: Weight of the normal. Should be 1.0 if it is the only normal
+            in the mixture.
+
+    Returns:
+        Updated encoding that represents a normal with given mean and
+        standard deviation.
+    """
+    encoding = encoding.at[NORMAL_ENCODING_START].set(weight)
+    encoding = encoding.at[NORMAL_ENCODING_START+1].set(mean)
+    encoding = encoding.at[NORMAL_ENCODING_START+2].set(std)
+    return encoding
+
+
 def encode_normal(mean: float, std: float) -> jnp.ndarray:
     """Generate the jax array that encodes a normal distribution.
 
@@ -35,12 +84,14 @@ def encode_normal(mean: float, std: float) -> jnp.ndarray:
 
     Returns:
         Encoding that represents a normal with given mean and standard
-            deviation.
+        deviation.
     """
-
-    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
-    # normal_bool, normal_mean, normal_std, constant].
-    return jnp.array([0.0, 0.0, 0.0, 1.0, mean, std, 0.0])
+    # Encoding is currently [uniform: 3, constant: 1, normals:
+    # 3 x NUM_NORMAL_DISTRIBUTIONS]. Each normal is encoded by [weight, mean,
+    # std], so here we set 1 normal to have weight 1.0 and the given mean
+    # and standard deviation.
+    encoding = _generate_blank_encoding()
+    return _encode_normal(encoding, mean, std, 1.0)
 
 
 def encode_uniform(minimum: float, maximum: float) -> jnp.ndarray:
@@ -53,10 +104,14 @@ def encode_uniform(minimum: float, maximum: float) -> jnp.ndarray:
     Returns:
         Encoding that represents a uniform with given min and max.
     """
-
-    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
-    # normal_bool, normal_mean, normal_std, constant].
-    return jnp.array([1.0, minimum, maximum, 0.0, 0.0, 0.0, 0.0])
+    # Encoding is currently [uniform: 3, constant: 1, normals:
+    # 3 x NUM_NORMAL_DISTRIBUTIONS]. The uniform parameters are [flag, minimum,
+    # maximum].
+    encoding = _generate_blank_encoding()
+    encoding = encoding.at[UNIFORM_ENCODING_START].set(1.0)
+    encoding = encoding.at[UNIFORM_ENCODING_START + 1].set(minimum)
+    encoding = encoding.at[UNIFORM_ENCODING_START + 2].set(maximum)
+    return encoding
 
 
 def encode_constant(constant: float) -> jnp.ndarray:
@@ -68,29 +123,142 @@ def encode_constant(constant: float) -> jnp.ndarray:
     Returns:
         Encoding that represents a constant value.
     """
-    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
-    # normal_bool, normal_mean, normal_std, constant].
-    return jnp.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, constant])
+    # Encoding is currently [uniform: 3, constant: 1, normals:
+    # 3 x NUM_NORMAL_DISTRIBUTIONS].
+    encoding = _generate_blank_encoding()
+    encoding = encoding.at[CONSTANT_ENCODING_START].set(constant)
+    return encoding
+
+
+def _get_normal_mean_indices() -> jnp.ndarray:
+    """Get the indices for the mean values of the normal distributions.
+
+    Returns:
+        Indices for mean values of the normal distribution.
+    """
+    mean_indices = jnp.arange(NUM_NORMAL_DISTRIBUTIONS) * 3
+    mean_indices += NORMAL_ENCODING_START + 1
+    return mean_indices
+
+
+def _get_normal_mean(encoding: jnp.ndarray) -> jnp.ndarray:
+    """Return the array of mean values for the normal distributions
+
+    Args:
+        encoding: Encoded distribution.
+
+    Returns:
+        Mean for each normal in the encoded distribution.
+    """
+    # Three parameters per normal encoding and mean is the second parameter.
+    mean_indices = _get_normal_mean_indices()
+    return encoding[mean_indices]
+
+
+def _get_normal_std_indices() -> jnp.ndarray:
+    """Get the indices for the std values of the normal distributions.
+
+    Returns:
+        Indices for std values of the normal distribution.
+    """
+    std_indices = jnp.arange(NUM_NORMAL_DISTRIBUTIONS) * 3
+    std_indices += NORMAL_ENCODING_START + 2
+    return std_indices
+
+
+def _get_normal_std(encoding: jnp.ndarray) -> jnp.ndarray:
+    """Return the array of std values for the normal distributions
+
+    Args:
+        encoding: Encoded distribution.
+
+    Returns:
+        Standard deviation for each normal in the encoded distribution.
+    """
+    # Three parameters per normal encoding and mean is the third parameter.
+    std_indices = _get_normal_std_indices()
+    return encoding[std_indices]
+
+
+def _get_normal_weights_indices() -> jnp.ndarray:
+    """Get the indices for the weight values of the normal distributions.
+
+    Returns:
+        Indices for weight values of the normal distribution.
+    """
+    weight_indices = jnp.arange(NUM_NORMAL_DISTRIBUTIONS) * 3
+    weight_indices += NORMAL_ENCODING_START
+    return weight_indices
+
+
+def _get_normal_weights(encoding: jnp.ndarray) -> jnp.ndarray:
+    """Return the array of weight values for the normal distributions.
+
+    Args:
+        encoding: Encoded distribution.
+
+    Returns:
+        Weight of each normal in the encoded distribution.
+    """
+    # Three parameters per normal encoding and mean is the first parameter.
+    weight_indices = _get_normal_weights_indices()
+    return encoding[weight_indices]
+
+
+def add_normal_to_encoding(encoding: jnp.ndarray, mean: float, std: float,
+                           decay_factor: float) -> jnp.ndarray:
+    """Add a new normal distribution to the mixture.
+
+    Args:
+        encoding: Current encoded distribution.
+        mean: Mean of new normal distribution.
+        std: Standard deviation of new normal distribution.
+        decay_factor: Decay factor to apply on other distribution weights when
+            adding the new distribution.
+
+    Returns:
+        Encoding for new mixture of Gaussian with appropriate decay factor
+        applied.
+    """
+    cur_weights = _get_normal_weights(encoding)[:-1]
+    cur_means = _get_normal_mean(encoding)[:-1]
+    cur_std = _get_normal_std(encoding)[:-1]
+    weight_indices = _get_normal_weights_indices()[1:]
+    mean_indices = _get_normal_mean_indices()[1:]
+    std_indices = _get_normal_std_indices()[1:]
+
+    # Add Gaussian to the mixture following a queue mentality.
+    # Normalization needs to factor in a previous Gaussian having been dropped.
+    normalization = decay_factor / jnp.sum(cur_weights)
+    encoding = encoding.at[weight_indices].set(cur_weights * normalization)
+    encoding = encoding.at[mean_indices].set(cur_means)
+    encoding = encoding.at[std_indices].set(cur_std)
+
+    return _encode_normal(encoding, mean, std, 1 - decay_factor)
 
 
 def decode_maximum(encoding: jnp.ndarray) -> float:
     """Decode the maximum value of the distribution defined by encoding.
 
     Args:
-        encoding: Encoded distribution
+        encoding: Encoded distribution.
 
     Returns:
         Maximum value of encoded distribution. May be an approximation for
         distributions without a maximum.
     """
-    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
-    # normal_bool, normal_mean, normal_std, constant].
+    # Encoding is currently [uniform: 3, constant: 1, normals:
+    # 3 x NUM_NORMAL_DISTRIBUTIONS].
     # If not uniform will give 0.
-    maximum = encoding[0] * encoding[2]
-    # If normal will give mean + five sigma.
-    maximum += encoding[3] * (encoding[4] + encoding[5]*5)
+    maximum = (
+        encoding[UNIFORM_ENCODING_START] * encoding[UNIFORM_ENCODING_START + 2]
+    )
     # If constant return constant
-    maximum += encoding[6]
+    maximum += encoding[CONSTANT_ENCODING_START]
+    # If normal return largest mean + five sigma.
+    normal_maximum = _get_normal_mean(encoding) + 5 * _get_normal_std(encoding)
+    maximum += jnp.max(normal_maximum)
+
     return maximum
 
 
@@ -98,43 +266,110 @@ def decode_minimum(encoding: jnp.ndarray) -> float:
     """Decode the minimum value of the dsitribution defined by the encoding.
 
     Args:
-        encoding: Encoded distribution
+        encoding: Encoded distribution.
 
     Returns:
         Minimum value of encoded distribution. May be an approximation for
         distributions without a minimum.
     """
-    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
-    # normal_bool, normal_mean, normal_std, constant].
+    # Encoding is currently [uniform: 3, constant: 1, normals:
+    # 3 x NUM_NORMAL_DISTRIBUTIONS].
     # If not uniform will give 0.
-    minimum = encoding[0] * encoding[1]
-    # If normal will give mean - five sigma.
+    minimum = (
+        encoding[UNIFORM_ENCODING_START] * encoding[UNIFORM_ENCODING_START + 1]
+    )
+    # If constant return constant
+    minimum += encoding[CONSTANT_ENCODING_START]
+    # If normal return smallest mean - five sigma.
     minimum += encoding[3] * (encoding[4] - encoding[5]*5)
     # If constant return constant
-    minimum += encoding[6]
+    normal_minimum = _get_normal_mean(encoding) - 5 * _get_normal_std(encoding)
+    minimum += jnp.min(normal_minimum)
+
     return minimum
+
+
+def _draw_from_normals(encoding: jnp.ndarray, rng: Sequence[int]) -> float:
+    """Draw from encoded normal distributions.
+
+    Args:
+        encoding: Encoded distribution.
+        rng: jax PRNG key.
+
+    Returns:
+        A draw from the encoded normal distributions.
+    """
+    rng_index, rng_normal = jax.random.split(rng)
+    weights = _get_normal_weights(encoding)
+    means = _get_normal_mean(encoding)
+    stds = _get_normal_std(encoding)
+
+    # First select which normal will be drawn from.
+    weight_cumulative = jnp.cumsum(weights)
+    index_draw = jax.random.uniform(rng_index)
+    normal_index = jnp.searchsorted(weight_cumulative, index_draw)
+
+    # Now draw from that normal. Remember order is [weight, mean, std].
+    draw = jax.random.normal(rng_normal) * stds[normal_index]
+    draw += means[normal_index]
+    return draw
 
 
 def draw_from_encoding(encoding: jnp.ndarray, rng: Sequence[int]) -> float:
     """Draw from encoded distribution.
 
     Args:
-        encoding: Encoding defining the distribution.
+        encoding: Encoded distribution.
         rng: jax PRNG key.
 
     Returns:
         A draw from the encoded distribution.
     """
-    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
-    # normal_bool, normal_mean, normal_std, constant].
+    rng_uniform, rng_normal = jax.random.split(rng)
+
+    # Encoding is currently [uniform: 3, constant: 1, normals:
+    # 3 x NUM_NORMAL_DISTRIBUTIONS].
     # Start with the uniform component.
-    draw = encoding[0] * (
-        jax.random.uniform(rng) * (encoding[2] - encoding[1]) + encoding[1])
+    draw = encoding[UNIFORM_ENCODING_START] * (
+        jax.random.uniform(rng_uniform) * (encoding[UNIFORM_ENCODING_START + 2] -
+        encoding[UNIFORM_ENCODING_START + 1]) +
+        encoding[UNIFORM_ENCODING_START + 1]
+    )
+
     # Now the normal component.
-    draw += encoding[3] * (jax.random.normal(rng) * encoding[5] + encoding[4])
+    normal_weights = _get_normal_weights(encoding)
+    draw += jax.lax.select(
+        jnp.sum(normal_weights) > 0.0,
+        _draw_from_normals(encoding, rng_normal),
+        0.0)
+
     # And finally the constant
-    draw += encoding[6]
+    draw += encoding[CONSTANT_ENCODING_START]
+
     return draw
+
+
+def _calculate_mixture_mean_std(encoding: jnp.ndarray) -> Tuple[float, float]:
+    """Calculate the mean and standard deviation for the mixture of Gaussians.
+
+    Args:
+        encoding: Encoded distribution.
+
+    Returns:
+        Mean and standard deviation for the encoded mixture of Gaussians.
+    """
+    normal_weights = _get_normal_weights(encoding)
+    normal_means = _get_normal_mean(encoding)
+    normal_stds = _get_normal_std(encoding)
+
+    # Calculate the mean and standard deviation of the mixture
+    mixture_mean = jnp.sum(normal_weights * normal_means)
+    mixture_std = jnp.sum(normal_weights *
+                          (normal_means ** 2 + normal_stds ** 2))
+    mixture_std -= mixture_mean ** 2
+    mixture_std = jnp.sqrt(mixture_std)
+
+    return mixture_mean, mixture_std
 
 
 def normalize_param(parameter: float, encoding: jnp.ndarray) -> float:
@@ -142,20 +377,31 @@ def normalize_param(parameter: float, encoding: jnp.ndarray) -> float:
 
     Args:
         parameter: Parameter value to normalize.
-        encoding: Encoding defining the distribution.
+        encoding: Encoded distribution.
 
     Returns:
         Normalized parameter.
     """
-    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
-    # normal_bool, normal_mean, normal_std, constant].
+    # Encoding is currently [uniform: 3, constant: 1, normals:
+    # 3 x NUM_NORMAL_DISTRIBUTIONS].
     # Normalize uniform distribution to be between 0 and 1.
     normalized_param = jax.lax.select(
-        encoding[0] > 0.0,
-        (parameter - encoding[1]) / (encoding[2] - encoding[1]), 0.0)
-    # Normalize normal distribution to mean 0 and standard deviation 1.0
+        encoding[UNIFORM_ENCODING_START] > 0.0,
+        (parameter - encoding[UNIFORM_ENCODING_START + 1]) /
+            (encoding[UNIFORM_ENCODING_START + 2] -
+            encoding[UNIFORM_ENCODING_START + 1]),
+        0.0
+    )
+
+    # Normalize mixture of normal distributions to mean 0 and standard
+    # deviation 1.
+    normal_weights = _get_normal_weights(encoding)
+    mixture_mean, mixture_std = _calculate_mixture_mean_std(encoding)
+
     normalized_param += jax.lax.select(
-        encoding[3] > 0.0,(parameter - encoding[4]) / encoding[5], 0.0)
+        jnp.sum(normal_weights) > 0.0,
+        (parameter - mixture_mean) / mixture_std, 0.0)
+
     # Constant will be normalzied to 0.0 by default.
 
     return normalized_param
@@ -166,22 +412,31 @@ def unnormalize_param(normalized_parameter: float,
 
     Args:
         normalized_parameter: Parameter value that has been normalized.
-        encoding: Encoding defining the distribution.
+        encoding: Encoded distribution.
 
     Returns:
         Parameter without normalization.
     """
     # This reverse the procedures specified in normalize_param.
-    # Uniform distribution was normlaized to be between 0 and 1.
+    # Uniform distribution was normalized to be between 0 and 1.
     param = jax.lax.select(
-        encoding[0] > 0.0,
-        normalized_parameter * (encoding[2] - encoding[1]) +  encoding[1], 0.0)
+        encoding[UNIFORM_ENCODING_START] > 0.0,
+        normalized_parameter *
+            (encoding[UNIFORM_ENCODING_START + 2] -
+             encoding[UNIFORM_ENCODING_START + 1]) +
+             encoding[UNIFORM_ENCODING_START + 1],
+        0.0
+    )
+
     # Normal distribution was given mean 0 and standard deviation 1.0.
+    normal_weights = _get_normal_weights(encoding)
+    mixture_mean, mixture_std = _calculate_mixture_mean_std(encoding)
     param += jax.lax.select(
-        encoding[3] > 0.0,
-        normalized_parameter * encoding[5] + encoding[4], 0.0)
+        jnp.sum(normal_weights) > 0.0,
+        normalized_parameter * mixture_std + mixture_mean, 0.0)
+
     # Constant value must be restored
-    param += encoding[6]
+    param += encoding[CONSTANT_ENCODING_START]
 
     return param
 
