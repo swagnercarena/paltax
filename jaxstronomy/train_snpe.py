@@ -354,6 +354,7 @@ def train_and_evaluate_snpe(
     if bisect.bisect_left(refinement_step_list, step_offset) > 0:
         # This restart isn't perfect, but we're not going to load weights again
         # so we'll just use whatever model we have now.
+        print(f'Restarting refinement stage at step {step}')
         prop_encoding = _get_new_prop_encoding(prop_encoding)
 
     for step in range(step_offset, num_steps):
