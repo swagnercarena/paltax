@@ -43,18 +43,22 @@ flags.DEFINE_string('target_image_path', None, 'path to the target image.')
 
 
 def compute_metrics(
-        outputs: jnp.ndarray, truth: jnp.ndarray, mu_prop, prec_prop,
-        mu_prior, prec_prior) -> Mapping[str, jnp.ndarray]:
+        outputs: jnp.ndarray, truth: jnp.ndarray, prop_encoding: jnp.ndarray,
+        mu_prior: jnp.ndarray, prec_prior: jnp.ndarray
+    ) -> Mapping[str, jnp.ndarray]:
     """Compute the performance metrics of the output.
 
     Args:
         outputs: Values outputted by the model.
         truth: True value of the parameters.
+        prop_encoding: Encoding of the proposition mixture.
+        mu_prior: Mean of prior distribution.
+        prec_prior: Precision matrix of prior distribution.
 
     Returns:
         Value of each of the metrics.
     """
-    loss = train.snpe_c_loss(outputs, truth, mu_prop, prec_prop, mu_prior,
+    loss = train.snpe_c_loss(outputs, truth, prop_encoding, mu_prior,
                              prec_prior)
     mean, _ = jnp.split(outputs, 2, axis=-1)
     rmse = jnp.sqrt(jnp.mean(jnp.square(mean - truth)))
@@ -101,7 +105,7 @@ def get_learning_rate_schedule(
     return schedule_fn
 
 
-def train_step(state, batch, mu_prop, prec_prop, mu_prior, prec_prior,
+def train_step(state, batch, prop_encoding, mu_prior, prec_prior,
                learning_rate_schedule):
     """Perform a single training step."""
 
@@ -111,7 +115,7 @@ def train_step(state, batch, mu_prop, prec_prop, mu_prior, prec_prior,
             {'params': params, 'batch_stats': state.batch_stats},
             batch['image'],
             mutable=['batch_stats'])
-        loss = train.snpe_c_loss(outputs, batch['truth'], mu_prop, prec_prop,
+        loss = train.snpe_c_loss(outputs, batch['truth'], prop_encoding,
                                  mu_prior, prec_prior)
 
         return loss, (new_model_state, outputs)
@@ -124,7 +128,7 @@ def train_step(state, batch, mu_prop, prec_prop, mu_prior, prec_prior,
     # Re-use same axis_name as in the call to `pmap(...train_step...)` below.
     grads = lax.pmean(grads, axis_name='batch')
     new_model_state, outputs = aux[1]
-    metrics = compute_metrics(outputs, batch['truth'], mu_prop, prec_prop,
+    metrics = compute_metrics(outputs, batch['truth'], prop_encoding,
                               mu_prior, prec_prior)
     metrics['learning_rate'] = lr
 
@@ -137,7 +141,8 @@ def train_step(state, batch, mu_prop, prec_prop, mu_prior, prec_prior,
 def proposal_distribution_update(
         current_posterior: jnp.ndarray, mean_norm: jnp.ndarray,
         std_norm: jnp.ndarray, mu_prop_init: jnp.ndarray,
-        prec_prop_init: jnp.ndarray, input_config: dict
+        prec_prop_init: jnp.ndarray, prop_encoding: jnp.ndarray,
+        prop_decay_factor: float, input_config: dict
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Update the input configuration and return new proposl distribution.
 
@@ -149,15 +154,17 @@ def proposal_distribution_update(
             normalization.
         mu_prop_init: Initial mean for the proposal distribution.
         prec_prop_init: Initial precision matrix for the porposal distribution.
+        prop_encoding: Previous proposal encoding to be updated.
+        prop_decay_factor: Decay factor to apply to previous proposal.
         input_config: Configuration used to generate simulations specific
             in seperate configuration file.
 
     Returns:
-        Mean and precision matrix for the new proposal distribution.
+        New proposal encoding.
 
     Notes:
-        mu_prop_init and prec_prop_init are used to overwrite proposals that
-        are wider than the initial proposal.
+        prop_encoding_init are used to overwrite proposals that are wider than
+        the initial proposal. Variable input_config is changed in place.
     """
     # Get the new proposal distribution.
     mu_prop, log_var_prop = jnp.split(current_posterior, 2, axis=-1)
@@ -170,23 +177,32 @@ def proposal_distribution_update(
                mu_prop * jnp.logical_not(overwrite_prop_bool))
     log_var_prop = (log_var_bound * overwrite_prop_bool +
                     log_var_prop * jnp.logical_not(overwrite_prop_bool))
-    prec_prop = jnp.diag(jnp.exp(-log_var_prop))
+    std_prop = jnp.exp(log_var_prop/2)
+
+    # Modify the proposal encoding
+    add_normal_to_encoding_vmap = jax.vmap(
+        input_pipeline.add_normal_to_encoding, in_axes=[0, 0, 0, None]
+    )
+    prop_encoding = add_normal_to_encoding_vmap(
+        prop_encoding, mu_prop, std_prop, prop_decay_factor
+    )
 
     # Modify the input config.
     # TODO this is hard coded and needs to be fixed.
     mu_prop_unormalized = mu_prop * std_norm + mean_norm
-    std_prop_unormalized = jnp.exp(log_var_prop/2) * std_norm
+    std_prop_unormalized = std_prop * std_norm
 
     for truth_i in range(len(input_config['truth_parameters'][0])):
         rewrite_object = input_config['truth_parameters'][0][truth_i]
         rewrite_key = input_config['truth_parameters'][1][truth_i]
         input_config['lensing_config'][rewrite_object][rewrite_key] = (
-            input_pipeline.encode_normal(
-                mean=mu_prop_unormalized[truth_i],
-                std=std_prop_unormalized[truth_i])
+            input_pipeline.add_normal_to_encoding(
+                input_config['lensing_config'][rewrite_object][rewrite_key],
+                mu_prop_unormalized[truth_i], std_prop_unormalized[truth_i],
+                prop_decay_factor)
         )
 
-    return mu_prop, prec_prop
+    return prop_encoding
 
 def train_and_evaluate_snpe(
         config: ml_collections.ConfigDict,
@@ -209,6 +225,7 @@ def train_and_evaluate_snpe(
     if config.batch_size % jax.device_count() > 0:
         raise ValueError('Batch size must be divisible by the number of devices')
 
+    # TODO this should be a seperate function.
     steps_per_epoch = config.steps_per_epoch
     num_initial_steps = config.num_initial_train_steps
     num_steps_per_refinement = config.num_steps_per_refinement
@@ -220,6 +237,7 @@ def train_and_evaluate_snpe(
         refinement_step_list.append(
             num_initial_steps + num_steps_per_refinement * refinement
         )
+    # TODO Until here
 
     base_learning_rate = learning_rate * config.batch_size / 256.
 
@@ -230,12 +248,15 @@ def train_and_evaluate_snpe(
     learning_rate_schedule = get_learning_rate_schedule(config,
         base_learning_rate)
 
+    # TODO This and similar function calls should be reproduced by a function.
     if isinstance(rng, Iterator):
         # Create the rng key we'll use to always insert a new random
         # rotation.
         rng_state, rng_rotation_seed = jax.random.split(next(rng), 2)
     else:
         rng, rng_state = jax.random.split(rng)
+    # TODO Until here.
+
     state = train.create_train_state(rng_state, config, model, image_size,
         learning_rate_schedule)
     state = train.restore_checkpoint(state, workdir)
@@ -248,6 +269,8 @@ def train_and_evaluate_snpe(
     prec_prior = jax_utils.replicate(config.prec_prior)
     mu_prop_init = jax_utils.replicate(config.mu_prop_init)
     prec_prop_init = jax_utils.replicate(config.prec_prop_init)
+    std_prop_init = jnp.power(jax.vmap(jnp.diag)(prec_prop_init), -0.5)
+    prop_decay_factor = config.prop_decay_factor
 
     p_train_step = jax.pmap(functools.partial(train_step,
         learning_rate_schedule=learning_rate_schedule),
@@ -284,18 +307,22 @@ def train_and_evaluate_snpe(
     print('Initial compilation, this might take some minutes...')
 
     # Get our initial proposal. May be in the midst of refinement here.
-    mu_prop = mu_prop_init
-    prec_prop = prec_prop_init
+    prop_encoding = jax.vmap(jax.vmap(input_pipeline.encode_normal))(
+        mu_prop_init, std_prop_init
+    )
     std_norm = jnp.array([0.15, 0.1, 0.16, 0.16, 0.1, 0.1, 0.05, 0.05, 0.16,
                           0.16, 1.1e-3])
     mean_norm = jnp.array([1.1, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                            2e-3])
 
-    if bisect.bisect_left(refinement_step_list, step_offset) > 0:
-        # This restart isn't perfect, but we're not going to load weights again
-        # so we'll just use whatever model we have now.
-        # We want to generate a batch from the current proposal distribution
-        # to ensure the batch normalization performs correctly.
+    # A repeated pattern that needs access to the compiled functions. Need to
+    # do this for functions on which partial is called because every call to
+    # partial returns a new hash (i.e. jit will forget that it already
+    # compiled the function).
+    def _get_new_prop_encoding(prop_encoding):
+        """Use the posterior to encode the new proposal distribution."""
+        # We need to encode the target image in a draw from the current
+        # distribution so that batch normalization behaves as intended.
         rng_images = jax.random.split(
             jax.random.PRNGKey(0),
             num=jax.device_count() * config.batch_size).reshape(
@@ -308,46 +335,33 @@ def train_and_evaluate_snpe(
         target_batch = {
             'image': jnp.expand_dims(image.at[0,0].set(target_image), axis=-1)
         }
+
+        # Grab posterior on image of interest (remove pmap and batch indices).
         current_posterior = train.cross_replica_mean(
-            p_get_outputs(state, target_batch)[0])[0,0] # Remove batch indices.
-        mu_prop, prec_prop = jax_utils.replicate(
+            p_get_outputs(state, target_batch)[0])[0,0]
+
+        # Encode the new proposal and return the new encoding.
+        prop_encoding = jax_utils.replicate(
             proposal_distribution_update(
-                current_posterior, mean_norm, std_norm, mu_prop_init[0],
-                prec_prop_init[0], input_config
+                current_posterior, mean_norm, std_norm, mu_prop_init,
+                prec_prop_init, prop_encoding[0], prop_decay_factor,
+                input_config
             )
         )
+        return prop_encoding
+
+
+    if bisect.bisect_left(refinement_step_list, step_offset) > 0:
+        # This restart isn't perfect, but we're not going to load weights again
+        # so we'll just use whatever model we have now.
+        prop_encoding = _get_new_prop_encoding(prop_encoding)
 
     for step in range(step_offset, num_steps):
 
         # Check if it's time for a refinement.
         if step in refinement_step_list:
             print(f'Starting refinement stage at step {step}')
-
-            # Get the predictions for the derised image and turn it into a new
-            # proposal distribution
-            rng_images = jax.random.split(
-                jax.random.PRNGKey(0),
-                num=jax.device_count() * config.batch_size).reshape(
-                    (jax.device_count(), config.batch_size, -1)
-                )
-            image, _ = draw_image_and_truth_pmap(
-                input_config['lensing_config'], cosmology_params, grid_x,
-                grid_y, rng_images, 0.0
-            )
-            target_batch = {
-                'image': jnp.expand_dims(image.at[0,0].set(target_image),
-                                         axis=-1)
-            }
-            current_posterior = train.cross_replica_mean(
-                p_get_outputs(state, target_batch)[0])[0,0]
-
-            # Get the new proposal distribution.
-            mu_prop, prec_prop = jax_utils.replicate(
-                proposal_distribution_update(
-                    current_posterior, mean_norm, std_norm, mu_prop_init[0],
-                    prec_prop_init[0], input_config
-                )
-            )
+            prop_encoding = _get_new_prop_encoding(prop_encoding)
 
         # Generate truths and images
         if isinstance(rng, Iterator):
@@ -367,7 +381,6 @@ def train_and_evaluate_snpe(
             rng_images, num=jax.device_count() * config.batch_size).reshape(
                 (jax.device_count(), config.batch_size, -1)
             )
-
         image, truth = draw_image_and_truth_pmap(input_config['lensing_config'],
                                                  cosmology_params, grid_x,
                                                  grid_y, rng_images,
@@ -375,8 +388,8 @@ def train_and_evaluate_snpe(
         image = jnp.expand_dims(image, axis=-1)
 
         batch = {'image': image, 'truth': truth}
-        state, metrics = p_train_step(state, batch, mu_prop,
-                                      prec_prop, mu_prior, prec_prior)
+        state, metrics = p_train_step(state, batch, prop_encoding, mu_prior,
+                                      prec_prior)
         for h in hooks:
             h(step)
         if step == step_offset:

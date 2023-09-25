@@ -92,17 +92,51 @@ def gaussian_loss(outputs: jnp.ndarray, truth: jnp.ndarray) -> jnp.ndarray:
     return jnp.mean(loss)
 
 
-def snpe_c_loss(
-        outputs: jnp.ndarray, truth: jnp.ndarray, mu_prop: jnp.ndarray,
+def _calculate_outputs_comb(
+        mu_post: jnp.ndarray, prec_post: jnp.ndarray, mu_prop: jnp.ndarray,
         prec_prop: jnp.ndarray, mu_prior: jnp.ndarray, prec_prior: jnp.ndarray
+) -> jnp.ndarray:
+    """Returns the outputs representing the product distribution.
+
+    Args:
+        mu_post: Mean of the posterior distribution.
+        prec_post: Precision matrix of the posterior distribution.
+        mu_prop: Mean of the proposal distribution.
+        prec_prop: Precision matrix of the proposal distribution.
+        mu_prior: Mean of the prior distribution.
+        prec_prior: Precision matrix of the prior distribution.
+
+    Returns:
+        Mean and log variance of the product distribution posterior * prior
+            / proposal. The mean and log variance are concatenated together
+            to serve as an input to the gaussian_loss function.
+    """
+    prec_comb = prec_post + prec_prop - prec_prior
+    cov_comb = jnp.linalg.inv(prec_comb)
+    eta_comb = jax.vmap(jnp.dot)(prec_post, mu_post)
+    eta_comb += jnp.dot(prec_prop, mu_prop)
+    eta_comb -= jnp.dot(prec_prior, mu_prior)
+    mu_comb = jax.vmap(jnp.dot)(cov_comb, eta_comb)
+
+    # For now our loss function only accepts the log variance and not a full
+    # covariance matrix.
+    log_var_comb = -jnp.log(jax.vmap(jnp.diag)(prec_comb))
+    outputs_comb = jnp.concatenate([mu_comb, log_var_comb], axis=-1)
+
+    return outputs_comb
+
+
+
+def snpe_c_loss(
+        outputs: jnp.ndarray, truth: jnp.ndarray, prop_encoding:jnp.ndarray,
+        mu_prior: jnp.ndarray, prec_prior: jnp.ndarray
 ) -> jnp.ndarray:
     """Gaussian loss weighted by ratio of proposal to prior for SNPE type c.
 
     Args:
         outputs: Values outputted by the model.
         truth: True value of the parameters.
-        mu_prop: Mean of the proposal distribution.
-        prec_prop: Precision matrix for the proposal distribution.
+        prop_encoding: Encoding of the current proposal function.
         mu_prior: Mean of the prior distribution.
         prec_prior: Precision matrix for the prior distribution. For a infinite
             uniform prior this can be a matrix of zeros. While not techinically
@@ -121,19 +155,27 @@ def snpe_c_loss(
     mu_post, log_var_post = jnp.split(outputs, 2, axis=-1)
     prec_post = jax.vmap(jnp.diag)(jnp.exp(-log_var_post))
 
-    prec_comb = prec_post + prec_prop - prec_prior
-    cov_comb = jnp.linalg.inv(prec_comb)
-    eta_comb = jax.vmap(jnp.dot)(prec_post, mu_post)
-    eta_comb += jnp.dot(prec_prop, mu_prop)
-    eta_comb -= jnp.dot(prec_prior, mu_prior)
-    mu_comb = jax.vmap(jnp.dot)(cov_comb, eta_comb)
+    # Extract the distributions from the encoding.
+    mu_prop_vmap = jax.vmap(input_pipeline._get_normal_mean)(prop_encoding).T
+    prec_prop_vmap = jax.vmap(jnp.diag)(
+        1 / jnp.square(jax.vmap(input_pipeline._get_normal_std)(
+            prop_encoding).T
+        )
+    )
+    weights_vmap = jax.vmap(input_pipeline._get_normal_weights)(prop_encoding)
+    weights_vmap = weights_vmap[0]
 
-    # For now our loss function only accepts the log variance and not a full
-    # covariance matrix.
-    log_var_comb = -jnp.log(jax.vmap(jnp.diag)(prec_comb))
-    outputs_comb = jnp.concatenate([mu_comb, log_var_comb], axis=-1)
-
-    return gaussian_loss(outputs_comb, truth)
+    # Calculate the loss term for each proposal component.
+    outputs_vmap = jax.vmap(
+        _calculate_outputs_comb, in_axes=[None, None, 0, 0, None, None])(
+            mu_post, prec_post, mu_prop_vmap, prec_prop_vmap, mu_prior,
+            prec_prior
+    )
+    gaussian_loss_vmap = jax.vmap(gaussian_loss, in_axes=[0, None])(
+        outputs_vmap, truth
+    )
+    # Sum the weighted components in exponential space.
+    return jax.scipy.special.logsumexp(gaussian_loss_vmap, b=weights_vmap)
 
 
 def compute_metrics(

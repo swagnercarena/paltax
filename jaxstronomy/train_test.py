@@ -17,11 +17,13 @@ from absl.testing import parameterized
 import chex
 import jax
 import jax.numpy as jnp
+import ml_collections
 import numpy as np
 from scipy.stats import multivariate_normal
 
-from jaxstronomy import train
+from jaxstronomy import input_pipeline
 from jaxstronomy import models
+from jaxstronomy import train
 
 class TrainTests(chex.TestCase, parameterized.TestCase):
     """Runs tests of training functions."""
@@ -82,8 +84,9 @@ class TrainTests(chex.TestCase, parameterized.TestCase):
         dim = 2
         mu_prior = jnp.zeros(dim)
         prec_prior = jnp.diag(jnp.ones(dim) * 4)
-        mu_prop = mu_prior
-        prec_prop = prec_prior
+        prop_encoding = jax.vmap(input_pipeline.encode_normal)(
+            mu_prior, jnp.ones(dim) / 2
+        )
 
         batch_size = int(1e4)
         rng = jax.random.PRNGKey(0)
@@ -95,7 +98,7 @@ class TrainTests(chex.TestCase, parameterized.TestCase):
         truth = jax.random.normal(rng_test, (batch_size, dim))
 
         self.assertAlmostEqual(train.gaussian_loss(outputs, truth),
-                               snpe_c_loss(outputs, truth, mu_prop, prec_prop,
+                               snpe_c_loss(outputs, truth, prop_encoding,
                                            mu_prior, prec_prior))
 
         # We can easily test more complicated configurations so long as we don't
@@ -107,6 +110,10 @@ class TrainTests(chex.TestCase, parameterized.TestCase):
         mu_prior = jax.random.normal(rng_prior, (dim,))
         mu_prop = jax.random.normal(rng_prop, (dim,))
         prec_prop = jnp.diag(jax.random.uniform(rng_prior, (dim,)) + 0.2)
+        std_prop = jnp.sqrt(1 / jnp.diag(prec_prop))
+        prop_encoding = jax.vmap(input_pipeline.encode_normal)(
+            mu_prop, std_prop
+        )
         prec_prior = prec_prop / 4
 
         def analytical(outputs, truth, mu_prop, prec_prop, mu_prior,
@@ -125,19 +132,40 @@ class TrainTests(chex.TestCase, parameterized.TestCase):
         # test the first 10 draws.
         tr_i = jnp.array([0])
         out_i = jnp.array([0])
-        loss_zero = snpe_c_loss(outputs[out_i], truth[tr_i], mu_prop, prec_prop,
+        loss_zero = snpe_c_loss(outputs[out_i], truth[tr_i], prop_encoding,
                                 mu_prior, prec_prior)
-        loss_zero_unorm = analytical(outputs[out_i], truth[tr_i], mu_prop, prec_prop,
-                                mu_prior, prec_prior)
+        loss_zero_unorm = analytical(
+            outputs[out_i], truth[tr_i], mu_prop, prec_prop, mu_prior,
+            prec_prior
+        )
         for i in range(10):
             tr_i = jnp.array([i])
-            loss_ratio = snpe_c_loss(outputs[out_i], truth[tr_i], mu_prop, prec_prop,
+            loss_ratio = snpe_c_loss(outputs[out_i], truth[tr_i], prop_encoding,
                                      mu_prior, prec_prior)
             loss_ratio -= loss_zero
-            loss_ratio_unorm = analytical(outputs[out_i], truth[tr_i], mu_prop, prec_prop,
-                                mu_prior, prec_prior)
+            loss_ratio_unorm = analytical(outputs[out_i], truth[tr_i], mu_prop,
+                                          prec_prop, mu_prior, prec_prior)
             loss_ratio_unorm -= loss_zero_unorm
             self.assertAlmostEqual(loss_ratio, loss_ratio_unorm, places=4)
+
+        # Now test a mixture of two Gausisan proposals.
+        mu_prior = jnp.zeros(dim)
+        prec_prior = jnp.diag(jnp.ones(dim) * 4)
+        prop_encoding = jax.vmap(input_pipeline.encode_normal)(
+            mu_prior, jnp.ones(dim) / 2
+        )
+        decay_factor = 0.2
+        prop_encoding = jax.vmap(
+            input_pipeline.add_normal_to_encoding, in_axes=[0, 0, 0, None])(
+            prop_encoding, mu_prior, jnp.ones(dim) / 2, decay_factor
+        )
+        prop_encoding = jax.vmap(
+            input_pipeline.add_normal_to_encoding, in_axes=[0, 0, 0, None])(
+            prop_encoding, mu_prior, jnp.ones(dim) / 2, decay_factor
+        )
+        self.assertAlmostEqual(train.gaussian_loss(outputs, truth),
+                               snpe_c_loss(outputs, truth, prop_encoding,
+                                           mu_prior, prec_prior))
 
 
     @chex.all_variants
@@ -160,3 +188,66 @@ class TrainTests(chex.TestCase, parameterized.TestCase):
 
         self.assertAlmostEqual(metrics['rmse'], rmse, places=4)
         self.assertAlmostEqual(metrics['loss'], gaussian_loss, places=4)
+
+
+    def test_get_learning_rate_schedule(self):
+        # Test that the correct schedule is returned given the configuration
+        # file.
+        config = ml_collections.ConfigDict()
+
+        # Start with cosine function.
+        config.schedule_function_type = 'cosine'
+        config.warmup_steps = 10
+        config.num_train_steps = 100
+        base_learning_rate = 0.1
+        lr_schedule = train.get_learning_rate_schedule(
+            config, base_learning_rate
+        )
+        steps = np.array([0, 5, 10, 50, 100])
+        expected = np.array([
+            0.0, base_learning_rate/2.0, base_learning_rate,
+            (base_learning_rate / 2) * (1.0 + np.cos(40 / 90 * np.pi)),
+            (base_learning_rate / 2) * (1.0 + np.cos(90 / 90 * np.pi))])
+        np.testing.assert_array_almost_equal(lr_schedule(steps), expected)
+
+        # Constant function.
+        config.schedule_function_type = 'constant'
+        lr_schedule = train.get_learning_rate_schedule(
+            config, base_learning_rate
+        )
+        expected = np.ones(len(steps)) * base_learning_rate
+        np.testing.assert_array_almost_equal(lr_schedule(steps), expected)
+
+        # Linear function.
+        config.schedule_function_type = 'linear'
+        config.end_value_multiplier = 0.01
+        lr_schedule = train.get_learning_rate_schedule(
+            config, base_learning_rate
+        )
+        expected = [
+            base_learning_rate * ((1 - step / config.num_train_steps) +
+                                  config.end_value_multiplier * step /
+                                  config.num_train_steps) for step in steps
+        ]
+        np.testing.assert_array_almost_equal(lr_schedule(steps), expected)
+
+        # Exponential decay function.
+        config.schedule_function_type = 'exp_decay'
+        config.steps_per_epoch = 10
+        config.decay_rate = 0.9
+        lr_schedule = train.get_learning_rate_schedule(
+            config, base_learning_rate
+        )
+        expected = [
+            base_learning_rate *
+            config.decay_rate ** (step / config.steps_per_epoch)
+            for step in steps
+        ]
+        np.testing.assert_array_almost_equal(lr_schedule(steps), expected)
+
+        # Test ValueError
+        with self.assertRaises(ValueError):
+            config.schedule_function_type = 'other'
+            lr_schedule = train.get_learning_rate_schedule(
+                config, base_learning_rate
+            )
