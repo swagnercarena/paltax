@@ -36,5 +36,6 @@ def get_config():
     config.prec_prior = jnp.diag(jnp.ones(config.mu_prior.shape)) / 25
     config.mu_prop_init = jnp.zeros(11)
     config.prec_prop_init = jnp.diag(jnp.ones(config.mu_prop_init.shape))
+    config.prop_decay_factor = 0.0
 
     return config
