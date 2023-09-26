@@ -159,7 +159,7 @@ def snpe_c_loss(
     mu_prop_vmap = jax.vmap(input_pipeline._get_normal_mean)(prop_encoding).T
     prec_prop_vmap = jax.vmap(jnp.diag)(
         1 / jnp.square(jax.vmap(input_pipeline._get_normal_std)(
-            prop_encoding).T
+            prop_encoding).T + 1e-9
         )
     )
     weights_vmap = jax.vmap(input_pipeline._get_normal_weights)(prop_encoding)
