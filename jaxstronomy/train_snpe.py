@@ -265,6 +265,8 @@ def train_and_evaluate_snpe(
     step_offset = int(state.step)
     state = jax_utils.replicate(state)
 
+    # TODO it doesn't make sense to replicate these. The processes that
+    # call them should be pmapped correctly.
     mu_prior = jax_utils.replicate(config.mu_prior)
     prec_prior = jax_utils.replicate(config.prec_prior)
     mu_prop_init = jax_utils.replicate(config.mu_prop_init)
@@ -306,7 +308,8 @@ def train_and_evaluate_snpe(
 
     print('Initial compilation, this might take some minutes...')
 
-    # Get our initial proposal. May be in the midst of refinement here.
+    # Get our initial proposal. May be in the midst of refinement here. Second
+    # vmap is over the processes.
     prop_encoding = jax.vmap(jax.vmap(input_pipeline.encode_normal))(
         mu_prop_init, std_prop_init
     )
@@ -340,11 +343,13 @@ def train_and_evaluate_snpe(
         current_posterior = train.cross_replica_mean(
             p_get_outputs(state, target_batch)[0])[0,0]
 
-        # Encode the new proposal and return the new encoding.
+        # Encode the new proposal and return the new encoding. 0 index is to
+        # get ride of process dimension for variables that are the same
+        # for all processes.
         prop_encoding = jax_utils.replicate(
             proposal_distribution_update(
-                current_posterior, mean_norm, std_norm, mu_prop_init,
-                prec_prop_init, prop_encoding[0], prop_decay_factor,
+                current_posterior, mean_norm, std_norm, mu_prop_init[0],
+                prec_prop_init[0], prop_encoding[0], prop_decay_factor,
                 input_config
             )
         )
