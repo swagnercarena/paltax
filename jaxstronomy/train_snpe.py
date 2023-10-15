@@ -222,9 +222,6 @@ def train_and_evaluate_snpe(
     writer = metric_writers.create_default_writer(
         logdir=workdir, just_logging=jax.process_index() != 0)
 
-    if config.batch_size % jax.device_count() > 0:
-        raise ValueError('Batch size must be divisible by the number of devices')
-
     # TODO this should be a seperate function.
     steps_per_epoch = config.steps_per_epoch
     num_initial_steps = config.num_initial_train_steps
@@ -248,15 +245,8 @@ def train_and_evaluate_snpe(
     learning_rate_schedule = get_learning_rate_schedule(config,
         base_learning_rate)
 
-    # TODO This and similar function calls should be reproduced by a function.
-    if isinstance(rng, Iterator):
-        # Create the rng key we'll use to always insert a new random
-        # rotation.
-        rng_state, rng_rotation_seed = jax.random.split(next(rng), 2)
-    else:
-        rng, rng_state = jax.random.split(rng)
-    # TODO Until here.
-
+    # Load the initial state for the model.
+    rng, rng_state = jax.random.split(rng)
     state = train.create_train_state(rng_state, config, model, image_size,
         learning_rate_schedule)
     state = train.restore_checkpoint(state, workdir)
@@ -265,18 +255,18 @@ def train_and_evaluate_snpe(
     step_offset = int(state.step)
     state = jax_utils.replicate(state)
 
-    # TODO it doesn't make sense to replicate these. The processes that
-    # call them should be pmapped correctly.
-    mu_prior = jax_utils.replicate(config.mu_prior)
-    prec_prior = jax_utils.replicate(config.prec_prior)
-    mu_prop_init = jax_utils.replicate(config.mu_prop_init)
-    prec_prop_init = jax_utils.replicate(config.prec_prop_init)
-    std_prop_init = jnp.power(jax.vmap(jnp.diag)(prec_prop_init), -0.5)
+    # Get the distributions for sequential inference.
+    mu_prior = config.mu_prior
+    prec_prior = config.prec_prior
+    mu_prop_init = config.mu_prop_init
+    prec_prop_init = config.prec_prop_init
+    std_prop_init = jnp.power(jnp.diag(prec_prop_init), -0.5)
     prop_decay_factor = config.prop_decay_factor
 
+    # Don't pmap over the sequential distributions.
     p_train_step = jax.pmap(functools.partial(train_step,
         learning_rate_schedule=learning_rate_schedule),
-        axis_name='batch')
+        axis_name='batch', in_axes=(0, 0, None, None, None))
     p_get_outputs = jax.pmap(train.get_outputs, axis_name='batch')
 
     draw_image_and_truth_pmap = jax.pmap(jax.jit(jax.vmap(
@@ -292,10 +282,9 @@ def train_and_evaluate_snpe(
         in_axes=(None, None, None, None, 0, None))),
         in_axes=(None, None, None, None, 0, None)
     )
-    if isinstance(rng, Iterator):
-        rng_cosmo = next(rng)
-    else:
-        rng, rng_cosmo = jax.random.split(rng)
+
+    # Set the cosmology prameters and the simulation grid.
+    rng, rng_cosmo = jax.random.split(rng)
     cosmology_params = input_pipeline.initialize_cosmology_params(input_config,
                                                                  rng_cosmo)
     grid_x, grid_y = input_pipeline.generate_grids(input_config)
@@ -310,7 +299,7 @@ def train_and_evaluate_snpe(
 
     # Get our initial proposal. May be in the midst of refinement here. Second
     # vmap is over the processes.
-    prop_encoding = jax.vmap(jax.vmap(input_pipeline.encode_normal))(
+    prop_encoding = jax.vmap(input_pipeline.encode_normal)(
         mu_prop_init, std_prop_init
     )
     std_norm = jnp.array([0.15, 0.1, 0.16, 0.16, 0.1, 0.1, 0.05, 0.05, 0.16,
@@ -340,18 +329,13 @@ def train_and_evaluate_snpe(
         }
 
         # Grab posterior on image of interest (remove pmap and batch indices).
-        current_posterior = train.cross_replica_mean(
-            p_get_outputs(state, target_batch)[0])[0,0]
+        current_posterior = p_get_outputs(state, target_batch)[0][0,0]
 
-        # Encode the new proposal and return the new encoding. 0 index is to
-        # get ride of process dimension for variables that are the same
-        # for all processes.
-        prop_encoding = jax_utils.replicate(
-            proposal_distribution_update(
-                current_posterior, mean_norm, std_norm, mu_prop_init[0],
-                prec_prop_init[0], prop_encoding[0], prop_decay_factor,
-                input_config
-            )
+        # Encode the new proposal and return the new encoding.
+        prop_encoding = proposal_distribution_update(
+            current_posterior, mean_norm, std_norm, mu_prop_init,
+            prec_prop_init, prop_encoding, prop_decay_factor,
+            input_config
         )
         return prop_encoding
 
@@ -370,18 +354,10 @@ def train_and_evaluate_snpe(
             prop_encoding = _get_new_prop_encoding(prop_encoding)
 
         # Generate truths and images
-        if isinstance(rng, Iterator):
-            rng_images = next(rng)
-            rng_rotation, rng_rotation_seed = jax.random.split(
-                rng_rotation_seed)
-            # If we're cycling over a fixed set, we should also include
-            # a random rotation.
-            rotation_angle = jax.random.uniform(rng_rotation) * 2 * jnp.pi
-        else:
-            rng, rng_images = jax.random.split(rng)
-            # If we're always drawing new images, we don't need an aditional
-            # rotation.
-            rotation_angle = 0.0
+        rng, rng_images = jax.random.split(rng)
+        # Rotations will break sequential refinement (since refinement proposals
+        # are not symmetric).
+        rotation_angle = 0.0
 
         rng_images = jax.random.split(
             rng_images, num=jax.device_count() * config.batch_size).reshape(

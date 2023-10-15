@@ -87,8 +87,8 @@ def gaussian_loss(outputs: jnp.ndarray, truth: jnp.ndarray) -> jnp.ndarray:
     """
     mean, log_var = jnp.split(outputs, 2, axis=-1)
     loss = 0.5 * jnp.sum(
-        jnp.multiply(jnp.square(mean-truth), jnp.exp(-log_var)), axis=-1)
-    loss += 0.5*jnp.sum(log_var, axis=-1)
+        jnp.multiply(jnp.square(mean - truth), jnp.exp(-log_var)), axis = -1)
+    loss += 0.5*jnp.sum(log_var, axis = -1)
     return jnp.mean(loss)
 
 
@@ -124,7 +124,6 @@ def _calculate_outputs_comb(
     outputs_comb = jnp.concatenate([mu_comb, log_var_comb], axis=-1)
 
     return outputs_comb
-
 
 
 def snpe_c_loss(
