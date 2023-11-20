@@ -155,7 +155,8 @@ def proposal_distribution_update(
         mu_prop_init: Initial mean for the proposal distribution.
         prec_prop_init: Initial precision matrix for the porposal distribution.
         prop_encoding: Previous proposal encoding to be updated.
-        prop_decay_factor: Decay factor to apply to previous proposal.
+        prop_decay_factor: Decay factor to apply to previous proposal. A
+            negative value indicates to use proposal averaging.
         input_config: Configuration used to generate simulations specific
             in seperate configuration file.
 
@@ -180,12 +181,20 @@ def proposal_distribution_update(
     std_prop = jnp.exp(log_var_prop/2)
 
     # Modify the proposal encoding
-    add_normal_to_encoding_vmap = jax.vmap(
-        input_pipeline.add_normal_to_encoding, in_axes=[0, 0, 0, None]
-    )
-    prop_encoding = add_normal_to_encoding_vmap(
-        prop_encoding, mu_prop, std_prop, prop_decay_factor
-    )
+    if prop_decay_factor >= 0.0:
+        add_normal_to_encoding_vmap = jax.vmap(
+            input_pipeline.add_normal_to_encoding, in_axes=[0, 0, 0, None]
+        )
+        prop_encoding = add_normal_to_encoding_vmap(
+            prop_encoding, mu_prop, std_prop, prop_decay_factor
+        )
+    else:
+        average_normal_to_encoding_vmap = jax.vmap(
+            input_pipeline.average_normal_to_encoding, in_axes=[0, 0, 0]
+        )
+        prop_encoding = average_normal_to_encoding_vmap(
+            prop_encoding, mu_prop, std_prop
+        )
 
     # Modify the input config.
     # TODO this is hard coded and needs to be fixed.

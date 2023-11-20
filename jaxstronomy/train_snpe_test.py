@@ -105,6 +105,14 @@ class TrainSNPETests(chex.TestCase, parameterized.TestCase):
                     * std_norm[i]) * mask,
                 input_pipeline._get_normal_std(object_distribution))
 
+            # Also test the weights
+            weights = input_pipeline._get_normal_weights(object_prop_encoding)
+            np.testing.assert_array_almost_equal(
+                weights[0],1 - prop_decay_factor
+            )
+            np.testing.assert_array_almost_equal(weights[1], prop_decay_factor)
+            self.assertAlmostEqual(jnp.sum(weights[2:]), 0.0)
+
         # Check that the values match the posterior with the bounds applied.
         mean_vmap = jax.vmap(input_pipeline._get_normal_mean)(new_prop_encoding)
         np.testing.assert_array_almost_equal(
@@ -116,3 +124,33 @@ class TrainSNPETests(chex.TestCase, parameterized.TestCase):
             std_prop_init, std_vmap[:, 1])
         np.testing.assert_array_almost_equal(
             jnp.array([1.0, 1.0, 0.5, 1.0, 1.0]), std_vmap[:, 0])
+
+    def test_proposal_distribution_update_avg(self):
+        # Test that the current posterior is correctly overwritten when
+        # averaging is requested.
+        input_config = train._get_config(TEST_INPUT_CONFIG_PATH)
+        current_posterior = jnp.array(
+            [0.1, 0.2, 0.0, -0.2, 1.0,
+             jnp.log(4), 0.0, jnp.log(0.25), 0.0, 0.0]
+        )
+        mean_norm = jnp.array([1.1, 2.0, 0.0, 0.0, 2e-3])
+        std_norm = jnp.array([0.15, 0.1, 0.16, 0.16, 1.1e-3])
+        mu_prop_init = jnp.zeros(5)
+        prec_prop_init = jnp.diag(jnp.ones(5))
+        std_prop_init = jnp.ones(5)
+        prop_encoding = jax.vmap(input_pipeline.encode_normal)(
+            mu_prop_init, std_prop_init
+        )
+        prop_decay_factor = -1.0
+
+        new_prop_encoding = train_snpe.proposal_distribution_update(
+            current_posterior, mean_norm, std_norm, mu_prop_init,
+            prec_prop_init, prop_encoding, prop_decay_factor,
+            input_config)
+        # Only need to check that the correct weight updating scheme
+        # was used.
+        for i in range(len(input_config['truth_parameters'][0])):
+            object_prop_encoding = new_prop_encoding[i]
+            weights = input_pipeline._get_normal_weights(object_prop_encoding)
+            np.testing.assert_array_almost_equal(weights[0], weights[1])
+            self.assertAlmostEqual(jnp.sum(weights[2:]), 0.0)

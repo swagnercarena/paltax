@@ -237,6 +237,39 @@ def add_normal_to_encoding(encoding: jnp.ndarray, mean: float, std: float,
     return _encode_normal(encoding, mean, std, 1 - decay_factor)
 
 
+def average_normal_to_encoding(
+        encoding: jnp.ndarray, mean: float, std: float
+) -> jnp.ndarray:
+    """Average a new normal distribution into the mixture.
+
+    Args:
+        encoding: Current encoded distribution.
+        mean: Mean of new normal distribution.
+        std: Standard deviation of new normal distribution.
+
+    Returns:
+        Encoding for new mixture of N Gaussian where each Gaussian has weight
+        1/N.
+    """
+    cur_weights = _get_normal_weights(encoding)[:-1]
+    cur_means = _get_normal_mean(encoding)[:-1]
+    cur_std = _get_normal_std(encoding)[:-1]
+    weight_indices = _get_normal_weights_indices()[1:]
+    mean_indices = _get_normal_mean_indices()[1:]
+    std_indices = _get_normal_std_indices()[1:]
+
+    # Add Gaussian to the mixture following a queue mentality.
+    # Normalization needs to factor in a previous Gaussian having been dropped.
+    normalization = 1/(jnp.sum(cur_weights > 0.0) + 1)
+    encoding = encoding.at[weight_indices].set(
+        (cur_weights > 0.0) * normalization
+    )
+    encoding = encoding.at[mean_indices].set(cur_means)
+    encoding = encoding.at[std_indices].set(cur_std)
+
+    return _encode_normal(encoding, mean, std, normalization)
+
+
 def decode_maximum(encoding: jnp.ndarray) -> float:
     """Decode the maximum value of the distribution defined by encoding.
 

@@ -311,6 +311,69 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         np.testing.assert_array_almost_equal(ratio,
                                              np.ones(len(ratio)) * ratio[0])
 
+    @chex.all_variants(without_device=False)
+    def test_average_normal_to_encoding(self):
+        # Test that the normal appends were expected and that the some of the
+        # mixtures is still 1.
+        average_normal_to_encoding = self.variant(
+            input_pipeline.average_normal_to_encoding
+        )
+
+        encoding = input_pipeline._generate_blank_encoding()
+        rng_m, rng_s = jax.random.split(jax.random.PRNGKey(0), 2)
+
+        # Set up the old encoding manually.
+        # Weights must be initialized to sum to zero.
+        old_weights = (
+            jnp.arange(input_pipeline.NUM_NORMAL_DISTRIBUTIONS) < 10
+        ).astype(float)
+        old_weights /= jnp.sum(old_weights)
+        old_mean = jax.random.normal(
+            rng_m, (input_pipeline.NUM_NORMAL_DISTRIBUTIONS,)
+        )
+        old_std = jax.random.uniform(
+            rng_s, (input_pipeline.NUM_NORMAL_DISTRIBUTIONS,)
+        )
+        encoding = (
+            encoding.at[input_pipeline._get_normal_weights_indices()].set(
+                old_weights
+                )
+            )
+        encoding = (
+            encoding.at[input_pipeline._get_normal_mean_indices()].set(
+                old_mean
+                )
+            )
+        encoding = (
+            encoding.at[input_pipeline._get_normal_std_indices()].set(
+                old_std
+                )
+            )
+
+        mean = 1.2
+        std = 0.4
+        encoding = average_normal_to_encoding(encoding, mean, std)
+
+        # Test each component.
+        new_mean = input_pipeline._get_normal_mean(encoding)
+        self.assertAlmostEqual(new_mean[0], mean)
+        np.testing.assert_array_almost_equal(new_mean[1:], old_mean[:-1])
+
+        new_std = input_pipeline._get_normal_std(encoding)
+        self.assertAlmostEqual(new_std[0], std)
+        np.testing.assert_array_almost_equal(new_std[1:], old_std[:-1])
+
+        new_weights = input_pipeline._get_normal_weights(encoding)
+        self.assertAlmostEqual(jnp.sum(new_weights), 1.0, places=6)
+        # Check that all the weights are now 1/11 or 0.
+        np.testing.assert_array_almost_equal(
+            new_weights[:11], jnp.ones(11)/11.0
+        )
+        np.testing.assert_array_almost_equal(
+            new_weights[11:],
+            jnp.zeros(input_pipeline.NUM_NORMAL_DISTRIBUTIONS-11)
+        )
+
     @chex.all_variants
     def test_decode_maximum(self):
         # Test that for the constant, uniform, and gaussian case it gives
