@@ -16,9 +16,9 @@ def get_config():
 
     # If num_train_steps==-1 then the number of training steps is calculated from
     # num_epochs using the entire dataset. Similarly for steps_per_eval.
-    config.steps_per_epoch = 15600
+    config.steps_per_epoch = 3900
     config.num_train_steps = 500 * config.steps_per_epoch
-    config.keep_every_n_steps = 500
+    config.keep_every_n_steps = config.steps_per_epoch
 
     # Parameters of the learning rate schedule
     config.schedule_function_type = 'cosine'
