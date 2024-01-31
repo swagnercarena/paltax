@@ -49,6 +49,26 @@ class TrainTests(chex.TestCase, parameterized.TestCase):
         self.assertTupleEqual(output.shape, (3, 2))
         np.testing.assert_array_less(jnp.zeros(2), jnp.std(output, axis=0))
 
+    def test_initialized_resnetd(self):
+        # Test the initialization of the ResNetD architecture works.
+        rng = jax.random.PRNGKey(0)
+        model = models.ResNetD50(num_outputs=2, dtype=jnp.float32)
+        image_size = 128
+        params, batch_stats = train.initialized(rng, image_size, model)
+
+        self.assertTupleEqual(params['conv_init_1']['kernel'].shape,
+            (3, 3, 1, 32))
+        self.assertTupleEqual(params['bn_init_1']['scale'].shape,
+            (32,))
+        self.assertTupleEqual(batch_stats['bn_init_1']['mean'].shape,
+            (32,))
+
+        output, _ = model.apply({'params':params, 'batch_stats':batch_stats},
+            jax.random.normal(rng, shape=(3, image_size, image_size, 1)),
+            mutable=['batch_stats'])
+        self.assertTupleEqual(output.shape, (3, 2))
+        np.testing.assert_array_less(jnp.zeros(2), jnp.std(output, axis=0))
+
     @chex.all_variants
     def test_gaussian_loss(self):
         # Test that the loss function is equivalent to applying a Gaussian.
