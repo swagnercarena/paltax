@@ -27,6 +27,54 @@ from jaxstronomy import image_simulation
 from jaxstronomy import utils
 
 
+NUM_NORMAL_DISTRIBUTIONS = 100
+UNIFORM_ENCODING_START = 0
+CONSTANT_ENCODING_START = 3
+NORMAL_ENCODING_START = 4
+
+
+def _generate_blank_encoding() -> jnp.ndarray:
+    """Allocate a blank encoding to be used by the encode functions.
+
+    Returns:
+        Encoding with all values set to zero.
+
+    Notes:
+        The number of normal distributions is a global variable defined in the
+        file.
+    """
+    # Number of parameters for uniform
+    total_size = 3
+    # Number of parameters for constant
+    total_size += 1
+    # Number of paramters for mixture of normal distributions
+    total_size += 3 * NUM_NORMAL_DISTRIBUTIONS
+
+    return jnp.zeros(total_size)
+
+
+def _encode_normal(encoding: jnp.ndarray, mean: float,
+                   std: float, weight: float) -> jnp.ndarray:
+    """Update encoding to include a normal distribution.
+
+    Args:
+        encoding: Current encoding without a mean (should be either zeros or
+            this should be called within add_normal_to_encoding).
+        mean: Mean of the normal distribution.
+        std: Standard deviation of the normal distribution.
+        weight: Weight of the normal. Should be 1.0 if it is the only normal
+            in the mixture.
+
+    Returns:
+        Updated encoding that represents a normal with given mean and
+        standard deviation.
+    """
+    encoding = encoding.at[NORMAL_ENCODING_START].set(weight)
+    encoding = encoding.at[NORMAL_ENCODING_START+1].set(mean)
+    encoding = encoding.at[NORMAL_ENCODING_START+2].set(std)
+    return encoding
+
+
 def encode_normal(mean: float, std: float) -> jnp.ndarray:
     """Generate the jax array that encodes a normal distribution.
 
@@ -36,12 +84,14 @@ def encode_normal(mean: float, std: float) -> jnp.ndarray:
 
     Returns:
         Encoding that represents a normal with given mean and standard
-            deviation.
+        deviation.
     """
-
-    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
-    # normal_bool, normal_mean, normal_std, constant].
-    return jnp.array([0.0, 0.0, 0.0, 1.0, mean, std, 0.0])
+    # Encoding is currently [uniform: 3, constant: 1, normals:
+    # 3 x NUM_NORMAL_DISTRIBUTIONS]. Each normal is encoded by [weight, mean,
+    # std], so here we set 1 normal to have weight 1.0 and the given mean
+    # and standard deviation.
+    encoding = _generate_blank_encoding()
+    return _encode_normal(encoding, mean, std, 1.0)
 
 
 def encode_uniform(minimum: float, maximum: float) -> jnp.ndarray:
@@ -54,10 +104,14 @@ def encode_uniform(minimum: float, maximum: float) -> jnp.ndarray:
     Returns:
         Encoding that represents a uniform with given min and max.
     """
-
-    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
-    # normal_bool, normal_mean, normal_std, constant].
-    return jnp.array([1.0, minimum, maximum, 0.0, 0.0, 0.0, 0.0])
+    # Encoding is currently [uniform: 3, constant: 1, normals:
+    # 3 x NUM_NORMAL_DISTRIBUTIONS]. The uniform parameters are [flag, minimum,
+    # maximum].
+    encoding = _generate_blank_encoding()
+    encoding = encoding.at[UNIFORM_ENCODING_START].set(1.0)
+    encoding = encoding.at[UNIFORM_ENCODING_START + 1].set(minimum)
+    encoding = encoding.at[UNIFORM_ENCODING_START + 2].set(maximum)
+    return encoding
 
 
 def encode_constant(constant: float) -> jnp.ndarray:
@@ -69,29 +123,175 @@ def encode_constant(constant: float) -> jnp.ndarray:
     Returns:
         Encoding that represents a constant value.
     """
-    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
-    # normal_bool, normal_mean, normal_std, constant].
-    return jnp.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, constant])
+    # Encoding is currently [uniform: 3, constant: 1, normals:
+    # 3 x NUM_NORMAL_DISTRIBUTIONS].
+    encoding = _generate_blank_encoding()
+    encoding = encoding.at[CONSTANT_ENCODING_START].set(constant)
+    return encoding
+
+
+def _get_normal_mean_indices() -> jnp.ndarray:
+    """Get the indices for the mean values of the normal distributions.
+
+    Returns:
+        Indices for mean values of the normal distribution.
+    """
+    mean_indices = jnp.arange(NUM_NORMAL_DISTRIBUTIONS) * 3
+    mean_indices += NORMAL_ENCODING_START + 1
+    return mean_indices
+
+
+def _get_normal_mean(encoding: jnp.ndarray) -> jnp.ndarray:
+    """Return the array of mean values for the normal distributions
+
+    Args:
+        encoding: Encoded distribution.
+
+    Returns:
+        Mean for each normal in the encoded distribution.
+    """
+    # Three parameters per normal encoding and mean is the second parameter.
+    mean_indices = _get_normal_mean_indices()
+    return encoding[mean_indices]
+
+
+def _get_normal_std_indices() -> jnp.ndarray:
+    """Get the indices for the std values of the normal distributions.
+
+    Returns:
+        Indices for std values of the normal distribution.
+    """
+    std_indices = jnp.arange(NUM_NORMAL_DISTRIBUTIONS) * 3
+    std_indices += NORMAL_ENCODING_START + 2
+    return std_indices
+
+
+def _get_normal_std(encoding: jnp.ndarray) -> jnp.ndarray:
+    """Return the array of std values for the normal distributions
+
+    Args:
+        encoding: Encoded distribution.
+
+    Returns:
+        Standard deviation for each normal in the encoded distribution.
+    """
+    # Three parameters per normal encoding and mean is the third parameter.
+    std_indices = _get_normal_std_indices()
+    return encoding[std_indices]
+
+
+def _get_normal_weights_indices() -> jnp.ndarray:
+    """Get the indices for the weight values of the normal distributions.
+
+    Returns:
+        Indices for weight values of the normal distribution.
+    """
+    weight_indices = jnp.arange(NUM_NORMAL_DISTRIBUTIONS) * 3
+    weight_indices += NORMAL_ENCODING_START
+    return weight_indices
+
+
+def _get_normal_weights(encoding: jnp.ndarray) -> jnp.ndarray:
+    """Return the array of weight values for the normal distributions.
+
+    Args:
+        encoding: Encoded distribution.
+
+    Returns:
+        Weight of each normal in the encoded distribution.
+    """
+    # Three parameters per normal encoding and mean is the first parameter.
+    weight_indices = _get_normal_weights_indices()
+    return encoding[weight_indices]
+
+
+def add_normal_to_encoding(encoding: jnp.ndarray, mean: float, std: float,
+                           decay_factor: float) -> jnp.ndarray:
+    """Add a new normal distribution to the mixture.
+
+    Args:
+        encoding: Current encoded distribution.
+        mean: Mean of new normal distribution.
+        std: Standard deviation of new normal distribution.
+        decay_factor: Decay factor to apply on other distribution weights when
+            adding the new distribution.
+
+    Returns:
+        Encoding for new mixture of Gaussian with appropriate decay factor
+        applied.
+    """
+    cur_weights = _get_normal_weights(encoding)[:-1]
+    cur_means = _get_normal_mean(encoding)[:-1]
+    cur_std = _get_normal_std(encoding)[:-1]
+    weight_indices = _get_normal_weights_indices()[1:]
+    mean_indices = _get_normal_mean_indices()[1:]
+    std_indices = _get_normal_std_indices()[1:]
+
+    # Add Gaussian to the mixture following a queue mentality.
+    # Normalization needs to factor in a previous Gaussian having been dropped.
+    normalization = decay_factor / jnp.sum(cur_weights)
+    encoding = encoding.at[weight_indices].set(cur_weights * normalization)
+    encoding = encoding.at[mean_indices].set(cur_means)
+    encoding = encoding.at[std_indices].set(cur_std)
+
+    return _encode_normal(encoding, mean, std, 1 - decay_factor)
+
+
+def average_normal_to_encoding(
+        encoding: jnp.ndarray, mean: float, std: float
+) -> jnp.ndarray:
+    """Average a new normal distribution into the mixture.
+
+    Args:
+        encoding: Current encoded distribution.
+        mean: Mean of new normal distribution.
+        std: Standard deviation of new normal distribution.
+
+    Returns:
+        Encoding for new mixture of N Gaussian where each Gaussian has weight
+        1/N.
+    """
+    cur_weights = _get_normal_weights(encoding)[:-1]
+    cur_means = _get_normal_mean(encoding)[:-1]
+    cur_std = _get_normal_std(encoding)[:-1]
+    weight_indices = _get_normal_weights_indices()[1:]
+    mean_indices = _get_normal_mean_indices()[1:]
+    std_indices = _get_normal_std_indices()[1:]
+
+    # Add Gaussian to the mixture following a queue mentality.
+    # Normalization needs to factor in a previous Gaussian having been dropped.
+    normalization = 1/(jnp.sum(cur_weights > 0.0) + 1)
+    encoding = encoding.at[weight_indices].set(
+        (cur_weights > 0.0) * normalization
+    )
+    encoding = encoding.at[mean_indices].set(cur_means)
+    encoding = encoding.at[std_indices].set(cur_std)
+
+    return _encode_normal(encoding, mean, std, normalization)
 
 
 def decode_maximum(encoding: jnp.ndarray) -> float:
     """Decode the maximum value of the distribution defined by encoding.
 
     Args:
-        encoding: Encoded distribution
+        encoding: Encoded distribution.
 
     Returns:
         Maximum value of encoded distribution. May be an approximation for
         distributions without a maximum.
     """
-    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
-    # normal_bool, normal_mean, normal_std, constant].
+    # Encoding is currently [uniform: 3, constant: 1, normals:
+    # 3 x NUM_NORMAL_DISTRIBUTIONS].
     # If not uniform will give 0.
-    maximum = encoding[0] * encoding[2]
-    # If normal will give mean + five sigma.
-    maximum += encoding[3] * (encoding[4] + encoding[5]*5)
+    maximum = (
+        encoding[UNIFORM_ENCODING_START] * encoding[UNIFORM_ENCODING_START + 2]
+    )
     # If constant return constant
-    maximum += encoding[6]
+    maximum += encoding[CONSTANT_ENCODING_START]
+    # If normal return largest mean + five sigma.
+    normal_maximum = _get_normal_mean(encoding) + 5 * _get_normal_std(encoding)
+    maximum += jnp.max(normal_maximum)
+
     return maximum
 
 
@@ -99,67 +299,179 @@ def decode_minimum(encoding: jnp.ndarray) -> float:
     """Decode the minimum value of the dsitribution defined by the encoding.
 
     Args:
-        encoding: Encoded distribution
+        encoding: Encoded distribution.
 
     Returns:
         Minimum value of encoded distribution. May be an approximation for
         distributions without a minimum.
     """
-    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
-    # normal_bool, normal_mean, normal_std, constant].
+    # Encoding is currently [uniform: 3, constant: 1, normals:
+    # 3 x NUM_NORMAL_DISTRIBUTIONS].
     # If not uniform will give 0.
-    minimum = encoding[0] * encoding[1]
-    # If normal will give mean - five sigma.
+    minimum = (
+        encoding[UNIFORM_ENCODING_START] * encoding[UNIFORM_ENCODING_START + 1]
+    )
+    # If constant return constant
+    minimum += encoding[CONSTANT_ENCODING_START]
+    # If normal return smallest mean - five sigma.
     minimum += encoding[3] * (encoding[4] - encoding[5]*5)
     # If constant return constant
-    minimum += encoding[6]
+    normal_minimum = _get_normal_mean(encoding) - 5 * _get_normal_std(encoding)
+    minimum += jnp.min(normal_minimum)
+
     return minimum
+
+
+def _draw_from_normals(encoding: jnp.ndarray, rng: Sequence[int]) -> float:
+    """Draw from encoded normal distributions.
+
+    Args:
+        encoding: Encoded distribution.
+        rng: jax PRNG key.
+
+    Returns:
+        A draw from the encoded normal distributions.
+    """
+    rng_index, rng_normal = jax.random.split(rng)
+    weights = _get_normal_weights(encoding)
+    means = _get_normal_mean(encoding)
+    stds = _get_normal_std(encoding)
+
+    # First select which normal will be drawn from.
+    weight_cumulative = jnp.cumsum(weights)
+    index_draw = jax.random.uniform(rng_index)
+    normal_index = jnp.searchsorted(weight_cumulative, index_draw)
+
+    # Now draw from that normal. Remember order is [weight, mean, std].
+    draw = jax.random.normal(rng_normal) * stds[normal_index]
+    draw += means[normal_index]
+    return draw
 
 
 def draw_from_encoding(encoding: jnp.ndarray, rng: Sequence[int]) -> float:
     """Draw from encoded distribution.
 
     Args:
-        encoding: Encoding defining the distribution.
+        encoding: Encoded distribution.
         rng: jax PRNG key.
 
     Returns:
         A draw from the encoded distribution.
     """
-    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
-    # normal_bool, normal_mean, normal_std, constant].
+    rng_uniform, rng_normal = jax.random.split(rng)
+
+    # Encoding is currently [uniform: 3, constant: 1, normals:
+    # 3 x NUM_NORMAL_DISTRIBUTIONS].
     # Start with the uniform component.
-    draw = encoding[0] * (
-        jax.random.uniform(rng) * (encoding[2] - encoding[1]) + encoding[1])
+    draw = encoding[UNIFORM_ENCODING_START] * (
+        jax.random.uniform(rng_uniform) * (encoding[UNIFORM_ENCODING_START + 2] -
+        encoding[UNIFORM_ENCODING_START + 1]) +
+        encoding[UNIFORM_ENCODING_START + 1]
+    )
+
     # Now the normal component.
-    draw += encoding[3] * (jax.random.normal(rng) * encoding[5] + encoding[4])
+    normal_weights = _get_normal_weights(encoding)
+    draw += jax.lax.select(
+        jnp.sum(normal_weights) > 0.0,
+        _draw_from_normals(encoding, rng_normal),
+        0.0)
+
     # And finally the constant
-    draw += encoding[6]
+    draw += encoding[CONSTANT_ENCODING_START]
+
     return draw
+
+
+def _calculate_mixture_mean_std(encoding: jnp.ndarray) -> Tuple[float, float]:
+    """Calculate the mean and standard deviation for the mixture of Gaussians.
+
+    Args:
+        encoding: Encoded distribution.
+
+    Returns:
+        Mean and standard deviation for the encoded mixture of Gaussians.
+    """
+    normal_weights = _get_normal_weights(encoding)
+    normal_means = _get_normal_mean(encoding)
+    normal_stds = _get_normal_std(encoding)
+
+    # Calculate the mean and standard deviation of the mixture
+    mixture_mean = jnp.sum(normal_weights * normal_means)
+    mixture_std = jnp.sum(normal_weights *
+                          (normal_means ** 2 + normal_stds ** 2))
+    mixture_std -= mixture_mean ** 2
+    mixture_std = jnp.sqrt(mixture_std)
+
+    return mixture_mean, mixture_std
 
 
 def normalize_param(parameter: float, encoding: jnp.ndarray) -> float:
     """Return parameter normalized by encoded distribution.
 
     Args:
-        parameter: Parameter value to normalize
-        encoding: Encoding defining the distribution.
+        parameter: Parameter value to normalize.
+        encoding: Encoded distribution.
 
     Returns:
         Normalized parameter.
     """
-    # Encoding is currently [uniform_bool, unfirom_min, uniform_max,
-    # normal_bool, normal_mean, normal_std, constant].
+    # Encoding is currently [uniform: 3, constant: 1, normals:
+    # 3 x NUM_NORMAL_DISTRIBUTIONS].
     # Normalize uniform distribution to be between 0 and 1.
     normalized_param = jax.lax.select(
-        encoding[0] > 0.0,
-        (parameter - encoding[1]) / (encoding[2] - encoding[1]), 0.0)
-    # Normalize normal distribution to mean 0 and standard deviation 1.0
+        encoding[UNIFORM_ENCODING_START] > 0.0,
+        (parameter - encoding[UNIFORM_ENCODING_START + 1]) /
+            (encoding[UNIFORM_ENCODING_START + 2] -
+            encoding[UNIFORM_ENCODING_START + 1]),
+        0.0
+    )
+
+    # Normalize mixture of normal distributions to mean 0 and standard
+    # deviation 1.
+    normal_weights = _get_normal_weights(encoding)
+    mixture_mean, mixture_std = _calculate_mixture_mean_std(encoding)
+
     normalized_param += jax.lax.select(
-        encoding[3] > 0.0,(parameter - encoding[4]) / encoding[5], 0.0)
+        jnp.sum(normal_weights) > 0.0,
+        (parameter - mixture_mean) / mixture_std, 0.0)
+
     # Constant will be normalzied to 0.0 by default.
 
     return normalized_param
+
+def unnormalize_param(normalized_parameter: float,
+                      encoding: jnp.ndarray) -> float:
+    """Return parameter with the normalization removed.
+
+    Args:
+        normalized_parameter: Parameter value that has been normalized.
+        encoding: Encoded distribution.
+
+    Returns:
+        Parameter without normalization.
+    """
+    # This reverse the procedures specified in normalize_param.
+    # Uniform distribution was normalized to be between 0 and 1.
+    param = jax.lax.select(
+        encoding[UNIFORM_ENCODING_START] > 0.0,
+        normalized_parameter *
+            (encoding[UNIFORM_ENCODING_START + 2] -
+             encoding[UNIFORM_ENCODING_START + 1]) +
+             encoding[UNIFORM_ENCODING_START + 1],
+        0.0
+    )
+
+    # Normal distribution was given mean 0 and standard deviation 1.0.
+    normal_weights = _get_normal_weights(encoding)
+    mixture_mean, mixture_std = _calculate_mixture_mean_std(encoding)
+    param += jax.lax.select(
+        jnp.sum(normal_weights) > 0.0,
+        normalized_parameter * mixture_std + mixture_mean, 0.0)
+
+    # Constant value must be restored
+    param += encoding[CONSTANT_ENCODING_START]
+
+    return param
 
 def generate_grids(
         config: Mapping[str, Mapping[str, jnp.ndarray]]
@@ -180,7 +492,7 @@ def generate_grids(
     return grid_x, grid_y
 
 
-def intialize_cosmology_params(
+def initialize_cosmology_params(
         config: Mapping[str, Mapping[str, jnp.ndarray]], rng: Sequence[int]
 ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
     """Initialize the cosmology parameters as needed by the config.
@@ -311,10 +623,52 @@ def extract_multiple_models_angular(
     return draws
 
 
+def rotate_params(all_params: Mapping[str, Mapping[str, jnp.ndarray]],
+                  truth_parameters: Tuple[Sequence[str], Sequence[str]],
+                  rotation_angle: float) -> jnp.ndarray:
+    """Rotate the parameter as required by the physical type of the parameter.
+
+    Args:
+        all_params: All of the parameters grouped by object.
+        truth_parameters: List of the lensing objects and corresponding
+            parameters to extract.
+        rotation_angle: Counterclockwise angle of rotation.
+
+    Returns:
+        All of the parameters grouped by object with the rotation applied.
+
+    Notes:
+        The relationship between parameter name and rotation is hard coded here.
+        Also only supports there being one of each type of parameter. Pretty
+        fragile code, but the rotations are only relevant for comparison
+        exmperiments.
+    """
+    extract_objects, extract_keys, _ = truth_parameters
+
+    if 'center_x' in extract_keys or 'center_y' in extract_keys:
+        index_x = extract_keys.index('center_x')
+        index_y = extract_keys.index('center_y')
+        center_x = all_params[extract_objects[index_x]]['center_x']
+        center_y = all_params[extract_objects[index_y]]['center_y']
+        center_x, center_y = utils.rotate_coordinates(center_x, center_y,
+                                                      rotation_angle)
+        all_params[extract_objects[index_x]]['center_x'] = center_x
+        all_params[extract_objects[index_y]]['center_y'] = center_y
+
+    if 'angle' in extract_keys:
+        index = extract_keys.index('angle')
+        angle = all_params[extract_objects[index]]['angle']
+        all_params[extract_objects[index]]['angle'] = angle + rotation_angle
+
+    return all_params
+
+
 def extract_truth_values(
         all_params: Mapping[str, Mapping[str, jnp.ndarray]],
         lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
-        truth_parameters: Tuple[Sequence[str], Sequence[str]]) -> jnp.ndarray:
+        truth_parameters: Tuple[Sequence[str], Sequence[str]],
+        rotation_angle: Optional[float] = 0.0,
+        normalize_truths: Optional[bool] = True) -> jnp.ndarray:
     """Extract the truth parameters and normalize them according to the config.
 
     Args:
@@ -322,28 +676,44 @@ def extract_truth_values(
         lensing_config: Distribution encodings for each of the parameters.
         truth_parameters: List of the lensing objects and corresponding
             parameters to extract.
+        rotation_angle: Counterclockwise angle by which to rotate truths.
+        normalize_truths: If true, normalize parameters according to the
+            encoded distribtion.
 
     Returns:
         Truth values for each of the requested parameters.
     """
-    extract_objects, extract_keys = truth_parameters
+    extract_objects, extract_keys, extract_indices = truth_parameters
+
+    # Begin by adding the rotation applied to the image.
+    rotate_params(all_params, truth_parameters, rotation_angle)
+
+    # Now normalize the parameters if requested.
+    if normalize_truths:
+        return jnp.array(jax.tree_util.tree_map(
+            lambda x, y, z: normalize_param(all_params[x][y][z],
+                                            lensing_config[x][y]),
+            extract_objects, extract_keys, extract_indices))
+
     return jnp.array(jax.tree_util.tree_map(
-        lambda x, y: normalize_param(all_params[x][y],
-                                     lensing_config[x][y]),
-        extract_objects, extract_keys))
+        lambda x, y, z: all_params[x][y][z], extract_objects, extract_keys,
+        extract_indices))
 
 
 def draw_image_and_truth(
         lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
         cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
         grid_x: jnp.ndarray, grid_y: jnp.ndarray, rng: Sequence[int],
+        rotation_angle: float,
         all_models: Mapping[str, Sequence[Any]],
-        principal_md_index: int, principal_source_index: int,
+        principal_model_indices: Mapping[str, int],
         kwargs_simulation: Mapping[str, int],
         kwargs_detector:  Mapping[str, Union[int, float]],
         kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
         truth_parameters: Tuple[Sequence[str], Sequence[str]],
-        normalize_image: Optional[bool] = True
+        normalize_image: Optional[bool] = True,
+        normalize_truths: Optional[bool] = True,
+        normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Draw image and truth values for a realization of the lensing config.
 
@@ -355,11 +725,11 @@ def draw_image_and_truth(
         grid_x: x-grid in units of arcseconds.
         grid_y: y-grid in units of arcseconds.
         rng: jax PRNG key.
+        rotation_angle: Counterclockwise angle by which to rotate images and
+            truths.
         all_models: Tuple of model classes to consider for each component.
-        principal_md_index: Index of the main deflector model to consider when
-            determining the position of the source and substructure.
-        principal_source_index: Index of the source model to consider when
-            determining the position of the substructure.
+        principal_model_indices: Indices for the principal model of each
+            lensing component.
         kwargs_simulation: Keyword arguments for the draws of the substructure.
         kwargs_detector: Keyword arguments defining the detector configuration.
         kwargs_psf: Keyword arguments defining the point spread function. The
@@ -369,6 +739,10 @@ def draw_image_and_truth(
             parameters to extract.
         normalize_image: If True, the image will be normalized to have
             standard deviation 1.
+        normalize_truths: If true, normalize parameters according to the
+            encoded distribtion.
+        normalize_config: The lensing config to use for normalization. If None
+            will default to the lensing config.
 
     Returns:
         Image and corresponding truth values.
@@ -376,6 +750,11 @@ def draw_image_and_truth(
     Notes:
         To jit compile, every parameter after rng must be fixed.
     """
+    # If no normalization config is specified, assume the input lensing
+    # configuration.
+    if normalize_config is None:
+        normalize_config = lensing_config
+
     # Pull out the padding and bins we will use while vmapping our simulation.
     num_z_bins = kwargs_simulation['num_z_bins']
     los_pad_length = kwargs_simulation['los_pad_length']
@@ -397,35 +776,43 @@ def draw_image_and_truth(
         lensing_config['lens_light_params'], rng_ll, cosmology_params,
         all_models['all_lens_light_models']
     )
-    los_params = draw_sample(lensing_config['los_params'], rng_los)
-    subhalo_params = draw_sample(lensing_config['subhalo_params'], rng_sub)
-
-    # Extract the principle model for redshifts and substructure draws.
-    main_deflector_params_sub = jax.tree_util.tree_map(
-        lambda x: x[principal_md_index], main_deflector_params
+    los_params = extract_multiple_models(
+        lensing_config['los_params'], rng_los,
+        len(all_models['all_los_models'])
     )
-    source_params_sub = jax.tree_util.tree_map(
-        lambda x: x[principal_source_index], source_params
-    )
-    lens_light_params_sub = jax.tree_util.tree_map(
-        lambda x: x[principal_source_index], lens_light_params
+    subhalo_params = extract_multiple_models(
+        lensing_config['subhalo_params'], rng_sub,
+        len(all_models['all_subhalo_models'])
     )
 
     # Repackage the parameters.
     all_params = {
-        'source_params': source_params_sub,
-        'lens_light_params': lens_light_params_sub,
+        'source_params': source_params,
+        'lens_light_params': lens_light_params,
         'los_params': los_params, 'subhalo_params': subhalo_params,
-        'main_deflector_params': main_deflector_params_sub
+        'main_deflector_params': main_deflector_params
+    }
+    # Get the principal model for each lensing object.
+    all_params_principal = {
+        lens_obj: jax.tree_util.tree_map(
+            lambda x: x[principal_model_indices[lens_obj]], all_params[lens_obj]
+        ) for lens_obj in all_params
     }
 
     rng_los, rng_sub, rng_noise = jax.random.split(rng, 3)
     los_before_tuple, los_after_tuple = los.draw_los(
-        main_deflector_params_sub, source_params_sub, los_params,
-        cosmology_params, rng_los, num_z_bins, los_pad_length)
+        main_deflector_params=all_params_principal['main_deflector_params'],
+        source_params=all_params_principal['source_params'],
+        los_params=all_params_principal['los_params'],
+        cosmology_params=cosmology_params, rng=rng_los, num_z_bins=num_z_bins,
+        los_pad_length=los_pad_length)
     subhalos_z, subhalos_kwargs = subhalos.draw_subhalos(
-        main_deflector_params_sub, source_params_sub, subhalo_params,
-        cosmology_params, rng_sub, subhalos_pad_length, sampling_pad_length)
+        main_deflector_params=all_params_principal['main_deflector_params'],
+        source_params=all_params_principal['source_params'],
+        subhalo_params=all_params_principal['subhalo_params'],
+        cosmology_params=cosmology_params, rng=rng_sub,
+        subhalos_pad_length=subhalos_pad_length,
+        sampling_pad_length=sampling_pad_length)
 
     kwargs_lens_all = {
         'z_array_los_before': los_before_tuple[0],
@@ -435,7 +822,11 @@ def draw_image_and_truth(
         'kwargs_main_deflector': main_deflector_params,
         'z_array_main_deflector': main_deflector_params['z_lens'],
         'z_array_subhalos': subhalos_z, 'kwargs_subhalos': subhalos_kwargs}
-    z_source = source_params_sub['z_source']
+    z_source = all_params_principal['source_params']['z_source']
+
+    # Apply the rotation angle to the image through the grid. This requires
+    # rotating the coordinates by the negative angle.
+    grid_x, grid_y = utils.rotate_coordinates(grid_x, grid_y, -rotation_angle)
 
     image_supersampled = image_simulation.generate_image(
         grid_x, grid_y, kwargs_lens_all, source_params,
@@ -450,6 +841,8 @@ def draw_image_and_truth(
         image /= jnp.std(image)
 
     # Extract the truth values and normalize them.
-    truth = extract_truth_values(all_params, lensing_config, truth_parameters)
+    truth = extract_truth_values(
+        all_params, normalize_config, truth_parameters,
+        rotation_angle, normalize_truths)
 
     return image, truth

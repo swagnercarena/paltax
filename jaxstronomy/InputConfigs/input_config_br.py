@@ -40,11 +40,11 @@ def get_config():
             'dz': encode_constant(0.01),
             'cone_angle': encode_constant(8.0),
             'angle_buffer': encode_constant(0.8),
-            'c_zero': encode_constant(18),
-            'conc_zeta': encode_constant(-0.2),
-            'conc_beta': encode_constant(0.8),
+            'c_zero': encode_normal(mean=16.0, std=2.0),
+            'conc_zeta': encode_normal(mean=-0.3, std=0.1),
+            'conc_beta': encode_normal(mean=0.55, std=0.3),
             'conc_m_ref': encode_constant(1e8),
-            'conc_dex_scatter': encode_constant(0.1)
+            'conc_dex_scatter': encode_normal(mean=0.1, std=0.06),
         },
         'main_deflector_params': {
             'mass': encode_constant(1e13),
@@ -53,9 +53,12 @@ def get_config():
             'slope': encode_normal(mean=2.0, std=0.1),
             'center_x': encode_normal(mean=0.0, std=0.16),
             'center_y': encode_normal(mean=0.0, std=0.16),
-            'axis_ratio': encode_normal(mean=1.0, std=0.1),
-            'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
-            'gamma_ext': encode_normal(mean=0.0, std=0.1)
+            'ellip_x': encode_normal(mean=0.0, std=0.1),
+            'ellip_xy': encode_normal(mean=0.0, std=0.1),
+            'gamma_one': encode_normal(mean=0.0, std=0.05),
+            'gamma_two': encode_normal(mean=0.0, std=0.05),
+            'zero_x': encode_constant(0.0),
+            'zero_y': encode_constant(0.0)
         },
         'subhalo_params':{
             'sigma_sub': encode_normal(mean=2.0e-3, std=1.1e-3),
@@ -65,21 +68,18 @@ def get_config():
             'm_max': encode_constant(1e10),
             'k_one': encode_constant(0.0),
             'k_two': encode_constant(0.0),
-            'c_zero': encode_constant(18),
-            'conc_zeta': encode_constant(-0.2),
-            'conc_beta': encode_constant(0.8),
+            'c_zero': encode_normal(mean=16.0, std=2.0),
+            'conc_zeta': encode_normal(mean=-0.3, std=0.1),
+            'conc_beta': encode_normal(mean=0.55, std=0.3),
             'conc_m_ref': encode_constant(1e8),
-            'conc_dex_scatter': encode_constant(0.1)
+            'conc_dex_scatter': encode_normal(mean=0.1, std=0.06),
         },
         'source_params':{
             'galaxy_index': encode_uniform(minimum=0.0, maximum=1.0),
-            'output_ab_zeropoint': encode_constant(25.0),
-            'catalog_ab_zeropoint': encode_constant(25.0),
+            'output_ab_zeropoint': encode_constant(25.127),
+            'catalog_ab_zeropoint': encode_constant(25.127),
             'z_source': encode_constant(1.5),
-            'amp': encode_constant(1.0),
-            'sersic_radius': encode_uniform(minimum=1.0, maximum=3.0),
-            'n_sersic': encode_uniform(minimum=1.0, maximum=1.5),
-            'axis_ratio': encode_normal(mean=1.0, std=0.05),
+            'amp': encode_uniform(minimum=0.5, maximum=2.0),
             'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
             'center_x': encode_normal(mean=0.0, std=0.16),
             'center_y': encode_normal(mean=0.0, std=0.16)
@@ -105,10 +105,22 @@ def get_config():
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),
-        'all_main_deflector_models': (lens_models.EPL(), lens_models.Shear()),
+        'all_main_deflector_models': (lens_models.EPLEllip(),
+                                      lens_models.ShearCart()),
         'all_source_models': (source_models.CosmosCatalog(cosmos_path),),
         'all_lens_light_models': (source_models.SersicElliptic(),),
         'all_psf_models': (psf_models.Gaussian(),)
+    }
+    # Some objects (subhalos for example) want to know the properties of another
+    # object (main deflector). There can be multiple objects belonging to
+    # that category, so we need to specify the principal object to call.
+    config['principal_model_indices'] = {
+        'los_params': 0,
+        'subhalo_params': 0,
+        'main_deflector_params': 0,
+        'source_params': 0,
+        'lens_light_params': 0,
+        'psf_params': 0
     }
     config['cosmology_params'] = {
         'omega_m_zero': encode_constant(0.3089),
@@ -131,11 +143,14 @@ def get_config():
 
     config['kwargs_psf'] = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 0.02}
 
-    config['principal_md_index'] = 0
-    config['principal_source_index'] = 0
     config['truth_parameters'] = (
         ['main_deflector_params', 'main_deflector_params',
-         'main_deflector_params', 'main_deflector_params', 'subhalo_params'],
-        ['theta_e', 'slope', 'center_x', 'center_y', 'sigma_sub'])
+         'main_deflector_params', 'main_deflector_params',
+         'main_deflector_params', 'main_deflector_params',
+         'main_deflector_params', 'main_deflector_params',
+         'source_params', 'source_params', 'subhalo_params'],
+        ['theta_e', 'slope', 'center_x', 'center_y', 'ellip_x', 'ellip_xy',
+         'gamma_one', 'gamma_two', 'center_x', 'center_y', 'sigma_sub'],
+        [0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0])
 
     return config

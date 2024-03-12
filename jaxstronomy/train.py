@@ -13,14 +13,16 @@
 # limitations under the License.
 """Training script for dark matter substructure inference."""
 
+import copy
 import functools
-import itertools
+from importlib import import_module
+import os
+import sys
 import time
 from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple, Union
 
 from absl import app
 from absl import flags
-
 from clu import metric_writers
 from clu import periodic_actions
 from flax import jax_utils
@@ -35,13 +37,18 @@ import optax
 
 from jaxstronomy import input_pipeline
 from jaxstronomy import models
+from jaxstronomy import utils
 
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string('workdir', None, 'working directory')
-flags.DEFINE_float('learning_rate', 0.001, 'learning rate')
+flags.DEFINE_string('workdir', None, 'working directory.')
+flags.DEFINE_float('learning_rate', 0.001, 'learning rate.')
 flags.DEFINE_integer('num_unique_batches', 0,
     'number of unique batches of data to draw. If 0 produces infinite data.')
+flags.DEFINE_string('train_config_path', './train_config.py',
+    'path to the training configuration.')
+flags.DEFINE_string('input_config_path', './input_config.py',
+    'path to the input configuration.')
 
 
 def initialized(
@@ -80,9 +87,94 @@ def gaussian_loss(outputs: jnp.ndarray, truth: jnp.ndarray) -> jnp.ndarray:
     """
     mean, log_var = jnp.split(outputs, 2, axis=-1)
     loss = 0.5 * jnp.sum(
-        jnp.multiply(jnp.square(mean-truth), jnp.exp(-log_var)), axis=-1)
-    loss += 0.5*jnp.sum(log_var, axis=-1)
+        jnp.multiply(jnp.square(mean - truth), jnp.exp(-log_var)), axis = -1)
+    loss += 0.5*jnp.sum(log_var, axis = -1)
     return jnp.mean(loss)
+
+
+def _calculate_outputs_comb(
+        mu_post: jnp.ndarray, prec_post: jnp.ndarray, mu_prop: jnp.ndarray,
+        prec_prop: jnp.ndarray, mu_prior: jnp.ndarray, prec_prior: jnp.ndarray
+) -> jnp.ndarray:
+    """Returns the outputs representing the product distribution.
+
+    Args:
+        mu_post: Mean of the posterior distribution.
+        prec_post: Precision matrix of the posterior distribution.
+        mu_prop: Mean of the proposal distribution.
+        prec_prop: Precision matrix of the proposal distribution.
+        mu_prior: Mean of the prior distribution.
+        prec_prior: Precision matrix of the prior distribution.
+
+    Returns:
+        Mean and log variance of the product distribution posterior * prior
+            / proposal. The mean and log variance are concatenated together
+            to serve as an input to the gaussian_loss function.
+    """
+    prec_comb = prec_post + prec_prop - prec_prior
+    cov_comb = jnp.linalg.inv(prec_comb)
+    eta_comb = jax.vmap(jnp.dot)(prec_post, mu_post)
+    eta_comb += jnp.dot(prec_prop, mu_prop)
+    eta_comb -= jnp.dot(prec_prior, mu_prior)
+    mu_comb = jax.vmap(jnp.dot)(cov_comb, eta_comb)
+
+    # For now our loss function only accepts the log variance and not a full
+    # covariance matrix.
+    log_var_comb = -jnp.log(jax.vmap(jnp.diag)(prec_comb))
+    outputs_comb = jnp.concatenate([mu_comb, log_var_comb], axis=-1)
+
+    return outputs_comb
+
+
+def snpe_c_loss(
+        outputs: jnp.ndarray, truth: jnp.ndarray, prop_encoding:jnp.ndarray,
+        mu_prior: jnp.ndarray, prec_prior: jnp.ndarray
+) -> jnp.ndarray:
+    """Gaussian loss weighted by ratio of proposal to prior for SNPE type c.
+
+    Args:
+        outputs: Values outputted by the model.
+        truth: True value of the parameters.
+        prop_encoding: Encoding of the current proposal function.
+        mu_prior: Mean of the prior distribution.
+        prec_prior: Precision matrix for the prior distribution. For a infinite
+            uniform prior this can be a matrix of zeros. While not techinically
+            a well-defined prior, it is equivalent to a Gaussian with infinite
+            variance in each variable.
+
+    Returns:
+        Gaussian loss multiplied by ratio of proposal to prior and normalized
+            to be a well-defined pdf.
+
+    Notes:
+        Loss does not inlcude constant factor of 1 / (2 * pi) ^ (d/2)
+    """
+    # Break out the mean and log variance predictions from our network
+    # posterior.
+    mu_post, log_var_post = jnp.split(outputs, 2, axis=-1)
+    prec_post = jax.vmap(jnp.diag)(jnp.exp(-log_var_post))
+
+    # Extract the distributions from the encoding.
+    mu_prop_vmap = jax.vmap(input_pipeline._get_normal_mean)(prop_encoding).T
+    prec_prop_vmap = jax.vmap(jnp.diag)(
+        1 / jnp.square(jax.vmap(input_pipeline._get_normal_std)(
+            prop_encoding).T + 1e-9
+        )
+    )
+    weights_vmap = jax.vmap(input_pipeline._get_normal_weights)(prop_encoding)
+    weights_vmap = weights_vmap[0]
+
+    # Calculate the loss term for each proposal component.
+    outputs_vmap = jax.vmap(
+        _calculate_outputs_comb, in_axes=[None, None, 0, 0, None, None])(
+            mu_post, prec_post, mu_prop_vmap, prec_prop_vmap, mu_prior,
+            prec_prior
+    )
+    gaussian_loss_vmap = jax.vmap(gaussian_loss, in_axes=[0, None])(
+        outputs_vmap, truth
+    )
+    # Sum the weighted components in exponential space.
+    return jax.scipy.special.logsumexp(gaussian_loss_vmap, b=weights_vmap)
 
 
 def compute_metrics(
@@ -119,15 +211,44 @@ def get_learning_rate_schedule(
     Returns:
         Mapping from step to learning rate according to the schedule.
     """
-    warmup_fn = optax.linear_schedule(init_value=0.0,
-        end_value=base_learning_rate,
-        transition_steps=config.warmup_steps)
-    cosine_steps = max(config.num_train_steps - config.warmup_steps, 1)
-    cosine_fn = optax.cosine_decay_schedule(init_value=base_learning_rate,
-        decay_steps=cosine_steps)
-    schedule_fn = optax.join_schedules(schedules=[warmup_fn, cosine_fn],
-        boundaries=[config.warmup_steps])
+    schedule_function_type = config.schedule_function_type
+
+    if schedule_function_type == 'cosine':
+        # Cosine decay with linear warmup.
+        warmup_fn = optax.linear_schedule(init_value=0.0,
+            end_value=base_learning_rate,
+            transition_steps=config.warmup_steps)
+        cosine_steps = max(config.num_train_steps - config.warmup_steps, 1)
+        cosine_fn = optax.cosine_decay_schedule(init_value=base_learning_rate,
+            decay_steps=cosine_steps)
+        schedule_fn = optax.join_schedules(schedules=[warmup_fn, cosine_fn],
+            boundaries=[config.warmup_steps])
+    elif schedule_function_type == 'constant':
+        # Constant learning rate.
+        schedule_fn = optax.constant_schedule(base_learning_rate)
+    elif schedule_function_type == 'linear':
+        # Constant learning rate.
+        schedule_fn = optax.linear_schedule(
+            base_learning_rate,
+            base_learning_rate * config.end_value_multiplier,
+            config.num_train_steps)
+    elif schedule_function_type == 'exp_decay':
+        # Exponential decay learning rate.
+        schedule_fn = optax.exponential_decay(base_learning_rate,
+                                              config.steps_per_epoch,
+                                              config.decay_rate)
+    else:
+        raise ValueError(f'{schedule_function_type} is not a valid learning ' +
+                         'rate schedule valid type.')
     return schedule_fn
+
+
+def get_outputs(state, batch):
+    """Get the outputs for a batch"""
+    return state.apply_fn(
+            {'params': state.params, 'batch_stats': state.batch_stats},
+            batch['image'],
+            mutable=['batch_stats'])
 
 
 def train_step(state, batch, learning_rate_schedule):
@@ -140,13 +261,7 @@ def train_step(state, batch, learning_rate_schedule):
             batch['image'],
             mutable=['batch_stats'])
         loss = gaussian_loss(outputs, batch['truth'])
-        # weight_penalty_params = jax.tree_util.tree_leaves(params)
-        # weight_decay = 0.0001
-        # weight_l2 = sum(jnp.sum(x ** 2)
-        #                 for x in weight_penalty_params
-        #                 if x.ndim > 1)
-        # weight_penalty = weight_decay * 0.5 * weight_l2
-        # loss = loss + weight_penalty
+
         return loss, (new_model_state, outputs)
 
     step = state.step
@@ -199,9 +314,17 @@ def create_train_state(rng, config: ml_collections.ConfigDict,
                        model, image_size, learning_rate_schedule):
     """Create initial training state."""
     params, batch_stats = initialized(rng, image_size, model)
-    tx = optax.adam(
-        learning_rate=learning_rate_schedule
-    )
+    optimizer = config.get('optimizer', 'adam')
+    if optimizer == 'adam':
+        tx = optax.adam(
+            learning_rate=learning_rate_schedule
+        )
+    elif optimizer == 'sgd':
+        tx = optax.sgd(
+            learning_rate=learning_rate_schedule
+        )
+    else:
+        raise ValueError(f'Optimizer {optimizer} is not an option.')
     state = TrainState.create(
         apply_fn=model.apply,
         params=params,
@@ -210,13 +333,19 @@ def create_train_state(rng, config: ml_collections.ConfigDict,
     return state
 
 
-def train_and_evaluate(config: ml_collections.ConfigDict,
-                       input_config: dict,
-                       workdir: str,
-                       rng: Union[Iterator[Sequence[int]], Sequence[int]],
-                       image_size: int, learning_rate: float) -> TrainState:
+def train_and_evaluate(
+        config: ml_collections.ConfigDict,
+        input_config: dict,
+        workdir: str,
+        rng: Union[Iterator[Sequence[int]], Sequence[int]],
+        image_size: int, learning_rate: float,
+        normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
+) -> TrainState:
     """
     """
+
+    if normalize_config is None:
+        normalize_config = copy.deepcopy(input_config['lensing_config'])
 
     writer = metric_writers.create_default_writer(
         logdir=workdir, just_logging=jax.process_index() != 0)
@@ -237,7 +366,9 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
         base_learning_rate)
 
     if isinstance(rng, Iterator):
-        rng_state = next(rng)
+        # Create the rng key we'll use to always insert a new random
+        # rotation.
+        rng_state, rng_rotation_seed = jax.random.split(next(rng), 2)
     else:
         rng, rng_state = jax.random.split(rng)
     state = create_train_state(rng_state, config, model, image_size,
@@ -255,20 +386,20 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
         functools.partial(
             input_pipeline.draw_image_and_truth,
             all_models=input_config['all_models'],
-            principal_md_index=input_config['principal_md_index'],
-            principal_source_index=input_config['principal_source_index'],
+            principal_model_indices=input_config['principal_model_indices'],
             kwargs_simulation=input_config['kwargs_simulation'],
             kwargs_detector=input_config['kwargs_detector'],
             kwargs_psf=input_config['kwargs_psf'],
-            truth_parameters=input_config['truth_parameters']),
-        in_axes=(None, None, None, None, 0))),
-        in_axes=(None, None, None, None, 0)
+            truth_parameters=input_config['truth_parameters'],
+            normalize_config=normalize_config),
+        in_axes=(None, None, None, None, 0, None))),
+        in_axes=(None, None, None, None, 0, None)
     )
     if isinstance(rng, Iterator):
         rng_cosmo = next(rng)
     else:
         rng, rng_cosmo = jax.random.split(rng)
-    cosmology_params = input_pipeline.intialize_cosmology_params(input_config,
+    cosmology_params = input_pipeline.initialize_cosmology_params(input_config,
                                                                  rng_cosmo)
     grid_x, grid_y = input_pipeline.generate_grids(input_config)
 
@@ -283,8 +414,17 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
         # Generate truths and images
         if isinstance(rng, Iterator):
             rng_images = next(rng)
+            rng_rotation, rng_rotation_seed = jax.random.split(
+                rng_rotation_seed)
+            # If we're cycling over a fixed set, we should also include
+            # a random rotation.
+            rotation_angle = jax.random.uniform(rng_rotation) * 2 * jnp.pi
         else:
             rng, rng_images = jax.random.split(rng)
+            # If we're always drawing new images, we don't need an aditional
+            # rotation.
+            rotation_angle = 0.0
+
         rng_images = jax.random.split(
             rng_images, num=jax.device_count() * config.batch_size).reshape(
                 (jax.device_count(), config.batch_size, -1)
@@ -292,7 +432,8 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
 
         image, truth = draw_image_and_truth_pmap(input_config['lensing_config'],
                                                  cosmology_params, grid_x,
-                                                 grid_y, rng_images)
+                                                 grid_y, rng_images,
+                                                 rotation_angle)
         image = jnp.expand_dims(image, axis=-1)
 
         batch = {'image': image, 'truth': truth}
@@ -326,19 +467,34 @@ def train_and_evaluate(config: ml_collections.ConfigDict,
     return state
 
 
-def main(_):
-    from jaxstronomy import train_config
-    from jaxstronomy import input_config
+def _get_config(config_path: str) -> Any:
+    """Return config from provided path.
 
-    config = train_config.get_config()
-    ic = input_config.get_config()
-    image_size = ic['kwargs_detector']['n_x']
+    Args:
+        config_path: Path to configuration file.
+
+    Returns:
+        Loaded configuration file.
+    """
+    # Get the dictionary from the .py file.
+    config_dir, config_file = os.path.split(os.path.abspath(config_path))
+    sys.path.insert(0, config_dir)
+    config_name, _ = os.path.splitext(config_file)
+    config_module = import_module(config_name)
+    return config_module.get_config()
+
+
+def main(_):
+    """Train neural network model with configuration defined by flags."""
+    train_config = _get_config(FLAGS.train_config_path)
+    input_config = _get_config(FLAGS.input_config_path)
+    image_size = input_config['kwargs_detector']['n_x']
     rng = jax.random.PRNGKey(0)
     if FLAGS.num_unique_batches > 0:
         rng_list = jax.random.split(rng, FLAGS.num_unique_batches)
-        rng = itertools.cycle(rng_list)
-    train_and_evaluate(config, ic, FLAGS.workdir, rng, image_size,
-                       FLAGS.learning_rate)
+        rng = utils.random_permutation_iterator(rng_list, rng)
+    train_and_evaluate(train_config, input_config, FLAGS.workdir, rng,
+                       image_size, FLAGS.learning_rate)
 
 
 if __name__ == '__main__':

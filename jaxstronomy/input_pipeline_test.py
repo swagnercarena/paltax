@@ -20,6 +20,7 @@ import chex
 import jax
 import jax.numpy as jnp
 import numpy as np
+from scipy import ndimage
 
 from jaxstronomy import cosmology_utils
 from jaxstronomy import input_pipeline
@@ -33,7 +34,7 @@ def _prepare_lensing_config():
     encode_uniform = input_pipeline.encode_uniform
     encode_constant = input_pipeline.encode_constant
     lensing_config = {
-            'los_params':{
+        'los_params':{
             'delta_los': encode_constant(10.0),
             'r_min': encode_constant(0.5),
             'r_max': encode_constant(10.0),
@@ -57,7 +58,9 @@ def _prepare_lensing_config():
             'center_y': encode_normal(mean=0.0, std=0.16),
             'axis_ratio': encode_normal(mean=1.0, std=0.05),
             'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
-            'gamma_ext': encode_normal(mean=0.0, std=0.05)
+            'gamma_ext': encode_normal(mean=0.0, std=0.05),
+            'zero_x': encode_constant(0.0),
+            'zero_y': encode_constant(0.0)
         },
         'subhalo_params':{
             'sigma_sub': encode_normal(mean=2.0e-3, std=1.1e-3),
@@ -102,7 +105,7 @@ def _prepare_lensing_config():
     }
     return lensing_config
 
-def _perpare_cosmology_params():
+def _prepare_cosmology_params():
     encode_constant = input_pipeline.encode_constant
     return {
         'omega_m_zero': encode_constant(0.3089),
@@ -119,13 +122,40 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
     """Runs tests of input pipeline functions."""
 
     @chex.all_variants
+    def test__generate_blank_encoding(self):
+        # Test that it has the correct length.
+        blank_encoding = self.variant(input_pipeline._generate_blank_encoding)()
+        np.testing.assert_array_almost_equal(
+            blank_encoding,
+            np.zeros(4 + input_pipeline.NUM_NORMAL_DISTRIBUTIONS * 3)
+        )
+
+    @chex.all_variants(without_device=False)
+    def test__encode_normal(self):
+        # Test that it updates the encoding and adds the weight.
+        encode_normal = self.variant(input_pipeline._encode_normal)
+        mean = -1.1
+        std = 0.2
+        weight = 0.6
+        encoded = encode_normal(input_pipeline._generate_blank_encoding(),
+                                mean, std, weight)
+        expected = np.array(
+            [0.0, 0.0, 0.0, 0.0, weight, mean, std] +
+            [0.0] * (input_pipeline.NUM_NORMAL_DISTRIBUTIONS - 1) * 3
+        )
+        np.testing.assert_array_almost_equal(encoded, expected)
+
+    @chex.all_variants
     def test_encode_normal(self):
-        # Test that the encoding behaves as expected
+        # Test that the encoding behaves as expected.
         encode_normal = self.variant(input_pipeline.encode_normal)
         mean = 1.2
         std = 0.4
         encoded = encode_normal(mean=mean, std=std)
-        expected = np.array([0.0, 0.0, 0.0, 1.0, mean, std, 0.0])
+        expected = np.array(
+            [0.0, 0.0, 0.0, 0.0, 1.0, mean, std] +
+            [0.0] * (input_pipeline.NUM_NORMAL_DISTRIBUTIONS - 1) * 3
+        )
         np.testing.assert_array_almost_equal(encoded, expected)
 
     @chex.all_variants
@@ -135,7 +165,10 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         minimum = 0.2
         maximum = 2.01
         encoded = encode_uniform(minimum=minimum, maximum=maximum)
-        expected = np.array([1.0, minimum, maximum, 0.0, 0.0, 0.0, 0.0])
+        expected = np.array(
+            [1.0, minimum, maximum, 0.0, 0.0, 0.0, 0.0] +
+            [0.0] * (input_pipeline.NUM_NORMAL_DISTRIBUTIONS - 1) * 3
+        )
         np.testing.assert_array_almost_equal(encoded, expected)
 
     @chex.all_variants
@@ -144,8 +177,202 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         encode_constant = self.variant(input_pipeline.encode_constant)
         constant = 1.43
         encoded = encode_constant(constant=constant)
-        expected = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, constant])
+        expected = np.array(
+            [0.0, 0.0, 0.0, constant, 0.0, 0.0, 0.0] +
+            [0.0] * (input_pipeline.NUM_NORMAL_DISTRIBUTIONS - 1) * 3
+        )
         np.testing.assert_array_almost_equal(encoded, expected)
+
+    @chex.all_variants
+    def test__get_normal_mean_indices(self):
+        # Test that the indices match expectations.
+        expected = [
+            input_pipeline.NORMAL_ENCODING_START + 1 + i*3
+            for i in range(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        ]
+        indices = self.variant(input_pipeline._get_normal_mean_indices)()
+        np.testing.assert_array_almost_equal(expected, indices)
+
+    @chex.all_variants
+    def test__get_normal_mean(self):
+        get_normal_mean = self.variant(input_pipeline._get_normal_mean)
+        encoding = input_pipeline._generate_blank_encoding()
+        encoding = encoding.at[input_pipeline._get_normal_mean_indices()].set(
+            jnp.arange(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        )
+        np.testing.assert_array_almost_equal(
+            get_normal_mean(encoding),
+            np.arange(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        )
+
+    @chex.all_variants
+    def test__get_normal_std_indices(self):
+        # Test that the indices match expectations.
+        expected = [
+            input_pipeline.NORMAL_ENCODING_START + 2 + i*3
+            for i in range(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        ]
+        indices = self.variant(input_pipeline._get_normal_std_indices)()
+        np.testing.assert_array_almost_equal(expected, indices)
+
+    @chex.all_variants
+    def test__get_normal_std(self):
+        get_normal_std = self.variant(input_pipeline._get_normal_std)
+        encoding = input_pipeline._generate_blank_encoding()
+        encoding = encoding.at[input_pipeline._get_normal_std_indices()].set(
+            jnp.arange(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        )
+        np.testing.assert_array_almost_equal(
+            get_normal_std(encoding),
+            np.arange(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        )
+
+    @chex.all_variants
+    def test__get_normal_weight_indices(self):
+        # Test that the indices match expectations.
+        expected = [
+            input_pipeline.NORMAL_ENCODING_START + i*3
+            for i in range(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        ]
+        indices = self.variant(input_pipeline._get_normal_weights_indices)()
+        np.testing.assert_array_almost_equal(expected, indices)
+
+    @chex.all_variants
+    def test__get_normal_weights(self):
+        get_normal_weights = self.variant(input_pipeline._get_normal_weights)
+        encoding = input_pipeline._generate_blank_encoding()
+        encoding = (
+            encoding.at[input_pipeline._get_normal_weights_indices()].set(
+                jnp.arange(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        ))
+        np.testing.assert_array_almost_equal(
+            get_normal_weights(encoding),
+            np.arange(input_pipeline.NUM_NORMAL_DISTRIBUTIONS)
+        )
+
+    @chex.all_variants(without_device=False)
+    def test_add_normal_to_encoding(self):
+        # Test that the normal appends were expected and that the some of the
+        # mixtures is still 1.
+        add_normal_to_encoding = self.variant(
+            input_pipeline.add_normal_to_encoding
+        )
+
+        encoding = input_pipeline._generate_blank_encoding()
+        rng_w, rng_m, rng_s = jax.random.split(jax.random.PRNGKey(0), 3)
+
+        # Set up the old encoding manually.
+        # Weights must be initialized to sum to zero.
+        old_weights = jax.random.uniform(
+            rng_w, (input_pipeline.NUM_NORMAL_DISTRIBUTIONS,)
+        )
+        old_weights /= jnp.sum(old_weights)
+        old_mean = jax.random.normal(
+            rng_m, (input_pipeline.NUM_NORMAL_DISTRIBUTIONS,)
+        )
+        old_std = jax.random.uniform(
+            rng_s, (input_pipeline.NUM_NORMAL_DISTRIBUTIONS,)
+        )
+        encoding = (
+            encoding.at[input_pipeline._get_normal_weights_indices()].set(
+                old_weights
+                )
+            )
+        encoding = (
+            encoding.at[input_pipeline._get_normal_mean_indices()].set(
+                old_mean
+                )
+            )
+        encoding = (
+            encoding.at[input_pipeline._get_normal_std_indices()].set(
+                old_std
+                )
+            )
+
+        mean = 1.2
+        std = 0.4
+        decay_factor = 0.7
+        encoding = add_normal_to_encoding(encoding, mean, std, decay_factor)
+
+        # Test each component.
+        new_mean = input_pipeline._get_normal_mean(encoding)
+        self.assertAlmostEqual(new_mean[0], mean)
+        np.testing.assert_array_almost_equal(new_mean[1:], old_mean[:-1])
+
+        new_std = input_pipeline._get_normal_std(encoding)
+        self.assertAlmostEqual(new_std[0], std)
+        np.testing.assert_array_almost_equal(new_std[1:], old_std[:-1])
+
+        new_weights = input_pipeline._get_normal_weights(encoding)
+        self.assertAlmostEqual(jnp.sum(new_weights), 1.0, places=6)
+        self.assertAlmostEqual(new_weights[0], 1 - decay_factor)
+        # There is a normalizing factor, but it should be applied evenly
+        ratio = new_weights[1:] / old_weights[:-1]
+        np.testing.assert_array_almost_equal(ratio,
+                                             np.ones(len(ratio)) * ratio[0])
+
+    @chex.all_variants(without_device=False)
+    def test_average_normal_to_encoding(self):
+        # Test that the normal appends were expected and that the some of the
+        # mixtures is still 1.
+        average_normal_to_encoding = self.variant(
+            input_pipeline.average_normal_to_encoding
+        )
+
+        encoding = input_pipeline._generate_blank_encoding()
+        rng_m, rng_s = jax.random.split(jax.random.PRNGKey(0), 2)
+
+        # Set up the old encoding manually.
+        # Weights must be initialized to sum to zero.
+        old_weights = (
+            jnp.arange(input_pipeline.NUM_NORMAL_DISTRIBUTIONS) < 10
+        ).astype(float)
+        old_weights /= jnp.sum(old_weights)
+        old_mean = jax.random.normal(
+            rng_m, (input_pipeline.NUM_NORMAL_DISTRIBUTIONS,)
+        )
+        old_std = jax.random.uniform(
+            rng_s, (input_pipeline.NUM_NORMAL_DISTRIBUTIONS,)
+        )
+        encoding = (
+            encoding.at[input_pipeline._get_normal_weights_indices()].set(
+                old_weights
+                )
+            )
+        encoding = (
+            encoding.at[input_pipeline._get_normal_mean_indices()].set(
+                old_mean
+                )
+            )
+        encoding = (
+            encoding.at[input_pipeline._get_normal_std_indices()].set(
+                old_std
+                )
+            )
+
+        mean = 1.2
+        std = 0.4
+        encoding = average_normal_to_encoding(encoding, mean, std)
+
+        # Test each component.
+        new_mean = input_pipeline._get_normal_mean(encoding)
+        self.assertAlmostEqual(new_mean[0], mean)
+        np.testing.assert_array_almost_equal(new_mean[1:], old_mean[:-1])
+
+        new_std = input_pipeline._get_normal_std(encoding)
+        self.assertAlmostEqual(new_std[0], std)
+        np.testing.assert_array_almost_equal(new_std[1:], old_std[:-1])
+
+        new_weights = input_pipeline._get_normal_weights(encoding)
+        self.assertAlmostEqual(jnp.sum(new_weights), 1.0, places=6)
+        # Check that all the weights are now 1/11 or 0.
+        np.testing.assert_array_almost_equal(
+            new_weights[:11], jnp.ones(11)/11.0
+        )
+        np.testing.assert_array_almost_equal(
+            new_weights[11:],
+            jnp.zeros(input_pipeline.NUM_NORMAL_DISTRIBUTIONS-11)
+        )
 
     @chex.all_variants
     def test_decode_maximum(self):
@@ -153,6 +380,9 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         # the constant, the maximum, and the mean plus five sigma.
         mean = 1.8
         std = 1.0
+        mixture_mean = 10.0
+        mixture_std = 2.0
+        decay_factor = 0.2
         minimum = 0.8
         maximum = 12.0
         constant = 13.4
@@ -160,6 +390,9 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         uniform_encoding = input_pipeline.encode_uniform(minimum=minimum,
                                                          maximum=maximum)
         normal_encoding = input_pipeline.encode_normal(mean=mean, std=std)
+        mixture_encoding = input_pipeline.add_normal_to_encoding(
+            normal_encoding, mixture_mean, mixture_std, decay_factor
+        )
         decode_maximum = self.variant(input_pipeline.decode_maximum)
 
         self.assertAlmostEqual(decode_maximum(constant_encoding), constant,
@@ -168,6 +401,8 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
                                places=6)
         self.assertAlmostEqual(decode_maximum(normal_encoding), mean + 5 * std,
                                places=6)
+        self.assertAlmostEqual(decode_maximum(mixture_encoding),
+                               mixture_mean + 5 * mixture_std, places=6)
 
     @chex.all_variants
     def test_decode_minimum(self):
@@ -175,6 +410,9 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         # the constant, the maximum, and the mean plus five sigma.
         mean = 1.8
         std = 1.0
+        mixture_mean = -10.0
+        mixture_std = 2.0
+        decay_factor = 0.3
         minimum = 0.8
         maximum = 12.0
         constant = 13.4
@@ -182,6 +420,9 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         uniform_encoding = input_pipeline.encode_uniform(minimum=minimum,
                                                          maximum=maximum)
         normal_encoding = input_pipeline.encode_normal(mean=mean, std=std)
+        mixture_encoding = input_pipeline.add_normal_to_encoding(
+            normal_encoding, mixture_mean, mixture_std, decay_factor
+        )
         decode_minimum = self.variant(input_pipeline.decode_minimum)
 
         self.assertAlmostEqual(decode_minimum(constant_encoding), constant,
@@ -190,15 +431,17 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
                                places=6)
         self.assertAlmostEqual(decode_minimum(normal_encoding), mean - 5 * std,
                                places=6)
+        self.assertAlmostEqual(decode_minimum(mixture_encoding),
+                               mixture_mean - 5 * mixture_std, places=6)
 
-    @chex.all_variants
+    @chex.all_variants(without_device=False)
     def test_draw_from_encoding(self):
         # Test that the encoding gives reasonable draws from the distribution
         # for the normal, uniform, and constant encoding.
         draw_from_encoding = self.variant(input_pipeline.draw_from_encoding)
         draw_from_encoding_vmap = jax.vmap(draw_from_encoding,
                                            in_axes=[None, 0])
-        n_draws = 100000
+        n_draws = 1000000
         rng_list = jax.random.split(jax.random.PRNGKey(0), n_draws)
 
         constant = 12.0
@@ -214,6 +457,24 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(jnp.mean(normal_draws), mean, places=2)
         self.assertAlmostEqual(jnp.std(normal_draws), std, places=2)
 
+        mixture_mean = -10.0
+        mixture_std = 0.5
+        decay_factor = 0.2
+        mixture_encoding = input_pipeline.add_normal_to_encoding(
+            normal_encoding, mixture_mean, mixture_std, decay_factor
+        )
+        mixture_draws = draw_from_encoding_vmap(mixture_encoding, rng_list)
+        # 80 percent of draws should come from new Gaussian
+        self.assertAlmostEqual(jnp.mean(mixture_draws < -3.2), 0.8, places=3)
+        self.assertAlmostEqual(jnp.mean(mixture_draws[mixture_draws < -3.2]),
+                               mixture_mean, places=2)
+        self.assertAlmostEqual(jnp.mean(mixture_draws[mixture_draws > -3.2]),
+                               mean, places=2)
+        self.assertAlmostEqual(jnp.std(mixture_draws[mixture_draws < -3.2]),
+                               mixture_std, places=2)
+        self.assertAlmostEqual(jnp.std(mixture_draws[mixture_draws > -3.2]),
+                               std, places=2)
+
         minimum = 0.0
         maximum = 4.0
         uniform_encoding = input_pipeline.encode_uniform(minimum=minimum,
@@ -225,7 +486,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(jnp.mean(uniform_draws < 4.0), 1.0, places=2)
 
     @chex.all_variants
-    def test_normalize_params(self):
+    def test_normalize_param(self):
         # Test that the draws are normalized as expected.
         normalize_param = self.variant(input_pipeline.normalize_param)
         normalize_param_vmap = jax.vmap(normalize_param, in_axes=[0, None])
@@ -250,6 +511,16 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(jnp.mean(normalized_draws), 0.0, places=2)
         self.assertAlmostEqual(jnp.std(normalized_draws), 1.0, places=2)
 
+        new_mean = 1.0
+        new_std = 2.0
+        decay = 0.5
+        mixture_encoding = input_pipeline.add_normal_to_encoding(
+            normal_encoding, new_mean, new_std, decay)
+        mixture_draws = draw_from_encoding_vmap(mixture_encoding, rng_list)
+        normalized_draws = normalize_param_vmap(mixture_draws, mixture_encoding)
+        self.assertAlmostEqual(jnp.mean(normalized_draws), 0.0, places=2)
+        self.assertAlmostEqual(jnp.std(normalized_draws), 1.0, places=2)
+
         minimum = 0.0
         maximum = 4.0
         uniform_encoding = input_pipeline.encode_uniform(minimum=minimum,
@@ -262,6 +533,48 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(jnp.mean(normalized_draws < 0.75), 0.75,
                                places=2)
         self.assertAlmostEqual(jnp.mean(normalized_draws < 1.00), 1.0, places=2)
+
+    @chex.all_variants
+    def test_unnormalize_param(self):
+        # Make sure the normalize + unormalize is the identity map.
+        normalize_param = self.variant(input_pipeline.normalize_param)
+        normalize_param_vmap = jax.vmap(normalize_param, in_axes=[0, None])
+        unnormalize_param = self.variant(input_pipeline.unnormalize_param)
+        unnormalize_param_vmap = jax.vmap(unnormalize_param, in_axes=[0, None])
+        draw_from_encoding_vmap = jax.jit(jax.vmap(
+            input_pipeline.draw_from_encoding, in_axes=[None, 0]))
+
+        n_draws = 100000
+        rng_list = jax.random.split(jax.random.PRNGKey(0), n_draws)
+
+        constant = 12.0
+        constant_encoding = input_pipeline.encode_constant(constant)
+        constant_draws = draw_from_encoding_vmap(constant_encoding, rng_list)
+        normalized_draws = normalize_param_vmap(constant_draws,
+                                                constant_encoding)
+        unormalized_draws = unnormalize_param_vmap(normalized_draws,
+                                                   constant_encoding)
+        np.testing.assert_array_almost_equal(unormalized_draws, constant_draws)
+
+        mean = 1.8
+        std = 1.0
+        normal_encoding = input_pipeline.encode_normal(mean=mean, std=std)
+        normal_draws = draw_from_encoding_vmap(normal_encoding, rng_list)
+        normalized_draws = normalize_param_vmap(normal_draws, normal_encoding)
+        unormalized_draws = unnormalize_param_vmap(normalized_draws,
+                                                   normal_encoding)
+        np.testing.assert_array_almost_equal(normal_draws, unormalized_draws)
+
+        minimum = 0.0
+        maximum = 4.0
+        uniform_encoding = input_pipeline.encode_uniform(minimum=minimum,
+                                                         maximum=maximum)
+        uniform_draws = draw_from_encoding_vmap(uniform_encoding, rng_list)
+        normalized_draws = normalize_param_vmap(uniform_draws, uniform_encoding)
+        unormalized_draws = unnormalize_param_vmap(normalized_draws,
+                                                   uniform_encoding)
+        np.testing.assert_array_almost_equal(uniform_draws, unormalized_draws)
+
 
     def test_generate_grids(self):
         # Test that the grid has the expected dimensions.
@@ -286,7 +599,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         encode_constant = input_pipeline.encode_constant
         dz = 0.01
         config = {}
-        config['cosmology_params'] = _perpare_cosmology_params()
+        config['cosmology_params'] = _prepare_cosmology_params()
         config['lensing_config'] = {
             'source_params': {'z_source': encode_constant(2.0)},
             'subhalo_params': {
@@ -306,7 +619,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         }
         rng = jax.random.PRNGKey(0)
 
-        cosmology_params = input_pipeline.intialize_cosmology_params(
+        cosmology_params = input_pipeline.initialize_cosmology_params(
             config, rng
         )
 
@@ -323,7 +636,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         self.assertTupleEqual(cosmology_params['cosmos_images'].shape,
                               (2, 256, 256))
 
-    @chex.all_variants
+    @chex.all_variants(without_device=False)
     def test_draw_sample(self):
         # Test that the samples drawn match the expected distribution.
         mean = 1.0
@@ -359,7 +672,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             jnp.std(sampled_configuration['node_a']['node_ab']), std,
             places=2)
 
-    @chex.all_variants
+    @chex.all_variants(without_device=False)
     def test_extract_multiple_models(self):
         # Test that the code scales well to multiple models and a single model.
         constant = 12.0
@@ -421,7 +734,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         }
         rng = jax.random.PRNGKey(0)
         config = {}
-        config['cosmology_params'] = _perpare_cosmology_params()
+        config['cosmology_params'] = _prepare_cosmology_params()
         config['lensing_config'] = _prepare_lensing_config()
         all_source_models = (
             source_models.SersicElliptic(),
@@ -432,7 +745,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         config['all_models'] = {
             'all_source_models': all_source_models
         }
-        cosmology_params = input_pipeline.intialize_cosmology_params(config,
+        cosmology_params = input_pipeline.initialize_cosmology_params(config,
                                                                      rng)
 
         extract_multiple_models_angular = self.variant(functools.partial(
@@ -452,49 +765,95 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         for amp in sampled_configuration['amp']:
             self.assertNotAlmostEqual(amp, 1e3)
 
+    @chex.all_variants(without_device=False)
+    def test_rotate_params(self):
+        # Test that hard-coded rotations work.
+        all_params = {
+            'main_deflector': {
+                'center_x': jnp.array([1.0,0.0]),
+                'center_y': jnp.array([0.0,1.0]),
+                'angle': jnp.array([10.0,0.0]),
+                'something_else': jnp.array([1.0,0.0])},
+            'not_main_deflector': {
+                'a': jnp.array([1.0,0.0]),
+                'b': jnp.array([0.7,0.0]),
+                'c': jnp.array([10.2,0.0])}}
+        extract_objects = ['main_deflector', 'main_deflector',
+                    'main_deflector']
+        extract_keys = ['center_x', 'center_y', 'angle']
+        extract_indices = [0, 0, 0]
+        truth_parameters = (extract_objects, extract_keys, extract_indices)
+        rotation_angle = jnp.pi / 4
+        rotate_params = self.variant(
+            functools.partial(input_pipeline.rotate_params,
+                              truth_parameters=truth_parameters,
+                              rotation_angle=rotation_angle)
+        )
+
+        all_params = rotate_params(all_params)
+
+        self.assertAlmostEqual(all_params['main_deflector']['center_x'][0],
+                               1 / np.sqrt(2))
+        self.assertAlmostEqual(all_params['main_deflector']['center_y'][0],
+                               1 / np.sqrt(2))
+        self.assertAlmostEqual(all_params['main_deflector']['angle'][0],
+                               10.0 + rotation_angle)
+
 
     @chex.all_variants(without_device=False)
-    def test_extract_truth_values(self):
+    @parameterized.named_parameters(
+            [(f'normalize_{normalize}',normalize) for normalize in
+             [True, False]])
+    def test_extract_truth_values(self, normalize):
         # Test that the extracted parameters match the values fed into the
         # dictionary.
         all_params = {
-            'a': {'a': 0.0, 'b': 0.5,
-                  'c': 12.2},
-            'b': {'a': 1.0, 'b': 0.7,
-                  'c': 10.2}}
+            'a': {'a': jnp.array([0.0, 0.0]), 'b': jnp.array([0.5, 0.5]),
+                  'c': jnp.array([12.2, 0.0]), 'angle': jnp.array([2.0, 0.0])},
+            'b': {'a': jnp.array([1.0, 0.0]), 'b': jnp.array([0.7, 0.0]),
+                  'c': jnp.array([10.2, 0.0])}}
         constant = 1.0
         mean = 2.0
         std = 1.0
         minimum = -1.0
         maximum = 12.0
+        rotation_angle = jnp.pi / 4
         lensing_config = {
             'a': {'a': input_pipeline.encode_constant(constant),
                   'b': input_pipeline.encode_normal(mean, std),
-                  'c': input_pipeline.encode_uniform(minimum, maximum)},
+                  'c': input_pipeline.encode_uniform(minimum, maximum),
+                  'angle': input_pipeline.encode_uniform(0.0, 1.0)},
             'b': {'a': input_pipeline.encode_constant(constant),
                   'b': input_pipeline.encode_normal(mean, std),
                   'c': input_pipeline.encode_uniform(minimum, maximum)}}
-        extract_objects = ['a','a','b']
-        extract_keys = ['a','b','c']
-        truth_parameters = (extract_objects, extract_keys)
+        extract_objects = ['a', 'a', 'b', 'a']
+        extract_keys = ['a', 'b', 'c', 'angle']
+        extract_indices = [0, 0, 0, 1]
+        truth_parameters = (extract_objects, extract_keys, extract_indices)
         extract_truth_values = self.variant(functools.partial(
             input_pipeline.extract_truth_values,
-            truth_parameters=truth_parameters))
+            truth_parameters=truth_parameters, rotation_angle=rotation_angle,
+            normalize_truths=normalize))
 
         parameter_array = extract_truth_values(all_params, lensing_config)
-        self.assertTupleEqual(parameter_array.shape, (3,))
-        np.testing.assert_array_almost_equal(
-            parameter_array, np.array([0.0, (0.5 - mean) / std,
-                                       (10.2 - minimum) / (maximum - minimum)])
-        )
-
+        self.assertTupleEqual(parameter_array.shape, (4,))
+        if normalize:
+            np.testing.assert_array_almost_equal(
+                parameter_array, np.array([0.0, (0.5 - mean) / std,
+                                        (10.2 - minimum) / (maximum - minimum),
+                                        jnp.pi / 4])
+            )
+        else:
+            np.testing.assert_array_almost_equal(
+                parameter_array, np.array([0.0, 0.5, 10.2, jnp.pi / 4])
+            )
 
     @chex.all_variants(without_device=False)
     def test_draw_image_and_truth(self):
         # Test that the images have reasonable shape and that the truth values
         # are drawn correctly.
         config = {}
-        config['cosmology_params'] = _perpare_cosmology_params()
+        config['cosmology_params'] = _prepare_cosmology_params()
         config['lensing_config'] = _prepare_lensing_config()
         all_models = {
             'all_los_models': (lens_models.NFW(),),
@@ -513,22 +872,34 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             ),
             'all_psf_models': (psf_models.Gaussian(),)
         }
+        principal_model_indices = {
+            'los_params': 0,
+            'subhalo_params': 0,
+            'main_deflector_params': 0,
+            'source_params': 0,
+            'lens_light_params': 0,
+            'psf_params': 0
+        }
         config['all_models'] = all_models
         rng = jax.random.PRNGKey(0)
 
-        cosmology_params = input_pipeline.intialize_cosmology_params(config,
+        # Generate a normalizing config that is different in one of the truth
+        # parameters
+        normalize_config = _prepare_lensing_config()
+        normalize_config['main_deflector_params']['theta_e'] = (
+            input_pipeline.encode_uniform(minimum=1.0, maximum=1.2))
+
+        cosmology_params = input_pipeline.initialize_cosmology_params(config,
                                                                      rng)
         n_x = 16
         n_y = 16
         config['kwargs_detector'] = {
             'n_x': n_x, 'n_y': n_y, 'pixel_width': 0.4,
-            'supersampling_factor': 2, 'exposure_time': 1024,
-            'num_exposures': 1.0, 'sky_brightness': 22,
-            'magnitude_zero_point': 25, 'read_noise': 3.0
+            'supersampling_factor': 2, 'exposure_time': 1e8,
+            'num_exposures': 1.0, 'sky_brightness': 220,
+            'magnitude_zero_point': 25, 'read_noise': 1e-8
         }
         grid_x, grid_y = input_pipeline.generate_grids(config)
-        principal_md_index = 0
-        principal_source_index = 0
         kwargs_simulation = {
             'num_z_bins': 1000,
             'los_pad_length': 10,
@@ -538,23 +909,40 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         kwargs_psf = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 0.02}
         truth_parameters = (
             ['main_deflector_params', 'subhalo_params'],
-            ['theta_e', 'sigma_sub']
+            ['theta_e', 'sigma_sub'],
+            [0, 0]
         )
 
         draw_image_and_truth = self.variant(functools.partial(
             input_pipeline.draw_image_and_truth, all_models=all_models,
-            principal_md_index=principal_md_index,
-            principal_source_index=principal_source_index,
+            principal_model_indices=principal_model_indices,
             kwargs_simulation=kwargs_simulation,
             kwargs_detector=config['kwargs_detector'],
-            kwargs_psf=kwargs_psf, truth_parameters=truth_parameters))
+            kwargs_psf=kwargs_psf, truth_parameters=truth_parameters,
+            normalize_config=normalize_config))
+        rotation_angle = 0.0
         image, truth = draw_image_and_truth(config['lensing_config'],
                                             cosmology_params, grid_x, grid_y,
-                                            rng)
+                                            rng, rotation_angle)
 
         # Just test that the data and truths vary and that they are normalized
         # as expected.
         self.assertTupleEqual(image.shape, (n_x, n_y))
         self.assertAlmostEqual(1.0, jnp.std(image), places=6)
         self.assertTupleEqual(truth.shape, (2,))
-        self.assertEqual(truth[0], 0.0)
+        self.assertEqual(truth[0], 0.5)
+
+        # Test that inserting a rotation returns a rotated image
+        rotation_angle = jnp.pi / 2
+        image_rot, _ = draw_image_and_truth(
+            config['lensing_config'], cosmology_params, grid_x, grid_y, rng,
+            rotation_angle
+        )
+
+        # Due to noise and floating point error, the rotated image is not
+        # identical, so we have to be generous with the decimal.
+        np.testing.assert_array_almost_equal(
+            image_rot,
+            ndimage.rotate(image, -rotation_angle / np.pi * 180, reshape=False),
+            decimal=2
+        )

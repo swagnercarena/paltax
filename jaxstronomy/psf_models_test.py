@@ -62,8 +62,9 @@ class AllTest(absltest.TestCase):
   def test_all(self):
     all_present = sorted(psf_models.__all__)
     all_required = []
+    ignore_list = ['_PSFModelBase', 'Any']
     for name, value in inspect.getmembers(psf_models):
-      if inspect.isclass(value) and name != '_PSFModelBase':
+      if inspect.isclass(value) and name not in ignore_list:
         all_required.append(name)
 
     self.assertListEqual(all_present, sorted(all_required))

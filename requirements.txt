@@ -6,6 +6,7 @@ jax
 tensorflow
 immutabledict
 clu
-flax==0.6.2
+flax
 ml_collections
 optax
+numba

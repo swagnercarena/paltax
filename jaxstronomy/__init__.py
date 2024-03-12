@@ -1,4 +1,5 @@
 from . import cosmology_utils
+from . import hierarchical_inference
 from . import image_simulation
 from . import lens_models
 from . import los

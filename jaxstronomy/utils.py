@@ -16,6 +16,7 @@
 import functools
 from typing import Any, Callable, Sequence, Tuple
 
+import jax
 import jax.numpy as jnp
 
 
@@ -117,3 +118,65 @@ def get_k_correction(z_light: float) -> float:
 		for the absolute and apparent magntidue is the same
     """
     return 2.5 * jnp.log(1 + z_light)
+
+
+def rotate_coordinates(
+        grid_x: jnp.ndarray, grid_y: jnp.ndarray, angle: float
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Rotate grid by rotation angle.
+
+    Args:
+        grid_x: X-coordinates to rotate.
+        grid_y: Y-coordinates to rotate.
+        angle: Angle of counterclockwise rotation.
+
+    Returns:
+        Rotated x- and y-coordinates.
+    """
+    complex_coords = jnp.exp(1j * angle) * ((grid_x) + (grid_y) * 1j)
+    return complex_coords.real, complex_coords.imag
+
+
+def random_permutation_iterator(
+        array_to_cycle: jnp.ndarray, rng: Sequence[int]
+    ) -> Any:
+    """Yield a generator that cycles through random permutation of an array.
+
+    Args:
+        array_to_cycle: Array to cycle over random permutations of.
+        rng: jax PRNG key.
+
+    Returns:
+        Generator function that cycles over random permutation of the array.
+    """
+    # Will loop forever.
+    while True:
+        rng_shuffle, rng = jax.random.split(rng)
+
+        # Shuffle the array randomly and cycle through the list.
+        shuffled_array = jax.random.permutation(rng_shuffle, array_to_cycle)
+        for item in shuffled_array:
+            yield item
+
+
+def ellip_to_angle(
+        ellip_x: jnp.ndarray, ellip_xy: jnp.ndarray
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Convert from complex ellipticity moduli to angle and axis ratio.
+
+    Args:
+        ellip_x: Eccentricity in the x-direction.
+        ellip_xy: Eccentricity in the xy-direction.
+
+    Returns:
+        Axis ratio and angle.
+    """
+    # Angle is encoded in the arctangent.
+    angle = jnp.arctan2(ellip_xy, ellip_x) / 2
+
+    # Axis ratio is a function of the magnitude.
+    ellip_mag = jnp.sqrt(ellip_x ** 2 + ellip_xy ** 2)
+    ellip_mag = jnp.minimum(ellip_mag, 0.9999)
+    axis_ratio = (1 - ellip_mag) / (1 + ellip_mag)
+
+    return axis_ratio, angle
