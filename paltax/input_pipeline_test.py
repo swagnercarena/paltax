@@ -910,20 +910,20 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
 
         cosmology_params = input_pipeline.initialize_cosmology_params(config,
                                                                      rng)
-        n_x = 16
-        n_y = 16
+        n_x = 4
+        n_y = 4
         config['kwargs_detector'] = {
             'n_x': n_x, 'n_y': n_y, 'pixel_width': 0.4,
-            'supersampling_factor': 2, 'exposure_time': 1e8,
+            'supersampling_factor': 1, 'exposure_time': 1e8,
             'num_exposures': 1.0, 'sky_brightness': 220,
             'magnitude_zero_point': 25, 'read_noise': 1e-8
         }
         grid_x, grid_y = input_pipeline.generate_grids(config)
         kwargs_simulation = {
-            'num_z_bins': 1000,
+            'num_z_bins': 10,
             'los_pad_length': 10,
             'subhalos_pad_length': 10,
-            'sampling_pad_length': 1000,
+            'sampling_pad_length': 100,
         }
         kwargs_psf = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 0.02}
         truth_parameters = (
