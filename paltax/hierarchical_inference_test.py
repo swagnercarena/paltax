@@ -20,7 +20,7 @@ import numba
 import numpy as np
 from scipy import stats
 from scipy import integrate
-from jaxstronomy import hierarchical_inference
+from paltax import hierarchical_inference
 
 
 def _prepare_test_gaussian_product_analytical(problem):
