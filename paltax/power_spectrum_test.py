@@ -37,7 +37,7 @@ from absl.testing import parameterized
 import chex
 import jax.numpy as jnp
 import numpy as np
-from jaxstronomy import power_spectrum
+from paltax import power_spectrum
 
 
 def _prepare__calculate_z_k_eq_expected(omega_m_h_squared, temp_cmb_scaled):

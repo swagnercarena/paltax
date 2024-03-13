@@ -22,7 +22,7 @@ import jax
 import jax.numpy as jnp
 from scipy.integrate import quad
 
-from jaxstronomy import power_law
+from paltax import power_law
 
 
 class PowerLawTests(chex.TestCase, parameterized.TestCase):

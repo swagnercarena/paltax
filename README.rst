@@ -2,9 +2,6 @@
 paltax
 ==========================================================================
 
-.. image:: https://badge.fury.io/py/paltax.svg
-    :target: https://badge.fury.io/py/paltax
-
 .. image:: https://github.com/swagnercarena/paltax/workflows/CI/badge.svg
     :target: https://github.com/swagnercarena/paltax/actions
 
