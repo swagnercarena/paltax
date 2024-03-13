@@ -645,15 +645,33 @@ def rotate_params(all_params: Mapping[str, Mapping[str, jnp.ndarray]],
     """
     extract_objects, extract_keys, _ = truth_parameters
 
+    # The basic rotation operation applied to each parameter pair.
+    def _rotation_operation(param_one: str, param_two: str,
+        rotation_angle: float):
+        # Get the parameter indices.
+        index_one = extract_keys.index(param_one)
+        index_two = extract_keys.index(param_two)
+
+        # Extract the values and rotate.
+        param_one_val = all_params[extract_objects[index_one]][param_one]
+        param_two_val = all_params[extract_objects[index_two]][param_two]
+        param_one_val, param_two_val = utils.rotate_coordinates(
+            param_one_val, param_two_val, rotation_angle
+        )
+
+        # Set the new parameter values.
+        all_params[extract_objects[index_one]][param_one] = param_one_val
+        all_params[extract_objects[index_two]][param_two] = param_two_val
+
+
     if 'center_x' in extract_keys or 'center_y' in extract_keys:
-        index_x = extract_keys.index('center_x')
-        index_y = extract_keys.index('center_y')
-        center_x = all_params[extract_objects[index_x]]['center_x']
-        center_y = all_params[extract_objects[index_y]]['center_y']
-        center_x, center_y = utils.rotate_coordinates(center_x, center_y,
-                                                      rotation_angle)
-        all_params[extract_objects[index_x]]['center_x'] = center_x
-        all_params[extract_objects[index_y]]['center_y'] = center_y
+        _rotation_operation('center_x', 'center_y', rotation_angle)
+
+    if 'ellip_x' in extract_keys or 'ellip_xy' in extract_keys:
+        _rotation_operation('ellip_x', 'ellip_xy', 2 * rotation_angle)
+
+    if 'gamma_one' in extract_keys or 'gamma_two' in extract_keys:
+        _rotation_operation('gamma_one', 'gamma_two', 2 * rotation_angle)
 
     if 'angle' in extract_keys:
         index = extract_keys.index('angle')

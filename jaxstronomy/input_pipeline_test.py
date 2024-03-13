@@ -56,9 +56,10 @@ def _prepare_lensing_config():
             'slope': encode_normal(mean=2.0, std=0.1),
             'center_x': encode_normal(mean=0.0, std=0.16),
             'center_y': encode_normal(mean=0.0, std=0.16),
-            'axis_ratio': encode_normal(mean=1.0, std=0.05),
-            'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
-            'gamma_ext': encode_normal(mean=0.0, std=0.05),
+            'ellip_x': encode_normal(mean=0.0, std=0.1),
+            'ellip_xy': encode_normal(mean=0.0, std=0.1),
+            'gamma_one': encode_normal(mean=0.0, std=0.05),
+            'gamma_two': encode_normal(mean=0.0, std=0.05),
             'zero_x': encode_constant(0.0),
             'zero_y': encode_constant(0.0)
         },
@@ -777,10 +778,20 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             'not_main_deflector': {
                 'a': jnp.array([1.0,0.0]),
                 'b': jnp.array([0.7,0.0]),
-                'c': jnp.array([10.2,0.0])}}
-        extract_objects = ['main_deflector', 'main_deflector',
-                    'main_deflector']
-        extract_keys = ['center_x', 'center_y', 'angle']
+                'c': jnp.array([10.2,0.0]),
+                'gamma_one': jnp.array([0.1, 0.3]),
+                'gamma_two': jnp.array([-0.1, -0.2]),
+                'ellip_x': jnp.array([0.3, 0.3]),
+                'ellip_xy': jnp.array([-0.1, -0.1])}}
+        extract_objects = [
+            'main_deflector', 'main_deflector', 'main_deflector',
+            'not_main_deflector', 'not_main_deflector', 'not_main_deflector',
+            'not_main_deflector'
+        ]
+        extract_keys = [
+            'center_x', 'center_y', 'angle', 'gamma_one', 'gamma_two',
+            'ellip_x', 'ellip_xy'
+        ]
         extract_indices = [0, 0, 0]
         truth_parameters = (extract_objects, extract_keys, extract_indices)
         rotation_angle = jnp.pi / 4
@@ -798,6 +809,14 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
                                1 / np.sqrt(2))
         self.assertAlmostEqual(all_params['main_deflector']['angle'][0],
                                10.0 + rotation_angle)
+        self.assertAlmostEqual(all_params['not_main_deflector']['gamma_one'][0],
+                               0.1)
+        self.assertAlmostEqual(all_params['not_main_deflector']['gamma_two'][0],
+                               0.1)
+        self.assertAlmostEqual(all_params['not_main_deflector']['ellip_x'][0],
+                               0.1)
+        self.assertAlmostEqual(all_params['not_main_deflector']['ellip_xy'][0],
+                               0.3)
 
 
     @chex.all_variants(without_device=False)
@@ -858,8 +877,8 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         all_models = {
             'all_los_models': (lens_models.NFW(),),
             'all_subhalo_models': (lens_models.TNFW(),),
-            'all_main_deflector_models': (lens_models.Shear(),
-                                          lens_models.EPL()),
+            'all_main_deflector_models': (lens_models.ShearCart(),
+                                          lens_models.EPLEllip()),
             'all_source_models': (source_models.SersicElliptic(),
                                   source_models.CosmosCatalog(
                                      'test_files/cosmos_galaxies_testing.npz'
@@ -908,9 +927,12 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         }
         kwargs_psf = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 0.02}
         truth_parameters = (
-            ['main_deflector_params', 'subhalo_params'],
-            ['theta_e', 'sigma_sub'],
-            [0, 0]
+            [
+                'main_deflector_params', 'subhalo_params',
+                'main_deflector_params', 'main_deflector_params'
+            ],
+            ['theta_e', 'sigma_sub', 'gamma_one', 'gamma_two'],
+            [0, 0, 0, 0]
         )
 
         draw_image_and_truth = self.variant(functools.partial(
@@ -929,12 +951,12 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         # as expected.
         self.assertTupleEqual(image.shape, (n_x, n_y))
         self.assertAlmostEqual(1.0, jnp.std(image), places=6)
-        self.assertTupleEqual(truth.shape, (2,))
+        self.assertTupleEqual(truth.shape, (4,))
         self.assertEqual(truth[0], 0.5)
 
         # Test that inserting a rotation returns a rotated image
         rotation_angle = jnp.pi / 2
-        image_rot, _ = draw_image_and_truth(
+        image_rot, truth_rot = draw_image_and_truth(
             config['lensing_config'], cosmology_params, grid_x, grid_y, rng,
             rotation_angle
         )
@@ -945,4 +967,11 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             image_rot,
             ndimage.rotate(image, -rotation_angle / np.pi * 180, reshape=False),
             decimal=2
+        )
+        # For gamma we have performed the equivalent of a 90 degree rotation.
+        np.testing.assert_array_almost_equal(
+            truth[3], -truth_rot[3]
+        )
+        np.testing.assert_array_almost_equal(
+            truth[4], -truth_rot[4]
         )
