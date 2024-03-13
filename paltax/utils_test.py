@@ -19,8 +19,8 @@ import chex
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jaxstronomy import lens_models
-from jaxstronomy import utils
+from paltax import lens_models
+from paltax import utils
 
 COSMOLOGY_DICT = {
         'omega_m_zero': 0.30966,
