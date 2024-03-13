@@ -19,8 +19,6 @@ import functools
 import time
 from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple, Union
 
-from absl import app
-from absl import flags
 from clu import metric_writers
 from clu import periodic_actions
 from flax import jax_utils
@@ -34,12 +32,6 @@ import optax
 from paltax import input_pipeline
 from paltax import models
 from paltax import train
-from paltax import utils
-
-
-FLAGS = flags.FLAGS
-# Most flags come from train.
-flags.DEFINE_string('target_image_path', None, 'path to the target image.')
 
 
 def compute_metrics(
@@ -218,7 +210,6 @@ def train_and_evaluate_snpe(
         input_config: dict,
         workdir: str,
         rng: Union[Iterator[Sequence[int]], Sequence[int]],
-        image_size: int, learning_rate: float,
         target_image: jnp.ndarray,
         normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
 ):
@@ -227,6 +218,11 @@ def train_and_evaluate_snpe(
 
     if normalize_config is None:
         normalize_config = copy.deepcopy(input_config['lensing_config'])
+
+    # Pull parameters from config files.
+    image_size = input_config['kwargs_detector']['n_x']
+    learning_rate = config.learning_rate
+    base_learning_rate = learning_rate * config.batch_size / 256.
 
     writer = metric_writers.create_default_writer(
         logdir=workdir, just_logging=jax.process_index() != 0)
@@ -244,8 +240,6 @@ def train_and_evaluate_snpe(
             num_initial_steps + num_steps_per_refinement * refinement
         )
     # TODO Until here
-
-    base_learning_rate = learning_rate * config.batch_size / 256.
 
     model_cls = getattr(models, config.model)
     num_outputs = len(input_config['truth_parameters'][0]) * 2
@@ -409,22 +403,3 @@ def train_and_evaluate_snpe(
     jax.random.normal(jax.random.PRNGKey(0), ()).block_until_ready()
 
     return state
-
-
-def main(_):
-    """Train neural network model with configuration defined by flags."""
-    train_config = train._get_config(FLAGS.train_config_path)
-    input_config = train._get_config(FLAGS.input_config_path)
-    image_size = input_config['kwargs_detector']['n_x']
-    target_image = jnp.load(FLAGS.target_image_path)
-
-    rng = jax.random.PRNGKey(0)
-    if FLAGS.num_unique_batches > 0:
-        rng_list = jax.random.split(rng, FLAGS.num_unique_batches)
-        rng = utils.random_permutation_iterator(rng_list, rng)
-    train_and_evaluate_snpe(train_config, input_config, FLAGS.workdir, rng,
-                       image_size, FLAGS.learning_rate, target_image)
-
-
-if __name__ == '__main__':
-    app.run(main)

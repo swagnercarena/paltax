@@ -21,8 +21,6 @@ import sys
 import time
 from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple, Union
 
-from absl import app
-from absl import flags
 from clu import metric_writers
 from clu import periodic_actions
 from flax import jax_utils
@@ -37,18 +35,6 @@ import optax
 
 from paltax import input_pipeline
 from paltax import models
-from paltax import utils
-
-
-FLAGS = flags.FLAGS
-flags.DEFINE_string('workdir', None, 'working directory.')
-flags.DEFINE_float('learning_rate', 0.001, 'learning rate.')
-flags.DEFINE_integer('num_unique_batches', 0,
-    'number of unique batches of data to draw. If 0 produces infinite data.')
-flags.DEFINE_string('train_config_path', './train_config.py',
-    'path to the training configuration.')
-flags.DEFINE_string('input_config_path', './input_config.py',
-    'path to the input configuration.')
 
 
 def initialized(
@@ -338,7 +324,6 @@ def train_and_evaluate(
         input_config: dict,
         workdir: str,
         rng: Union[Iterator[Sequence[int]], Sequence[int]],
-        image_size: int, learning_rate: float,
         normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
 ) -> TrainState:
     """
@@ -346,6 +331,11 @@ def train_and_evaluate(
 
     if normalize_config is None:
         normalize_config = copy.deepcopy(input_config['lensing_config'])
+
+    # Pull parameters from config files.
+    image_size = input_config['kwargs_detector']['n_x']
+    learning_rate = config.learning_rate
+    base_learning_rate = learning_rate * config.batch_size / 256.
 
     writer = metric_writers.create_default_writer(
         logdir=workdir, just_logging=jax.process_index() != 0)
@@ -355,8 +345,6 @@ def train_and_evaluate(
 
     steps_per_epoch = config.steps_per_epoch
     num_steps = config.num_train_steps
-
-    base_learning_rate = learning_rate * config.batch_size / 256.
 
     model_cls = getattr(models, config.model)
     num_outputs = len(input_config['truth_parameters'][0]) * 2
@@ -465,37 +453,3 @@ def train_and_evaluate(
     jax.random.normal(jax.random.PRNGKey(0), ()).block_until_ready()
 
     return state
-
-
-def _get_config(config_path: str) -> Any:
-    """Return config from provided path.
-
-    Args:
-        config_path: Path to configuration file.
-
-    Returns:
-        Loaded configuration file.
-    """
-    # Get the dictionary from the .py file.
-    config_dir, config_file = os.path.split(os.path.abspath(config_path))
-    sys.path.insert(0, config_dir)
-    config_name, _ = os.path.splitext(config_file)
-    config_module = import_module(config_name)
-    return config_module.get_config()
-
-
-def main(_):
-    """Train neural network model with configuration defined by flags."""
-    train_config = _get_config(FLAGS.train_config_path)
-    input_config = _get_config(FLAGS.input_config_path)
-    image_size = input_config['kwargs_detector']['n_x']
-    rng = jax.random.PRNGKey(0)
-    if FLAGS.num_unique_batches > 0:
-        rng_list = jax.random.split(rng, FLAGS.num_unique_batches)
-        rng = utils.random_permutation_iterator(rng_list, rng)
-    train_and_evaluate(train_config, input_config, FLAGS.workdir, rng,
-                       image_size, FLAGS.learning_rate)
-
-
-if __name__ == '__main__':
-    app.run(main)
