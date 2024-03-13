@@ -22,7 +22,7 @@ from typing import Mapping, Sequence, Tuple, Union
 import jax
 import jax.numpy as jnp
 
-from jaxstronomy import cosmology_utils
+from paltax import cosmology_utils
 
 
 def r_two_hund_from_m(

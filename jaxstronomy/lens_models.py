@@ -21,7 +21,7 @@ from typing import Any, Mapping, Tuple, Union
 
 import jax.numpy as jnp
 
-from jaxstronomy import utils
+from paltax import utils
 
 __all__ = ['EPL', 'EPLEllip', 'NFW', 'ShearCart', 'Shear', 'TNFW']
 

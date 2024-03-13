@@ -21,9 +21,9 @@ import ml_collections
 import numpy as np
 from scipy.stats import multivariate_normal
 
-from jaxstronomy import input_pipeline
-from jaxstronomy import models
-from jaxstronomy import train
+from paltax import input_pipeline
+from paltax import models
+from paltax import train
 
 class TrainTests(chex.TestCase, parameterized.TestCase):
     """Runs tests of training functions."""

@@ -25,7 +25,7 @@ from typing import Mapping, Optional, Union
 import jax
 import jax.numpy as jnp
 
-from jaxstronomy import power_spectrum
+from paltax import power_spectrum
 
 SPEED_OF_LIGHT = 2.99792458e8
 GRAVITATIONAL_CONSTANT = 6.67384e-11

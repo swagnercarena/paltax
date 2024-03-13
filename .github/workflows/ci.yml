@@ -32,7 +32,7 @@ jobs:
           python -m pip install .
       - name: Test with pytest
         run: |
-          cd test
+          cd jaxstronomy
           coverage run --source jaxstronomy --omit=*jaxstronomy/*Configs/* -m unittest -v *_tests.py
           coverage lcov
       - name: Coveralls

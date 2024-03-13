@@ -22,11 +22,11 @@ import jax.numpy as jnp
 import numpy as np
 from scipy import ndimage
 
-from jaxstronomy import cosmology_utils
-from jaxstronomy import input_pipeline
-from jaxstronomy import lens_models
-from jaxstronomy import psf_models
-from jaxstronomy import source_models
+from paltax import cosmology_utils
+from paltax import input_pipeline
+from paltax import lens_models
+from paltax import psf_models
+from paltax import source_models
 
 
 def _prepare_lensing_config():

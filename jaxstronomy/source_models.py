@@ -24,8 +24,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from jaxstronomy import cosmology_utils
-from jaxstronomy import utils
+from paltax import cosmology_utils
+from paltax import utils
 
 __all__ = ['Interpol', 'SersicElliptic', 'CosmosCatalog']
 

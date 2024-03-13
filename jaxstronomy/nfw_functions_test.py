@@ -24,8 +24,8 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.integrate import quad
 
-from jaxstronomy import cosmology_utils
-from jaxstronomy import nfw_functions
+from paltax import cosmology_utils
+from paltax import nfw_functions
 
 
 COSMOLOGY_PARAMS_INIT = immutabledict({
@@ -58,7 +58,7 @@ def _prepare_main_deflector_params():
 
 
 def _prepare_substructure_params():
-    substructure_params = {'c_zero': 18, 'conc_zeta': -0.2, 'conc_beta': 0.8, 
+    substructure_params = {'c_zero': 18, 'conc_zeta': -0.2, 'conc_beta': 0.8,
         'conc_m_ref': 1e8, 'conc_dex_scatter': 0.0}
     return substructure_params
 

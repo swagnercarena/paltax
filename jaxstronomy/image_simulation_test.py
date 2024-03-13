@@ -23,12 +23,12 @@ from immutabledict import immutabledict
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jaxstronomy import cosmology_utils
-from jaxstronomy import image_simulation
-from jaxstronomy import lens_models
-from jaxstronomy import psf_models
-from jaxstronomy import source_models
-from jaxstronomy import utils
+from paltax import cosmology_utils
+from paltax import image_simulation
+from paltax import lens_models
+from paltax import psf_models
+from paltax import source_models
+from paltax import utils
 
 COSMOLOGY_PARAMS_LENSTRONOMY = immutabledict({
     'omega_m_zero': 0.30966,

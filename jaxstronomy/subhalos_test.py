@@ -22,10 +22,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from jaxstronomy import cosmology_utils
-from jaxstronomy import nfw_functions
-from jaxstronomy import power_law
-from jaxstronomy import subhalos
+from paltax import cosmology_utils
+from paltax import nfw_functions
+from paltax import power_law
+from paltax import subhalos
 
 
 COSMOLOGY_PARAMS_INIT = immutabledict({

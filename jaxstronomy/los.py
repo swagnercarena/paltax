@@ -23,9 +23,9 @@ from typing import Mapping, Sequence, Tuple, Union
 import jax
 import jax.numpy as jnp
 
-from jaxstronomy import cosmology_utils
-from jaxstronomy import nfw_functions
-from jaxstronomy import power_law
+from paltax import cosmology_utils
+from paltax import nfw_functions
+from paltax import power_law
 
 # Parameters fit from simulations and fixed so that the integral for the nu
 # function over all nu gives 1.

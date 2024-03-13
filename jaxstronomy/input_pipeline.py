@@ -20,11 +20,11 @@ from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 import jax.numpy as jnp
 import jax
 
-from jaxstronomy import cosmology_utils
-from jaxstronomy import los
-from jaxstronomy import subhalos
-from jaxstronomy import image_simulation
-from jaxstronomy import utils
+from paltax import cosmology_utils
+from paltax import los
+from paltax import subhalos
+from paltax import image_simulation
+from paltax import utils
 
 
 NUM_NORMAL_DISTRIBUTIONS = 100

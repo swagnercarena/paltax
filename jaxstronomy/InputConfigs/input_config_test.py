@@ -11,17 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Configuration file for generating jaxstronomy image outputs.
+"""Configuration file for generating paltax image outputs.
 """
 
 import jax
 import jax.numpy as jnp
 
-from jaxstronomy.input_pipeline import encode_normal, encode_uniform
-from jaxstronomy.input_pipeline import encode_constant
-from jaxstronomy import lens_models
-from jaxstronomy import psf_models
-from jaxstronomy import source_models
+from paltax.input_pipeline import encode_normal, encode_uniform
+from paltax.input_pipeline import encode_constant
+from paltax import lens_models
+from paltax import psf_models
+from paltax import source_models
 
 
 def get_config():
@@ -101,7 +101,7 @@ def get_config():
         'exposure_time': 1024, 'num_exposures': 2.0, 'sky_brightness': 22,
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
-    cosmos_path = '/Users/sebastianwagner-carena/Documents/Grad_School/Research/jaxstronomy/datasets/cosmos/cosmos_galaxies_train.npz'
+    cosmos_path = '/Users/sebastianwagner-carena/Documents/Grad_School/Research/paltax/datasets/cosmos/cosmos_galaxies_train.npz'
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),

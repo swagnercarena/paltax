@@ -22,9 +22,9 @@ from typing import Mapping, Optional, Sequence, Tuple, Union
 import jax
 import jax.numpy as jnp
 
-from jaxstronomy import cosmology_utils
-from jaxstronomy import nfw_functions
-from jaxstronomy import power_law
+from paltax import cosmology_utils
+from paltax import nfw_functions
+from paltax import power_law
 
 
 def host_scaling_function(host_mass: float, z_lens: float, k_one: float,

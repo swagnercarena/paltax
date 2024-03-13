@@ -24,8 +24,8 @@ from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 import jax
 import jax.numpy as jnp
 
-from jaxstronomy import cosmology_utils
-from jaxstronomy import utils
+from paltax import cosmology_utils
+from paltax import utils
 
 
 def generate_image(

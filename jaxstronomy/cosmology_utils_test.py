@@ -24,7 +24,7 @@ from immutabledict import immutabledict
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jaxstronomy import cosmology_utils
+from paltax import cosmology_utils
 
 # Using immutabledict is good practice, although we will have to cast to dict
 # everywhere because jax does not accept immutabledict.

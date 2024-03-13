@@ -21,9 +21,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from jaxstronomy import input_pipeline
-from jaxstronomy import train
-from jaxstronomy import train_snpe
+from paltax import input_pipeline
+from paltax import train
+from paltax import train_snpe
 
 TEST_INPUT_CONFIG_PATH = os.path.join(os.path.dirname(__file__),
                                       'InputConfigs/input_config_test.py')

@@ -26,7 +26,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from jaxstronomy import lens_models, utils
+from paltax import lens_models, utils
 
 
 def _prepare_epl_parameters():

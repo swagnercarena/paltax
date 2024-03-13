@@ -23,9 +23,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from jaxstronomy import cosmology_utils
-from jaxstronomy import los
-from jaxstronomy import power_law
+from paltax import cosmology_utils
+from paltax import los
+from paltax import power_law
 
 
 COSMOLOGY_PARAMS_INIT = immutabledict({

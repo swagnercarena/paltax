@@ -31,10 +31,10 @@ import jax.numpy as jnp
 import ml_collections
 import optax
 
-from jaxstronomy import input_pipeline
-from jaxstronomy import models
-from jaxstronomy import train
-from jaxstronomy import utils
+from paltax import input_pipeline
+from paltax import models
+from paltax import train
+from paltax import utils
 
 
 FLAGS = flags.FLAGS
