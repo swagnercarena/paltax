@@ -1,10 +1,6 @@
 ==========================================================================
-|logo| paltax
+paltax
 ==========================================================================
-
-.. |logo| image:: https://raw.githubusercontent.com/swagnercarena/paltax/main/docs/figures/logo.png
-    :target: https://raw.githubusercontent.com/swagnercarena/paltax/main/docs/figures/logo.png
-    :width: 100
 
 .. image:: https://badge.fury.io/py/paltax.svg
     :target: https://badge.fury.io/py/paltax
