@@ -19,7 +19,7 @@ import emcee
 import numba
 import numpy as np
 
-from jaxstronomy import hierarchical_inference
+from paltax import hierarchical_inference
 
 
 FLAGS = flags.FLAGS
