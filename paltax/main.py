@@ -31,7 +31,10 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string('workdir', None, 'working directory.')
 flags.DEFINE_string('config_path', None,
     'path to the training configuration.')
-flags.DEFINE_string('target_image_path', None, 'path to the target image.')
+flags.DEFINE_string(
+    'target_image_path', None,
+    'path to the target image. Only required for SNPE.'
+)
 
 
 def _get_config(config_path: str) -> Any:
@@ -60,6 +63,8 @@ def main(_: Any):
     rng = jax.random.PRNGKey(config.get('rng_key',0))
 
     if config.get('num_unique_batches',0) > 0:
+        if config.train_type == 'SNPE':
+            raise ValueError('Cannot do finite batches with sequential.')
         rng_list = jax.random.split(rng, FLAGS.num_unique_batches)
         rng = utils.random_permutation_iterator(rng_list, rng)
 

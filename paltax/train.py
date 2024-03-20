@@ -15,9 +15,6 @@
 
 import copy
 import functools
-from importlib import import_module
-import os
-import sys
 import time
 from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple, Union
 
@@ -237,11 +234,28 @@ def get_outputs(state, batch):
             mutable=['batch_stats'])
 
 
-def train_step(state, batch, learning_rate_schedule):
-    """Perform a single training step."""
+class TrainState(train_state.TrainState):
+    """Training state class for models."""
+    batch_stats: Any
 
+
+def train_step(
+    state: TrainState, batch: Mapping[str, jnp.ndarray],
+    learning_rate_schedule: Mapping[int, float]
+) -> Tuple[TrainState, Mapping[str, Any]]:
+    """Perform a single training step.
+
+    Args:
+        state: Current TrainState object for the model.
+        batch: Dictionairy of images and truths to be used for training.
+        learning_rate_schedule: Learning rate schedule to apply.
+
+    Returns:
+        Updated TrainState object and metrics for training step."""
+
+    # Define loss function seperately for use with jax.value_and_grad.
     def loss_fn(params):
-        """loss function used for training."""
+        """Loss function used for training."""
         outputs, new_model_state = state.apply_fn(
             {'params': params, 'batch_stats': state.batch_stats},
             batch['image'],
@@ -250,9 +264,12 @@ def train_step(state, batch, learning_rate_schedule):
 
         return loss, (new_model_state, outputs)
 
+    # Extract learning rate for current step.
     step = state.step
     lr = learning_rate_schedule(step)
 
+    # Extract gradients for weight updates and current model state and outputs
+    # for both weight updates and metrics.
     grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
     aux, grads = grad_fn(state.params)
     # Re-use same axis_name as in the call to `pmap(...train_step...)` below.
@@ -267,15 +284,21 @@ def train_step(state, batch, learning_rate_schedule):
     return new_state, metrics
 
 
-class TrainState(train_state.TrainState):
-    batch_stats: Any
+def save_checkpoint(
+    state: TrainState, workdir: str,  keep_every_n_steps: Optional[int] = None
+):
+    """Save the current training state as a checkpoint.
 
+    Args:
+        state: State that will be saved to checkpoint file.
+        workdir: Directory to save checkpoints to.
+        keep_every_n_steps: Checkpoints at this cadence will be preserved no
+            matter how old.
 
-def restore_checkpoint(state, workdir):
-    return checkpoints.restore_checkpoint(workdir, state)
+    Notes:
+        Checkpoint name will be automatically determined by current step.
 
-
-def save_checkpoint(state, workdir, keep_every_n_steps=None):
+    """
     if jax.process_index() == 0:
         # get train state from the first replica
         state = jax.device_get(jax.tree_util.tree_map(lambda x: x[0], state))
@@ -289,16 +312,36 @@ def save_checkpoint(state, workdir, keep_every_n_steps=None):
 cross_replica_mean = jax.pmap(lambda x: lax.pmean(x, 'x'), 'x')
 
 
-def sync_batch_stats(state):
-    """Sync the batch statistics across replicas."""
+def sync_batch_stats(state: TrainState) -> TrainState:
+    """Sync the batch statistics across replicas.
+
+    Args:
+        state: State to sync.
+
+    Returns:
+        Synchronized training state.
+    """
     # Each device has its own version of the running average batch statistics and
     # we sync them before evaluation.
     return state.replace(batch_stats=cross_replica_mean(state.batch_stats))
 
 
-def create_train_state(rng, config: ml_collections.ConfigDict,
-                       model, image_size, learning_rate_schedule):
-    """Create initial training state."""
+def create_train_state(
+    rng: Sequence[int], config: ml_collections.ConfigDict,
+    model: Any, image_size: int, learning_rate_schedule: Mapping[int,float]
+) -> TrainState:
+    """Create initial training state.
+
+    Args:
+        rng: jax PRNG key.
+        config: Configuration with optimizer specification.
+        model: Instance of model architecture.
+        image_size: Dimension of square image.
+        learning_rate_schedule: Learning rate schedule.
+
+    Returns:
+        Initialized TrainState for model.
+    """
     params, batch_stats = initialized(rng, image_size, model)
     optimizer = config.get('optimizer', 'adam')
     if optimizer == 'adam':
@@ -326,7 +369,18 @@ def train_and_evaluate(
         rng: Union[Iterator[Sequence[int]], Sequence[int]],
         normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
 ) -> TrainState:
-    """
+    """Train model specified by configuration files.
+
+    Args:
+        config: Configuration specifying training and model parameters.
+        input_config: Configuration used to generate lensing images.
+        workddir: Directory to which model checkpoints will be saved.
+        rng: jax PRNG key.
+        normalize_config: Optional seperate config that specifying the lensing
+            parameter distirbutions to use when normalizing the model outputs.
+
+    Returns:
+        Training state after training has completed.
     """
 
     if normalize_config is None:
@@ -341,7 +395,9 @@ def train_and_evaluate(
         logdir=workdir, just_logging=jax.process_index() != 0)
 
     if config.batch_size % jax.device_count() > 0:
-        raise ValueError('Batch size must be divisible by the number of devices')
+        raise ValueError(
+            'Batch size must be divisible by the number of devices'
+        )
 
     steps_per_epoch = config.steps_per_epoch
     num_steps = config.num_train_steps
@@ -361,7 +417,7 @@ def train_and_evaluate(
         rng, rng_state = jax.random.split(rng)
     state = create_train_state(rng_state, config, model, image_size,
         learning_rate_schedule)
-    state = restore_checkpoint(state, workdir)
+    state = checkpoints.restore_checkpoint(workdir, state)
 
     # step_offset > 0 if restarting from checkpoint
     step_offset = int(state.step)
