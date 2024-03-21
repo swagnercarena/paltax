@@ -22,6 +22,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from paltax import input_pipeline
+from paltax import main
 from paltax import train
 from paltax import train_snpe
 
@@ -68,7 +69,7 @@ class TrainSNPETests(chex.TestCase, parameterized.TestCase):
 
     def test_proposal_distribution_update(self):
         # Test that the current posterior is correctly overwritten.
-        input_config = train._get_config(TEST_INPUT_CONFIG_PATH)
+        input_config = main._get_config(TEST_INPUT_CONFIG_PATH)
         current_posterior = jnp.array(
             [0.1, 0.2, 0.0, -0.2, 1.0,
              jnp.log(4), 0.0, jnp.log(0.25), 0.0, 0.0]
@@ -128,7 +129,7 @@ class TrainSNPETests(chex.TestCase, parameterized.TestCase):
     def test_proposal_distribution_update_avg(self):
         # Test that the current posterior is correctly overwritten when
         # averaging is requested.
-        input_config = train._get_config(TEST_INPUT_CONFIG_PATH)
+        input_config = main._get_config(TEST_INPUT_CONFIG_PATH)
         current_posterior = jnp.array(
             [0.1, 0.2, 0.0, -0.2, 1.0,
              jnp.log(4), 0.0, jnp.log(0.25), 0.0, 0.0]

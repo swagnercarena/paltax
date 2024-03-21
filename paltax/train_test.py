@@ -13,8 +13,11 @@
 # limitations under the License.
 """Tests for train.py."""
 
+import functools
+
 from absl.testing import parameterized
 import chex
+from flax import jax_utils
 import jax
 import jax.numpy as jnp
 import ml_collections
@@ -24,6 +27,32 @@ from scipy.stats import multivariate_normal
 from paltax import input_pipeline
 from paltax import models
 from paltax import train
+
+
+def _get_learning_rate():
+    """Create a generic learning rate."""
+    config = ml_collections.ConfigDict()
+    config.schedule_function_type = 'constant'
+    base_learning_rate = 1e-2
+    learning_rate_schedule = train.get_learning_rate_schedule(
+        config, base_learning_rate
+    )
+    return learning_rate_schedule
+
+def _create_train_state():
+    """Create generic train state for testing."""
+    rng = jax.random.PRNGKey(0)
+    config = ml_collections.ConfigDict()
+    model = models.ResNet50(num_outputs=2, dtype=jnp.float32)
+    image_size = 4
+    learning_rate_schedule = _get_learning_rate()
+
+    train_state = train.create_train_state(
+        rng, config, model, image_size, learning_rate_schedule
+    )
+
+    return train_state
+
 
 class TrainTests(chex.TestCase, parameterized.TestCase):
     """Runs tests of training functions."""
@@ -271,3 +300,39 @@ class TrainTests(chex.TestCase, parameterized.TestCase):
             lr_schedule = train.get_learning_rate_schedule(
                 config, base_learning_rate
             )
+
+    def test_create_train_state(self):
+        # Test that we can succesfully create a TrainState.
+        train_state = _create_train_state()
+
+        self.assertEqual(train_state.step, 0)
+
+    def test_get_outputs(self):
+        # Test that we can succesfully extract outputs
+        train_state = _create_train_state()
+        batch = {'image': jnp.ones((5, 4, 4, 1))}
+        outputs = train.get_outputs(train_state, batch)
+
+        self.assertEqual(outputs[0].shape, (5, 2))
+        self.assertTrue('batch_stats' in outputs[1])
+
+    def test_train_step(self):
+        # Test that an individual train step executes.
+        train_state = _create_train_state()
+        batch = {'image': jnp.ones((5, 4, 4, 1)), 'truth': jnp.ones((5, 2))}
+        learning_rate_schedule = _get_learning_rate()
+
+        p_train_step = jax.pmap(functools.partial(train.train_step,
+            learning_rate_schedule=learning_rate_schedule),
+            axis_name='batch')
+
+        new_state, metrics = p_train_step(
+            jax_utils.replicate(train_state), jax_utils.replicate(batch)
+        )
+
+        self.assertEqual(new_state.step, 1)
+        self.assertTrue('loss' in metrics)
+
+    def test_train_and_evaluate(self):
+        # Test that the train and evaluation step executes.
+        self.assertTrue(False)

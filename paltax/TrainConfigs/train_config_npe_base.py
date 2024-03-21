@@ -1,4 +1,5 @@
 import ml_collections
+from ml_collections.config_dict import FieldReference
 import pathlib
 
 
@@ -25,9 +26,7 @@ def get_config():
     config.cache = False
     config.half_precision = False
 
-    # If num_train_steps==-1 then the number of training steps is calculated from
-    # num_epochs using the entire dataset. Similarly for steps_per_eval.
-    config.steps_per_epoch = 3900
+    config.steps_per_epoch = FieldReference(3900)
     config.num_train_steps = 500 * config.steps_per_epoch
     config.keep_every_n_steps = config.steps_per_epoch
 

@@ -226,17 +226,27 @@ def get_learning_rate_schedule(
     return schedule_fn
 
 
-def get_outputs(state, batch):
-    """Get the outputs for a batch"""
+class TrainState(train_state.TrainState):
+    """Training state class for models."""
+    batch_stats: Any
+
+
+def get_outputs(
+    state: TrainState, batch: Mapping[str, jnp.ndarray]
+) -> Tuple[jnp.ndarray, Mapping[str, Any]]:
+    """Get the outputs for a batch.
+
+    Args:
+        state: Current model state.
+        batch: Batch of images and truths.
+
+    Returns:
+        Model output and updated batch stats.
+    """
     return state.apply_fn(
             {'params': state.params, 'batch_stats': state.batch_stats},
             batch['image'],
             mutable=['batch_stats'])
-
-
-class TrainState(train_state.TrainState):
-    """Training state class for models."""
-    batch_stats: Any
 
 
 def train_step(
