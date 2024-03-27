@@ -14,17 +14,17 @@ PACKAGE_PATH = os.path.abspath(os.path.join(__file__, os.pardir))
 required_packages = open('requirements.txt').read().splitlines()
 
 setup(
-	name='jaxstronomy',
+	name='paltax',
 	version='0.0.0',
-	description='Strong lensing package',
+	description='Strong lensing package using jax',
 	long_description=readme,
 	author='Sebastian Wagner-Carena',
 	author_email='sebaswagner@outlook.com',
-	url='https://github.com/swagnercarena/jaxstronomy',
+	url='https://github.com/swagnercarena/paltax',
 	packages=find_packages(PACKAGE_PATH),
-	package_dir={'jaxstronomy': 'jaxstronomy'},
+	package_dir={'paltax': 'paltax'},
 	include_package_data=True,
 	install_requires=required_packages,
-	license='MIT',
+	license='Apache2.0',
 	zip_safe=False
 )
