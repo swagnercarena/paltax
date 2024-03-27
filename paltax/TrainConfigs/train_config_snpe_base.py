@@ -1,6 +1,7 @@
+import pathlib
+
 import ml_collections
 from ml_collections.config_dict import FieldReference
-import pathlib
 import jax.numpy as jnp
 
 
