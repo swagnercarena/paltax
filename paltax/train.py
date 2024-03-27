@@ -15,6 +15,9 @@
 
 import copy
 import functools
+from importlib import import_module
+import os
+import sys
 import time
 from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple, Union
 
@@ -370,6 +373,23 @@ def create_train_state(
         tx=tx,
         batch_stats=batch_stats)
     return state
+
+
+def _get_config(config_path: str) -> Any:
+    """Return config from provided path.
+
+    Args:
+        config_path: Path to configuration file.
+
+    Returns:
+        Loaded configuration file.
+    """
+    # Get the dictionary from the .py file.
+    config_dir, config_file = os.path.split(os.path.abspath(config_path))
+    sys.path.insert(0, config_dir)
+    config_name, _ = os.path.splitext(config_file)
+    config_module = import_module(config_name)
+    return config_module.get_config()
 
 
 def train_and_evaluate(

@@ -223,6 +223,7 @@ def proposal_distribution_update(
 
     return prop_encoding
 
+
 def _get_refinement_step_list(config: ml_collections.ConfigDict
 ) -> Tuple[Sequence[int], int]:
     """Get the sequential refinement step list from the config.
@@ -244,6 +245,7 @@ def _get_refinement_step_list(config: ml_collections.ConfigDict
             num_initial_steps + num_steps_per_refinement * refinement
         )
     return refinement_step_list, num_steps
+
 
 def train_and_evaluate_snpe(
         config: ml_collections.ConfigDict,
@@ -293,7 +295,7 @@ def train_and_evaluate_snpe(
     rng, rng_state = jax.random.split(rng)
     state = train.create_train_state(rng_state, config, model, image_size,
         learning_rate_schedule)
-    state = checkpoints.restore_checkpoint(state, workdir)
+    state = checkpoints.restore_checkpoint(workdir, state)
 
     # step_offset > 0 if restarting from checkpoint
     step_offset = int(state.step)
@@ -346,10 +348,9 @@ def train_and_evaluate_snpe(
     prop_encoding = jax.vmap(input_pipeline.encode_normal)(
         mu_prop_init, std_prop_init
     )
-    std_norm = jnp.array([0.15, 0.1, 0.16, 0.16, 0.1, 0.1, 0.05, 0.05, 0.16,
-                          0.16, 1.1e-3])
-    mean_norm = jnp.array([1.1, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                           2e-3])
+    # TODO: This should be calculated from the input config.
+    std_norm = config.std_norm
+    mean_norm = config.mean_norm
 
     # A repeated pattern that needs access to the compiled functions. Need to
     # do this for functions on which partial is called because every call to

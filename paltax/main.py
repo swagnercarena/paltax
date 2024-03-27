@@ -13,9 +13,6 @@
 # limitations under the License.
 """Main file for running paltax from command line."""
 
-from importlib import import_module
-import os
-import sys
 from typing import Any
 
 from absl import app
@@ -37,29 +34,12 @@ flags.DEFINE_string(
 )
 
 
-def _get_config(config_path: str) -> Any:
-    """Return config from provided path.
-
-    Args:
-        config_path: Path to configuration file.
-
-    Returns:
-        Loaded configuration file.
-    """
-    # Get the dictionary from the .py file.
-    config_dir, config_file = os.path.split(os.path.abspath(config_path))
-    sys.path.insert(0, config_dir)
-    config_name, _ = os.path.splitext(config_file)
-    config_module = import_module(config_name)
-    return config_module.get_config()
-
-
 def main(_: Any):
     """Train neural network model with configuration defined by flags."""
-    config = _get_config(FLAGS.config_path)
+    config = train._get_config(FLAGS.config_path)
     # The training configuration will tell us what configuration we want to
     # use to generate images.
-    input_config = _get_config(config.input_config_path)
+    input_config = train._get_config(config.input_config_path)
     rng = jax.random.PRNGKey(config.get('rng_key',0))
 
     if config.get('num_unique_batches',0) > 0:

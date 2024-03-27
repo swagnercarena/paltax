@@ -99,12 +99,12 @@ def get_config():
 
     # The remaining parameters should not be drawn from random distributions.
     config['kwargs_detector'] = {
-        'n_x': 16, 'n_y': 16, 'pixel_width': 0.32, 'supersampling_factor': 1,
+        'n_x': 4, 'n_y': 4, 'pixel_width': 1.28, 'supersampling_factor': 1,
         'exposure_time': 1024, 'num_exposures': 2.0, 'sky_brightness': 22,
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
-    cosmos_path = str(pathlib.Path(__file__).parent.parent.parent)
-    cosmos_path += '/datasets/cosmos/cosmos_galaxies_train.npz'
+    cosmos_path = str(pathlib.Path(__file__).parent.parent)
+    cosmos_path += '/test_files/cosmos_galaxies_testing.npz'
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),
@@ -141,7 +141,7 @@ def get_config():
         'sampling_pad_length': 200,
     }
 
-    config['kwargs_psf'] = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 0.32}
+    config['kwargs_psf'] = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 1.28}
 
     config['truth_parameters'] = (
         ['main_deflector_params', 'main_deflector_params',

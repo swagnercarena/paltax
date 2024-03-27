@@ -15,6 +15,7 @@
 
 import functools
 import pathlib
+from tempfile import TemporaryDirectory
 
 from absl.testing import parameterized
 import chex
@@ -28,7 +29,6 @@ from scipy.stats import multivariate_normal
 from paltax import input_pipeline
 from paltax import models
 from paltax import train
-from paltax.InputConfigs import input_config_test
 
 
 def _get_learning_rate():
@@ -40,6 +40,7 @@ def _get_learning_rate():
         config, base_learning_rate
     )
     return learning_rate_schedule
+
 
 def _create_train_state():
     """Create generic train state for testing."""
@@ -55,6 +56,7 @@ def _create_train_state():
 
     return train_state
 
+
 def _create_test_config():
     """Return a test configuration."""
     config = ml_collections.ConfigDict()
@@ -64,7 +66,7 @@ def _create_test_config():
     # Search for the input configuration relative to this config file to ease
     # use accross filesystems.
     config.input_config_path = str(pathlib.Path(__file__).parent)
-    config.input_config_path += 'InputConfigs/input_config_test.py'
+    config.input_config_path += '/InputConfigs/input_config_test.py'
 
     # As defined in the `models` module.
     config.model = 'ResNet18VerySmall'
@@ -370,9 +372,11 @@ class TrainTests(chex.TestCase, parameterized.TestCase):
         # Test that train and evaluation works given a configuration
         # file.
         config = _create_test_config()
-        input_config = input_config_test.get_config()
-        workdir = './test_model/'
+        input_config = train._get_config(config.input_config_path)
         rng = jax.random.PRNGKey(2)
 
-        state = train.train_and_evaluate(config, input_config, workdir, rng)
-
+        with TemporaryDirectory() as tmp_dir_name:
+            state = train.train_and_evaluate(
+                config, input_config, tmp_dir_name, rng
+            )
+            self.assertEqual(state.step, 1)
