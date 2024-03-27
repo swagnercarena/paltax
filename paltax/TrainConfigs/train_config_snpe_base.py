@@ -15,7 +15,7 @@ def get_config():
 
     # Search for the input configuration relative to this config file to ease
     # use accross filesystems.
-    config.input_config_path = pathlib.Path(__file__).parent.resolve()
+    config.input_config_path = str(pathlib.Path(__file__).parent)
     config.input_config_path += '../InputConfigs/input_config_br.py'
 
     # As defined in the `models` module.

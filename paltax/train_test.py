@@ -14,6 +14,7 @@
 """Tests for train.py."""
 
 import functools
+import pathlib
 
 from absl.testing import parameterized
 import chex
@@ -27,6 +28,7 @@ from scipy.stats import multivariate_normal
 from paltax import input_pipeline
 from paltax import models
 from paltax import train
+from paltax.InputConfigs import input_config_test
 
 
 def _get_learning_rate():
@@ -43,7 +45,7 @@ def _create_train_state():
     """Create generic train state for testing."""
     rng = jax.random.PRNGKey(0)
     config = ml_collections.ConfigDict()
-    model = models.ResNet50(num_outputs=2, dtype=jnp.float32)
+    model = models.ResNet18VerySmall(num_outputs=2, dtype=jnp.float32)
     image_size = 4
     learning_rate_schedule = _get_learning_rate()
 
@@ -52,6 +54,37 @@ def _create_train_state():
     )
 
     return train_state
+
+def _create_test_config():
+    """Return a test configuration."""
+    config = ml_collections.ConfigDict()
+    config.rng_key = 0
+    config.train_type = 'NPE'
+
+    # Search for the input configuration relative to this config file to ease
+    # use accross filesystems.
+    config.input_config_path = str(pathlib.Path(__file__).parent)
+    config.input_config_path += 'InputConfigs/input_config_test.py'
+
+    # As defined in the `models` module.
+    config.model = 'ResNet18VerySmall'
+
+    config.momentum = 0.9
+    config.batch_size = 32
+
+    config.cache = False
+    config.half_precision = False
+
+    config.steps_per_epoch = 1
+    config.num_train_steps = 1
+    config.keep_every_n_steps = config.steps_per_epoch
+
+    # Parameters of the learning rate schedule
+    config.learning_rate = 0.01
+    config.schedule_function_type = 'cosine'
+    config.warmup_steps = 1
+
+    return config
 
 
 class TrainTests(chex.TestCase, parameterized.TestCase):
@@ -334,5 +367,12 @@ class TrainTests(chex.TestCase, parameterized.TestCase):
         self.assertTrue('loss' in metrics)
 
     def test_train_and_evaluate(self):
-        # Test that the train and evaluation step executes.
-        self.assertTrue(False)
+        # Test that train and evaluation works given a configuration
+        # file.
+        config = _create_test_config()
+        input_config = input_config_test.get_config()
+        workdir = './test_model/'
+        rng = jax.random.PRNGKey(2)
+
+        state = train.train_and_evaluate(config, input_config, workdir, rng)
+
