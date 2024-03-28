@@ -256,6 +256,18 @@ class TrainSNPETests(chex.TestCase, parameterized.TestCase):
             np.testing.assert_array_almost_equal(weights[0], weights[1])
             self.assertAlmostEqual(jnp.sum(weights[2:]), 0.0)
 
+    def test__get_refinement_step_list(self):
+        # Test that the refinement list is correctly produced.
+        config = _create_test_config()
+        config.steps_per_epoch = 100
+        config.num_train_steps = config.get_ref('steps_per_epoch') * 5
+
+        refinement_step_list, num_steps = (
+            train_snpe._get_refinement_step_list(config)
+        )
+        self.assertListEqual(refinement_step_list, [100, 200, 300, 400])
+        self.assertEqual(num_steps, 500)
+
     def test_train_and_evaluate_snpe(self):
         # Test that train and evaluation works given a configuration
         # file.
