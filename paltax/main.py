@@ -19,6 +19,7 @@ from absl import app
 from absl import flags
 import jax
 import jax.numpy as jnp
+from ml_collections import config_flags
 
 from paltax import utils
 from paltax import train, train_snpe
@@ -26,17 +27,20 @@ from paltax import train, train_snpe
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('workdir', None, 'working directory.')
-flags.DEFINE_string('config_path', None,
-    'path to the training configuration.')
 flags.DEFINE_string(
     'target_image_path', None,
     'path to the target image. Only required for SNPE.'
+)
+config_flags.DEFINE_config_file(
+    'config',
+    None,
+    'File path to the training configuration.',
 )
 
 
 def main(_: Any):
     """Train neural network model with configuration defined by flags."""
-    config = train._get_config(FLAGS.config_path)
+    config = FLAGS.config
     # The training configuration will tell us what configuration we want to
     # use to generate images.
     input_config = train._get_config(config.input_config_path)
