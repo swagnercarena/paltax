@@ -13,6 +13,7 @@
 # limitations under the License.
 """Configuration file for generating paltax image outputs.
 """
+import pathlib
 
 import jax
 import jax.numpy as jnp
@@ -103,7 +104,8 @@ def get_config():
         'exposure_time': 1024, 'num_exposures': 2.0, 'sky_brightness': 22,
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
-    cosmos_path = '/scratch/users/swagnerc/datasets/cosmos/cosmos_galaxies_train.npz'
+    cosmos_path = str(pathlib.Path(__file__).parent.parent.parent)
+    cosmos_path += '/datasets/cosmos/cosmos_galaxies_train.npz'
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),
@@ -139,8 +141,6 @@ def get_config():
         'subhalos_pad_length': 750,
         'sampling_pad_length': 200000,
     }
-
-    config['rng'] = jax.random.PRNGKey(0)
 
     config['kwargs_psf'] = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 0.02}
 

@@ -13,8 +13,13 @@
 # limitations under the License.
 """Tests for train.py."""
 
+import functools
+import pathlib
+from tempfile import TemporaryDirectory
+
 from absl.testing import parameterized
 import chex
+from flax import jax_utils
 import jax
 import jax.numpy as jnp
 import ml_collections
@@ -24,6 +29,65 @@ from scipy.stats import multivariate_normal
 from paltax import input_pipeline
 from paltax import models
 from paltax import train
+
+
+def _get_learning_rate():
+    """Create a generic learning rate."""
+    config = ml_collections.ConfigDict()
+    config.schedule_function_type = 'constant'
+    base_learning_rate = 1e-2
+    learning_rate_schedule = train.get_learning_rate_schedule(
+        config, base_learning_rate
+    )
+    return learning_rate_schedule
+
+
+def _create_train_state():
+    """Create generic train state for testing."""
+    rng = jax.random.PRNGKey(0)
+    config = ml_collections.ConfigDict()
+    model = models.ResNet18VerySmall(num_outputs=2, dtype=jnp.float32)
+    image_size = 4
+    learning_rate_schedule = _get_learning_rate()
+
+    train_state = train.create_train_state(
+        rng, config, model, image_size, learning_rate_schedule
+    )
+
+    return train_state
+
+
+def _create_test_config():
+    """Return a test configuration."""
+    config = ml_collections.ConfigDict()
+    config.rng_key = 0
+    config.train_type = 'NPE'
+
+    # Search for the input configuration relative to this config file to ease
+    # use accross filesystems.
+    config.input_config_path = str(pathlib.Path(__file__).parent)
+    config.input_config_path += '/InputConfigs/input_config_test.py'
+
+    # As defined in the `models` module.
+    config.model = 'ResNet18VerySmall'
+
+    config.momentum = 0.9
+    config.batch_size = 32
+
+    config.cache = False
+    config.half_precision = False
+
+    config.steps_per_epoch = 1
+    config.num_train_steps = 1
+    config.keep_every_n_steps = config.steps_per_epoch
+
+    # Parameters of the learning rate schedule
+    config.learning_rate = 0.01
+    config.schedule_function_type = 'cosine'
+    config.warmup_steps = 1
+
+    return config
+
 
 class TrainTests(chex.TestCase, parameterized.TestCase):
     """Runs tests of training functions."""
@@ -271,3 +335,48 @@ class TrainTests(chex.TestCase, parameterized.TestCase):
             lr_schedule = train.get_learning_rate_schedule(
                 config, base_learning_rate
             )
+
+    def test_create_train_state(self):
+        # Test that we can succesfully create a TrainState.
+        train_state = _create_train_state()
+
+        self.assertEqual(train_state.step, 0)
+
+    def test_get_outputs(self):
+        # Test that we can succesfully extract outputs
+        train_state = _create_train_state()
+        batch = {'image': jnp.ones((5, 4, 4, 1))}
+        outputs = train.get_outputs(train_state, batch)
+
+        self.assertEqual(outputs[0].shape, (5, 2))
+        self.assertTrue('batch_stats' in outputs[1])
+
+    def test_train_step(self):
+        # Test that an individual train step executes.
+        train_state = _create_train_state()
+        batch = {'image': jnp.ones((5, 4, 4, 1)), 'truth': jnp.ones((5, 2))}
+        learning_rate_schedule = _get_learning_rate()
+
+        p_train_step = jax.pmap(functools.partial(train.train_step,
+            learning_rate_schedule=learning_rate_schedule),
+            axis_name='batch')
+
+        new_state, metrics = p_train_step(
+            jax_utils.replicate(train_state), jax_utils.replicate(batch)
+        )
+
+        self.assertEqual(new_state.step, 1)
+        self.assertTrue('loss' in metrics)
+
+    def test_train_and_evaluate(self):
+        # Test that train and evaluation works given a configuration
+        # file.
+        config = _create_test_config()
+        input_config = train._get_config(config.input_config_path)
+        rng = jax.random.PRNGKey(2)
+
+        with TemporaryDirectory() as tmp_dir_name:
+            state = train.train_and_evaluate(
+                config, input_config, tmp_dir_name, rng
+            )
+            self.assertEqual(state.step, 1)

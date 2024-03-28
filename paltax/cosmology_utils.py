@@ -617,8 +617,10 @@ def calculate_sigma_crit(
 
 
 def correlation_function(cosmology_params, comoving_r, z_lens):
+    # TODO: This function is incomplete.
     return 0.0
 
 
 def halo_bias(cosmology_params, mass, z_lens):
+    # TODO: This function is incomplete.
     return 0.0

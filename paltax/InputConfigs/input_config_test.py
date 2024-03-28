@@ -13,8 +13,8 @@
 # limitations under the License.
 """Configuration file for generating paltax image outputs.
 """
+import pathlib
 
-import jax
 import jax.numpy as jnp
 
 from paltax.input_pipeline import encode_normal, encode_uniform
@@ -32,7 +32,7 @@ def get_config():
     # Specify the configuration for each one of the parameters.
     config['lensing_config'] = {
         'los_params':{
-            'delta_los': encode_constant(0.0),
+            'delta_los': encode_constant(0.1),
             'r_min': encode_constant(0.5),
             'r_max': encode_constant(10.0),
             'm_min': encode_constant(1e7),
@@ -55,7 +55,9 @@ def get_config():
             'center_y': encode_normal(mean=0.0, std=0.16),
             'axis_ratio': encode_normal(mean=1.0, std=0.1),
             'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
-            'gamma_ext': encode_normal(mean=0.0, std=0.1)
+            'gamma_ext': encode_normal(mean=0.0, std=0.1),
+            'zero_x': encode_constant(0.0),
+            'zero_y': encode_constant(0.0)
         },
         'subhalo_params':{
             'sigma_sub': encode_normal(mean=2.0e-3, std=1.1e-3),
@@ -97,11 +99,12 @@ def get_config():
 
     # The remaining parameters should not be drawn from random distributions.
     config['kwargs_detector'] = {
-        'n_x': 128, 'n_y': 128, 'pixel_width': 0.04, 'supersampling_factor': 2,
+        'n_x': 4, 'n_y': 4, 'pixel_width': 1.28, 'supersampling_factor': 1,
         'exposure_time': 1024, 'num_exposures': 2.0, 'sky_brightness': 22,
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
-    cosmos_path = '/Users/sebastianwagner-carena/Documents/Grad_School/Research/paltax/datasets/cosmos/cosmos_galaxies_train.npz'
+    cosmos_path = str(pathlib.Path(__file__).parent.parent)
+    cosmos_path += '/test_files/cosmos_galaxies_testing.npz'
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),
@@ -132,15 +135,13 @@ def get_config():
         'sigma_eight': encode_constant(0.815)
     }
     config['kwargs_simulation'] = {
-        'num_z_bins': 1000,
+        'num_z_bins': 10,
         'los_pad_length': 10,
-        'subhalos_pad_length': 750,
-        'sampling_pad_length': 200000,
+        'subhalos_pad_length': 75,
+        'sampling_pad_length': 200,
     }
 
-    config['rng'] = jax.random.PRNGKey(0)
-
-    config['kwargs_psf'] = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 0.02}
+    config['kwargs_psf'] = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 1.28}
 
     config['truth_parameters'] = (
         ['main_deflector_params', 'main_deflector_params',

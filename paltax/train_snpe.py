@@ -19,11 +19,10 @@ import functools
 import time
 from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple, Union
 
-from absl import app
-from absl import flags
 from clu import metric_writers
 from clu import periodic_actions
 from flax import jax_utils
+from flax.training import checkpoints
 from flax.training import common_utils
 import jax
 from jax import lax
@@ -34,12 +33,6 @@ import optax
 from paltax import input_pipeline
 from paltax import models
 from paltax import train
-from paltax import utils
-
-
-FLAGS = flags.FLAGS
-# Most flags come from train.
-flags.DEFINE_string('target_image_path', None, 'path to the target image.')
 
 
 def compute_metrics(
@@ -105,10 +98,25 @@ def get_learning_rate_schedule(
     return schedule_fn
 
 
-def train_step(state, batch, prop_encoding, mu_prior, prec_prior,
-               learning_rate_schedule):
-    """Perform a single training step."""
+def train_step(
+    state: train.TrainState, batch: Mapping[str, jnp.ndarray],
+    prop_encoding: jnp.ndarray, mu_prior: jnp.ndarray, prec_prior: jnp.ndarray,
+    learning_rate_schedule: Mapping[int, float]
+) -> Tuple[train.TrainState, Mapping[str, Any]]:
+    """Perform a single training step.
 
+    Args:
+        state: Current TrainState object for the model.
+        batch: Dictionairy of images and truths to be used for training.
+        prop_encoding: Proposal encoding.
+        mu_prior: Mean of the prior distribution.
+        prec_prior: Precision matrix for the prior distribution.
+        learning_rate_schedule: Learning rate schedule to apply.
+
+    Returns:
+        Updated TrainState object and metrics for training step."""
+
+     # Define loss function seperately for use with jax.value_and_grad.
     def loss_fn(params):
         """loss function used for training."""
         outputs, new_model_state = state.apply_fn(
@@ -120,9 +128,12 @@ def train_step(state, batch, prop_encoding, mu_prior, prec_prior,
 
         return loss, (new_model_state, outputs)
 
+    # Extract learning rate for current step.
     step = state.step
     lr = learning_rate_schedule(step)
 
+    # Extract gradients for weight updates and current model state and outputs
+    # for both weight updates and metrics.
     grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
     aux, grads = grad_fn(state.params)
     # Re-use same axis_name as in the call to `pmap(...train_step...)` below.
@@ -143,7 +154,7 @@ def proposal_distribution_update(
         std_norm: jnp.ndarray, mu_prop_init: jnp.ndarray,
         prec_prop_init: jnp.ndarray, prop_encoding: jnp.ndarray,
         prop_decay_factor: float, input_config: dict
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ) -> jnp.ndarray:
     """Update the input configuration and return new proposl distribution.
 
     Args:
@@ -197,7 +208,6 @@ def proposal_distribution_update(
         )
 
     # Modify the input config.
-    # TODO this is hard coded and needs to be fixed.
     mu_prop_unormalized = mu_prop * std_norm + mean_norm
     std_prop_unormalized = std_prop * std_norm
 
@@ -213,26 +223,17 @@ def proposal_distribution_update(
 
     return prop_encoding
 
-def train_and_evaluate_snpe(
-        config: ml_collections.ConfigDict,
-        input_config: dict,
-        workdir: str,
-        rng: Union[Iterator[Sequence[int]], Sequence[int]],
-        image_size: int, learning_rate: float,
-        target_image: jnp.ndarray,
-        normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
-):
+
+def _get_refinement_step_list(config: ml_collections.ConfigDict
+) -> Tuple[Sequence[int], int]:
+    """Get the sequential refinement step list from the config.
+
+    Args:
+        config: Configuration specifying training and model parameters.
+
+    Returns:
+        Sequential refinment step list and total number of steps.
     """
-    """
-
-    if normalize_config is None:
-        normalize_config = copy.deepcopy(input_config['lensing_config'])
-
-    writer = metric_writers.create_default_writer(
-        logdir=workdir, just_logging=jax.process_index() != 0)
-
-    # TODO this should be a seperate function.
-    steps_per_epoch = config.steps_per_epoch
     num_initial_steps = config.num_initial_train_steps
     num_steps_per_refinement = config.num_steps_per_refinement
     num_steps = num_initial_steps
@@ -243,9 +244,45 @@ def train_and_evaluate_snpe(
         refinement_step_list.append(
             num_initial_steps + num_steps_per_refinement * refinement
         )
-    # TODO Until here
+    return refinement_step_list, num_steps
 
+
+def train_and_evaluate_snpe(
+        config: ml_collections.ConfigDict,
+        input_config: dict,
+        workdir: str,
+        rng: Union[Iterator[Sequence[int]], Sequence[int]],
+        target_image: jnp.ndarray,
+        normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
+):
+    """Train model specified by configuration files.
+
+    Args:
+        config: Configuration specifying training and model parameters.
+        input_config: Configuration used to generate lensing images.
+        workddir: Directory to which model checkpoints will be saved.
+        rng: jax PRNG key.
+        target_image: Target image / observation for sequential inference.
+        normalize_config: Optional seperate config that specifying the lensing
+            parameter distirbutions to use when normalizing the model outputs.
+
+    Returns:
+        Training state after training has completed.
+    """
+
+    if normalize_config is None:
+        normalize_config = copy.deepcopy(input_config['lensing_config'])
+
+    # Pull parameters from config files.
+    image_size = input_config['kwargs_detector']['n_x']
+    learning_rate = config.learning_rate
     base_learning_rate = learning_rate * config.batch_size / 256.
+
+    writer = metric_writers.create_default_writer(
+        logdir=workdir, just_logging=jax.process_index() != 0)
+
+    steps_per_epoch = config.steps_per_epoch
+    refinement_step_list, num_steps = _get_refinement_step_list(config)
 
     model_cls = getattr(models, config.model)
     num_outputs = len(input_config['truth_parameters'][0]) * 2
@@ -258,7 +295,7 @@ def train_and_evaluate_snpe(
     rng, rng_state = jax.random.split(rng)
     state = train.create_train_state(rng_state, config, model, image_size,
         learning_rate_schedule)
-    state = train.restore_checkpoint(state, workdir)
+    state = checkpoints.restore_checkpoint(workdir, state)
 
     # step_offset > 0 if restarting from checkpoint
     step_offset = int(state.step)
@@ -311,10 +348,9 @@ def train_and_evaluate_snpe(
     prop_encoding = jax.vmap(input_pipeline.encode_normal)(
         mu_prop_init, std_prop_init
     )
-    std_norm = jnp.array([0.15, 0.1, 0.16, 0.16, 0.1, 0.1, 0.05, 0.05, 0.16,
-                          0.16, 1.1e-3])
-    mean_norm = jnp.array([1.1, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                           2e-3])
+    # TODO: This should be calculated from the input config.
+    std_norm = config.std_norm
+    mean_norm = config.mean_norm
 
     # A repeated pattern that needs access to the compiled functions. Need to
     # do this for functions on which partial is called because every call to
@@ -365,7 +401,7 @@ def train_and_evaluate_snpe(
         # Generate truths and images
         rng, rng_images = jax.random.split(rng)
         # Rotations will break sequential refinement (since refinement proposals
-        # are not symmetric).
+        # are not rotation invariant).
         rotation_angle = 0.0
 
         rng_images = jax.random.split(
@@ -409,22 +445,3 @@ def train_and_evaluate_snpe(
     jax.random.normal(jax.random.PRNGKey(0), ()).block_until_ready()
 
     return state
-
-
-def main(_):
-    """Train neural network model with configuration defined by flags."""
-    train_config = train._get_config(FLAGS.train_config_path)
-    input_config = train._get_config(FLAGS.input_config_path)
-    image_size = input_config['kwargs_detector']['n_x']
-    target_image = jnp.load(FLAGS.target_image_path)
-
-    rng = jax.random.PRNGKey(0)
-    if FLAGS.num_unique_batches > 0:
-        rng_list = jax.random.split(rng, FLAGS.num_unique_batches)
-        rng = utils.random_permutation_iterator(rng_list, rng)
-    train_and_evaluate_snpe(train_config, input_config, FLAGS.workdir, rng,
-                       image_size, FLAGS.learning_rate, target_image)
-
-
-if __name__ == '__main__':
-    app.run(main)
