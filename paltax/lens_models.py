@@ -17,7 +17,7 @@ Implementation of mass profiles for lensing closely following implementations
 in lenstronomy: https://github.com/lenstronomy/lenstronomy.
 """
 
-from typing import Any, Mapping, Tuple, Union
+from typing import Any, Dict, Mapping, Tuple, Union
 
 import jax.numpy as jnp
 
@@ -38,7 +38,7 @@ class _LensModelBase():
 
     def modify_cosmology_params(
             self: Any,
-            cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
+            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
         ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
         """Modify cosmology params to include information required by model.
 
@@ -54,7 +54,7 @@ class _LensModelBase():
     @staticmethod
     def convert_to_angular(
             all_kwargs:  Mapping[str, jnp.ndarray],
-            cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
+            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
         ) -> Mapping[str, jnp.ndarray]:
         """Convert any parameters in physical units to angular units.
 

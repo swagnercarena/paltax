@@ -19,7 +19,7 @@ from importlib import import_module
 import os
 import sys
 import time
-from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, Mapping, Optional, Sequence, Tuple, Union
 
 from clu import metric_writers
 from clu import periodic_actions
@@ -164,7 +164,7 @@ def snpe_c_loss(
 
 
 def compute_metrics(
-        outputs: jnp.ndarray, truth: jnp.ndarray) -> Mapping[str, jnp.ndarray]:
+        outputs: jnp.ndarray, truth: jnp.ndarray) -> Dict[str, jnp.ndarray]:
     """Compute the performance metrics of the output.
 
     Args:
@@ -187,7 +187,8 @@ def compute_metrics(
 
 def get_learning_rate_schedule(
         config: ml_collections.ConfigDict,
-        base_learning_rate: float) -> Any:
+        base_learning_rate: float
+) -> Callable[[Union[int, jnp.ndarray]], float]:
     """Return the learning rate schedule function.
 
     Args:
@@ -254,7 +255,7 @@ def get_outputs(
 
 def train_step(
     state: TrainState, batch: Mapping[str, jnp.ndarray],
-    learning_rate_schedule: Mapping[int, float]
+    learning_rate_schedule: Callable[[Union[int, jnp.ndarray]], float]
 ) -> Tuple[TrainState, Mapping[str, Any]]:
     """Perform a single training step.
 
@@ -341,7 +342,8 @@ def sync_batch_stats(state: TrainState) -> TrainState:
 
 def create_train_state(
     rng: Sequence[int], config: ml_collections.ConfigDict,
-    model: Any, image_size: int, learning_rate_schedule: Mapping[int,float]
+    model: Any, image_size: int,
+    learning_rate_schedule: Callable[[Union[int, jnp.ndarray]], float]
 ) -> TrainState:
     """Create initial training state.
 

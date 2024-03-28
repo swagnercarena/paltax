@@ -19,7 +19,7 @@ from lenstronomy: https://github.com/lenstronomy/lenstronomy.
 """
 
 import functools
-from typing import Any, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -35,7 +35,7 @@ def generate_image(
     kwargs_source_slice: Mapping[str, jnp.ndarray],
     kwargs_lens_light_slice: Mapping[str, jnp.ndarray],
     kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_source: float,
     kwargs_detector: Mapping[str, Union[float, int]],
     all_models: Mapping[str, Sequence[Any]],
@@ -200,7 +200,7 @@ def source_surface_brightness(
     kwargs_lens_all: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     kwargs_source_slice: Mapping[str, jnp.ndarray],
     kwargs_detector: Mapping[str, jnp.ndarray],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_source: float,
     all_models: Mapping[str, Sequence[Any]],
 ) -> jnp.ndarray:
@@ -242,7 +242,7 @@ def _image_flux(
     alpha_y: jnp.ndarray,
     kwargs_lens_all: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     kwargs_source_slice: Mapping[str, jnp.ndarray],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_source: float,
     all_models: Mapping[str, Sequence[Any]],
 ) -> jnp.ndarray:
@@ -290,7 +290,7 @@ def _ray_shooting(
     alpha_x: jnp.ndarray,
     alpha_y: jnp.ndarray,
     kwargs_lens_all:  Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_source: float,
     all_models: Mapping[str, Sequence[Any]]
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -379,7 +379,7 @@ def _ray_shooting(
 def _ray_shooting_group(
     state: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, float],
     kwargs_lens_slice: Mapping[str, jnp.ndarray],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_source: float,
     z_lens: float,
     all_lens_models: Sequence[Any]
@@ -424,7 +424,7 @@ def _ray_shooting_group(
 def _ray_shooting_step(
     state: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, float],
     kwargs_z_lens: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_source: float,
     all_lens_models: Sequence[Any]
 ) -> Tuple[Tuple, Tuple]:
@@ -505,7 +505,7 @@ def _add_deflection_group(
     alpha_x: jnp.ndarray,
     alpha_y: jnp.ndarray,
     kwargs_lens_slice: Mapping[str, jnp.ndarray],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_lens: float,
     z_source: float,
     all_lens_models: Sequence[Any],
@@ -563,7 +563,7 @@ def _add_deflection(
     alpha_x: jnp.ndarray,
     alpha_y: jnp.ndarray,
     kwargs_lens: Mapping[str, Union[int, float, jnp.ndarray]],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_lens: float,
     z_source: float,
     all_lens_models: Sequence[Any],

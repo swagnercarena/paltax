@@ -133,12 +133,15 @@ class LensModelBaseTest(chex.TestCase):
         input_dict = {'a': 1.0, 'b': 12.0, 'c': 2}
         cosmology_params = {}
 
-        def call_convert_to_angular(input_dict, cosmology_params, cls):
-            return cls.convert_to_angular(input_dict, cosmology_params)
+        def call_convert_to_angular(input_dict, cosmology_params, cls_to_call):
+            return cls_to_call.convert_to_angular(input_dict, cosmology_params)
 
         convert_to_angular = self.variant(
             functools.partial(
-                call_convert_to_angular, cls=lens_models._LensModelBase()))
+                call_convert_to_angular,
+                cls_to_call=lens_models._LensModelBase()
+            )
+        )
 
         self.assertDictEqual(
             input_dict, convert_to_angular(input_dict, cosmology_params))

@@ -18,7 +18,7 @@ los halo distribution into masses, concentrations, and positions as defined in
 https://arxiv.org/pdf/1909.02573.pdf.
 """
 
-from typing import Mapping, Sequence, Tuple, Union
+from typing import Dict, Mapping, Sequence, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -51,7 +51,7 @@ def nu_function(nu: jnp.ndarray):
 
 
 def mass_function_exact(
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     masses: jnp.ndarray, z: float) -> jnp.ndarray:
     """Return the exact Sheth Tormen 2001 mass function.
 
@@ -85,7 +85,7 @@ def mass_function_exact(
         derivative_sigma)
 
 def _mass_function_power_law_numerical(
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]], z: float,
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]], z: float,
     m_min: float, m_max: float) -> Tuple[float, float]:
     """Return the best fit power law parameters for the mass function.
 
@@ -124,9 +124,9 @@ def _mass_function_power_law_numerical(
 
 def add_los_lookup_tables_to_cosmology_params(
     los_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_lookup_max: float
-) -> Mapping[str, Union[float, int, jnp.ndarray]]:
+) -> Dict[str, Union[float, int, jnp.ndarray]]:
     """Add lookup tables for los mass function calculation to cosmology params.
 
     Args:
@@ -161,7 +161,7 @@ def add_los_lookup_tables_to_cosmology_params(
 
 
 def mass_function_power_law(
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z: float) -> Tuple[float, float]:
     """Return the best fit power law parameters from lookup table.
 
@@ -197,7 +197,7 @@ def mass_function_power_law(
 
 def two_halo_boost(main_deflector_params: Mapping[str, float],
     los_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z: float) -> float:
     """Calculate the boost from the two halo term caused by the host halo.
 
@@ -237,7 +237,7 @@ def two_halo_boost(main_deflector_params: Mapping[str, float],
 
 def cone_angle_to_radius(main_deflector_params: Mapping[str, float],
     source_params: Mapping[str, float], los_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z: float) -> float:
     """Return the radius in kpc for the lightcone.
 
@@ -290,7 +290,7 @@ def cone_angle_to_radius(main_deflector_params: Mapping[str, float],
 
 def volume_element(main_deflector_params: Mapping[str, float],
     source_params: Mapping[str, float], los_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z: float) -> float:
     """Return the volume element for the lightcone.
 
@@ -321,7 +321,7 @@ def volume_element(main_deflector_params: Mapping[str, float],
 
 def expected_num_halos(main_deflector_params: Mapping[str, float],
     source_params: Mapping[str, float], los_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z) -> float:
     """Return the expected number of halos in a redshift slice.
 
@@ -353,7 +353,7 @@ def expected_num_halos(main_deflector_params: Mapping[str, float],
 
 def draw_redshifts(main_deflector_params: Mapping[str, float],
     source_params: Mapping[str, float], los_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_min: float, z_max: float, rng: Sequence[int],
     num_z_bins: int, pad_length: int) -> jnp.ndarray:
     """Draw the redshifts for the los halos within an interval.
@@ -418,7 +418,7 @@ def draw_redshifts(main_deflector_params: Mapping[str, float],
 
 
 def draw_masses(los_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_values: jnp.ndarray, rng: Sequence[int]) -> jnp.ndarray:
     """Draw the masses for the los halos within an interval.
 
@@ -453,7 +453,7 @@ def draw_masses(los_params: Mapping[str, float],
 
 def draw_positions(main_deflector_params: Mapping[str, float],
     source_params: Mapping[str, float], los_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_values: jnp.ndarray, rng: Sequence[int]) -> jnp.ndarray:
     """Return position draws for the los halos.
 
@@ -487,7 +487,7 @@ def draw_positions(main_deflector_params: Mapping[str, float],
 
 def convert_to_lensing(main_deflector_params: Mapping[str, float],
     source_params: Mapping[str, float], los_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     los_masses: jnp.ndarray, los_z: jnp.ndarray, los_cart_pos: jnp.ndarray,
     rng: Sequence[int]) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Convert los masses and positions into lensing quantities.
@@ -542,7 +542,7 @@ def convert_to_lensing(main_deflector_params: Mapping[str, float],
 
 def draw_los(main_deflector_params: Mapping[str, float],
     source_params: Mapping[str, float], los_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     rng: Sequence[int], num_z_bins: int, los_pad_length: int,
 ) -> Tuple[Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]],
     Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]]:

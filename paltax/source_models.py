@@ -17,7 +17,7 @@ Implementation of light profiles for lensing closely following implementations
 in lenstronomy: https://github.com/lenstronomy/lenstronomy.
 """
 
-from typing import Any, Mapping, Tuple, Union
+from typing import Dict, Mapping, Tuple, Union
 
 import dm_pix
 import jax
@@ -41,14 +41,14 @@ class _SourceModelBase():
     parameters = ()
 
     def modify_cosmology_params(
-            self: Any,
-            cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
-        ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
+            self,
+            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+        ) -> Dict[str, Union[float, int, jnp.ndarray]]:
         """Modify cosmology params to include information required by model.
 
         Args:
             cosmology_params: Cosmological parameters that define the universe's
-                expansion.
+                expansion. Must be mutable.
 
         Returns:
             Modified cosmology parameters.
@@ -57,9 +57,9 @@ class _SourceModelBase():
 
     @staticmethod
     def convert_to_angular(
-            all_kwargs:  Mapping[str, jnp.ndarray],
-            cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
-        ) -> Mapping[str, jnp.ndarray]:
+            all_kwargs:  Dict[str, jnp.ndarray],
+            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+        ) -> Dict[str, jnp.ndarray]:
         """Convert any parameters in physical units to angular units.
 
         Args:
@@ -198,15 +198,18 @@ class SersicElliptic(_SourceModelBase):
         Returns:
             Brightness from elliptical Sersic profile.
         """
-        radius = SersicElliptic._get_distance_from_center(x, y, axis_ratio, angle,
-                                                                                                            center_x, center_y)
+        radius = SersicElliptic._get_distance_from_center(
+            x, y, axis_ratio, angle,center_x, center_y
+        )
         return amp * SersicElliptic._brightness(radius, sersic_radius, n_sersic)
 
     @staticmethod
     def _get_distance_from_center(
         x: jnp.ndarray, y: jnp.ndarray, axis_ratio: float, angle: float,
         center_x: float, center_y: float) -> jnp.ndarray:
-        """Calculate the distance from the Sersic center, accounting for axis ratio.
+        """Calculate the distance from the Sersic center.
+
+        Calculate distance accounting for axis ratio.
 
         Args:
             x: X-coordinates at which to evaluate the brightness.
@@ -265,7 +268,7 @@ class CosmosCatalog(Interpol):
     )
     parameters = ('image', 'amp', 'center_x', 'center_y', 'angle', 'scale')
 
-    def __init__(self: Any, cosmos_path: str):
+    def __init__(self, cosmos_path: str):
         """Initialize the path to the COSMOS galaxies.
 
         Args:
@@ -276,14 +279,14 @@ class CosmosCatalog(Interpol):
         self.cosmos_path = cosmos_path
 
     def modify_cosmology_params(
-            self: Any,
-            cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
-        ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
+            self,
+            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+        ) -> Dict[str, Union[float, int, jnp.ndarray]]:
         """Modify cosmology params to include information required by model.
 
         Args:
             cosmology_params: Cosmological parameters that define the universe's
-                expansion.
+                expansion. Must be mutable.
 
         Returns:
             Modified cosmology parameters.
@@ -303,9 +306,9 @@ class CosmosCatalog(Interpol):
 
     @staticmethod
     def convert_to_angular(
-            all_kwargs: Mapping[str, jnp.ndarray],
-            cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
-        ) -> Mapping[str, jnp.ndarray]:
+            all_kwargs: Dict[str, jnp.ndarray],
+            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+        ) -> Dict[str, jnp.ndarray]:
         """Convert any parameters in physical units to angular units.
 
         Args:
@@ -358,7 +361,7 @@ class CosmosCatalog(Interpol):
     @staticmethod
     def z_scale_factor(
         z_old: float, z_new: float,
-        cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
     ) -> float:
         """Return scaling of pixel size from moving to a new redshift.
 

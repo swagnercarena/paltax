@@ -17,7 +17,7 @@ This module contains the functions used to move between NFW conventions and
 to transform NFW parameters into lensing inputs.
 """
 
-from typing import Mapping, Sequence, Tuple, Union
+from typing import Dict, Mapping, Sequence, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -26,7 +26,7 @@ from paltax import cosmology_utils
 
 
 def r_two_hund_from_m(
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     masses: Union[jnp.ndarray, float], z: float) -> Union[float, jnp.ndarray]:
     """Calculate the two-hundred radial overdensity from the mass.
 
@@ -46,7 +46,7 @@ def r_two_hund_from_m(
 
 
 def rho_nfw_from_c(
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     c: Union[jnp.ndarray, float], z: float):
     """Calculate the amplitude of the NFW profile.
 
@@ -128,7 +128,7 @@ def cored_nfw_draws(r_tidal: float, rho_nfw: float, r_scale: float,
 
 
 def convert_to_lensing_nfw(
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     r_scale: float, z: float, rho_nfw: float, z_source: float
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Convert physical NFW parameters to lensing parameters.
@@ -160,7 +160,7 @@ def convert_to_lensing_nfw(
 
 
 def convert_to_lensing_tnfw(
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     r_scale: float, z: float, rho_nfw: float, r_trunc: float, z_source: float
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Convert physical tNFW parameters to lensing parameters.
@@ -191,7 +191,7 @@ def convert_to_lensing_tnfw(
 
 
 def mass_concentration(substructure_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     masses: Union[float, jnp.ndarray], z: float,
     rng: Sequence[int]) -> jnp.ndarray:
     """Return the concentration of halos at a given mass and redshift.

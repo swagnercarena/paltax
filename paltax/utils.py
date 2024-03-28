@@ -14,10 +14,15 @@
 """Strong lensing utility functions."""
 
 import functools
-from typing import Any, Callable, Sequence, Tuple
+from typing import Any, Callable, Protocol, Sequence, Tuple
 
 import jax
 import jax.numpy as jnp
+
+
+class Callback(Protocol):
+    """Unique typing class to deal with variadic arguments."""
+    def __call__(self, x: jnp.ndarray, y: jnp.ndarray, *args: Any) -> Any: ...
 
 
 def coordinates_evaluate(
@@ -50,8 +55,9 @@ def coordinates_evaluate(
 
 
 def unpack_parameters_xy(
-        func: Callable[[Any], Any], parameters:Sequence[str],
-) -> Callable[[Any], Any]:
+        func: Callback,
+        parameters:Sequence[str],
+) -> Callback:
     """Returns function wrapper that unpacks parameters for grid functions.
 
     Returns function wrapper that unpacks required parameters for functions whose

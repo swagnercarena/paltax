@@ -17,7 +17,7 @@ import bisect
 import copy
 import functools
 import time
-from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, Mapping, Optional, Sequence, Tuple, Union
 
 from clu import metric_writers
 from clu import periodic_actions
@@ -38,7 +38,7 @@ from paltax import train
 def compute_metrics(
         outputs: jnp.ndarray, truth: jnp.ndarray, prop_encoding: jnp.ndarray,
         mu_prior: jnp.ndarray, prec_prior: jnp.ndarray
-    ) -> Mapping[str, jnp.ndarray]:
+    ) -> Dict[str, jnp.ndarray]:
     """Compute the performance metrics of the output.
 
     Args:
@@ -65,7 +65,8 @@ def compute_metrics(
 
 def get_learning_rate_schedule(
         config: ml_collections.ConfigDict,
-        base_learning_rate: float) -> Any:
+        base_learning_rate: float
+) -> Callable[[Union[int, jnp.ndarray]], float]:
     """Return the learning rate schedule function.
 
     Args:
@@ -101,7 +102,7 @@ def get_learning_rate_schedule(
 def train_step(
     state: train.TrainState, batch: Mapping[str, jnp.ndarray],
     prop_encoding: jnp.ndarray, mu_prior: jnp.ndarray, prec_prior: jnp.ndarray,
-    learning_rate_schedule: Mapping[int, float]
+    learning_rate_schedule: Callable[[Union[int, jnp.ndarray]], float]
 ) -> Tuple[train.TrainState, Mapping[str, Any]]:
     """Perform a single training step.
 
