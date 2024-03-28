@@ -42,10 +42,10 @@ def main(_: Any):
     input_config = train._get_config(config.input_config_path)
     rng = jax.random.PRNGKey(config.get('rng_key',0))
 
-    if config.get('num_unique_batches',0) > 0:
+    if config.get('num_unique_batches', 0) > 0:
         if config.train_type == 'SNPE':
             raise ValueError('Cannot do finite batches with sequential.')
-        rng_list = jax.random.split(rng, FLAGS.num_unique_batches)
+        rng_list = jax.random.split(rng, config.get('num_unique_batches'))
         rng = utils.random_permutation_iterator(rng_list, rng)
 
     if config.train_type == 'NPE':
