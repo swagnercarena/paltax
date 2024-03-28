@@ -15,7 +15,7 @@
 network.
 """
 
-from typing import Any, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, Union
 
 import jax.numpy as jnp
 import jax
@@ -493,8 +493,9 @@ def generate_grids(
 
 
 def initialize_cosmology_params(
-        config: Mapping[str, Mapping[str, jnp.ndarray]], rng: Sequence[int]
-) -> Mapping[str, Union[float, int, jnp.ndarray]]:
+        config: Mapping[str, Mapping[str, Union[Any,jnp.ndarray]]],
+        rng: Sequence[int]
+) -> Union[Dict[str, Union[float, int, jnp.ndarray]], Any]:
     """Initialize the cosmology parameters as needed by the config.
 
     Args:
@@ -504,6 +505,11 @@ def initialize_cosmology_params(
 
     Returns:
         Cosmological parameters with appropriate lookup table.
+
+    Notes:
+        Return type guarantee is stronger than Any, but Any is required since
+        pytype doesn't know what is returned by calls to
+        model.modify_cosmology_params.
     """
     max_source_z = decode_maximum(
         config['lensing_config']['source_params']['z_source'])
@@ -540,9 +546,9 @@ def initialize_cosmology_params(
 
 
 def draw_sample(
-        encoded_configuration: Mapping[str, Mapping[str, float]],
+        encoded_configuration: Mapping[str, Union[float, Mapping[str, Any]]],
         rng: Sequence[int]
-) -> Mapping[str, Mapping[str, float]]:
+) -> Mapping[str, Union[float, Mapping[str, Any]]]:
     """Map an econded configuration into a configuration of randomly draws.
 
     Args:
@@ -565,7 +571,7 @@ def draw_sample(
 def extract_multiple_models(
         encoded_configuration: Mapping[str, Mapping[str, float]],
         rng: Sequence[int], n_models: int
-) -> Mapping[str, jnp.ndarray]:
+) -> Dict[str, jnp.ndarray]:
     """Extract multiple models from a single configuration.
 
     Args:
@@ -589,9 +595,9 @@ def extract_multiple_models(
 def extract_multiple_models_angular(
         encoded_configuration: Mapping[str, Mapping[str, float]],
         rng: Sequence[int],
-        cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
         all_models: Sequence[Any]
-) -> Mapping[str, jnp.ndarray]:
+) -> Dict[str, jnp.ndarray]:
     """Extract multiple models and translate them to angular coordinates.
 
     Args:
@@ -605,7 +611,7 @@ def extract_multiple_models_angular(
 
     Returns:
         Draws for the parameters for all the models. For each parameters, first
-        dimension will be the number of models.
+        dimension will be the number of models. Is mutable.
     """
     n_models = len(all_models)
 
@@ -623,15 +629,17 @@ def extract_multiple_models_angular(
     return draws
 
 
-def rotate_params(all_params: Mapping[str, Mapping[str, jnp.ndarray]],
-                  truth_parameters: Tuple[Sequence[str], Sequence[str]],
-                  rotation_angle: float) -> jnp.ndarray:
+def rotate_params(
+    all_params: Dict[str, Dict[str, jnp.ndarray]],
+    truth_parameters: Tuple[Sequence[str], Sequence[str], Sequence[int]],
+    rotation_angle: float
+) -> jnp.ndarray:
     """Rotate the parameter as required by the physical type of the parameter.
 
     Args:
-        all_params: All of the parameters grouped by object.
-        truth_parameters: List of the lensing objects and corresponding
-            parameters to extract.
+        all_params: All of the parameters grouped by object. Must be mutable.
+        truth_parameters: List of the lensing objects, corresponding
+            parameters to extract, and main object index for each parameter.
         rotation_angle: Counterclockwise angle of rotation.
 
     Returns:
@@ -682,18 +690,18 @@ def rotate_params(all_params: Mapping[str, Mapping[str, jnp.ndarray]],
 
 
 def extract_truth_values(
-        all_params: Mapping[str, Mapping[str, jnp.ndarray]],
+        all_params: Dict[str, Dict[str, jnp.ndarray]],
         lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
-        truth_parameters: Tuple[Sequence[str], Sequence[str]],
+        truth_parameters: Tuple[Sequence[str], Sequence[str], Sequence[int]],
         rotation_angle: Optional[float] = 0.0,
         normalize_truths: Optional[bool] = True) -> jnp.ndarray:
     """Extract the truth parameters and normalize them according to the config.
 
     Args:
-        all_params: All of the parameters grouped by object.
+        all_params: All of the parameters grouped by object. Must be mutable.
         lensing_config: Distribution encodings for each of the parameters.
-        truth_parameters: List of the lensing objects and corresponding
-            parameters to extract.
+        truth_parameters: List of the lensing objects, corresponding
+            parameters to extract, and main object index for each parameter.
         rotation_angle: Counterclockwise angle by which to rotate truths.
         normalize_truths: If true, normalize parameters according to the
             encoded distribtion.
@@ -720,7 +728,7 @@ def extract_truth_values(
 
 def draw_image_and_truth(
         lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
-        cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
         grid_x: jnp.ndarray, grid_y: jnp.ndarray, rng: Sequence[int],
         rotation_angle: float,
         all_models: Mapping[str, Sequence[Any]],
@@ -728,7 +736,7 @@ def draw_image_and_truth(
         kwargs_simulation: Mapping[str, int],
         kwargs_detector:  Mapping[str, Union[int, float]],
         kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
-        truth_parameters: Tuple[Sequence[str], Sequence[str]],
+        truth_parameters: Tuple[Sequence[str], Sequence[str], Sequence[int]],
         normalize_image: Optional[bool] = True,
         normalize_truths: Optional[bool] = True,
         normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
@@ -753,8 +761,8 @@ def draw_image_and_truth(
         kwargs_psf: Keyword arguments defining the point spread function. The
             psf is applied in the supersampled space, so the size of pixels
             should be defined with respect to the supersampled space.
-        truth_parameters: List of the lensing objects and corresponding
-            parameters to extract.
+        truth_parameters: List of the lensing objects, corresponding
+            parameters to extract, and main object index for each parameter.
         normalize_image: If True, the image will be normalized to have
             standard deviation 1.
         normalize_truths: If true, normalize parameters according to the

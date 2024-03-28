@@ -17,7 +17,7 @@ This module containts the functions needed to draw subhalos for an underlying
 distribution as defined in https://arxiv.org/pdf/1909.02573.pdf.
 """
 
-from typing import Mapping, Optional, Sequence, Tuple, Union
+from typing import Dict, Mapping, Optional, Sequence, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -47,7 +47,7 @@ def host_scaling_function(host_mass: float, z_lens: float, k_one: float,
 
 def draw_nfw_masses(main_deflector_params: Mapping[str, float],
     subhalo_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     rng: Sequence[int], pad_length: int) -> jnp.ndarray:
     """Draw from the subhalo mass function and return the masses.
 
@@ -125,7 +125,7 @@ def rejection_sampling(radial_coord: jnp.ndarray, r_two_hund: float,
 
 def sample_cored_nfw(main_deflector_params: Mapping[str, float],
     subhalo_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     rng: Sequence[int], n_subs: int, sampling_pad_length: int) -> jnp.ndarray:
     """ Sample positions for NFW subhalos.
 
@@ -206,7 +206,7 @@ def get_truncation_radius(subhalos_mass: jnp.ndarray,
 def convert_to_lensing(main_deflector_params: Mapping[str, float],
     source_params: Mapping[str, Union[int, float]],
     subhalo_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     subhalos_masses: jnp.ndarray, subhalos_cart_pos: jnp.ndarray,
     rng: Sequence[int]) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Convert subhalo masses and positions into lensing quantities.
@@ -275,7 +275,7 @@ def convert_to_lensing(main_deflector_params: Mapping[str, float],
 def draw_subhalos(main_deflector_params: Mapping[str, float],
     source_params: Mapping[str, Union[int, float]],
     subhalo_params: Mapping[str, float],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     rng: Sequence[int], subhalos_pad_length: int, sampling_pad_length: int,
 ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Draw subhalos with redshift and lensing quantities.

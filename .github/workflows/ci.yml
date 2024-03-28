@@ -26,9 +26,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install --upgrade pytest
-          python -m pip install flake8 pytest pytest-cov coveralls
+          python -m pip install flake8 pytest pytest-cov coveralls pytype
           pip install -r requirements.txt
           python -m pip install .
+      - name: Type check
+        run: pytype -n paltax -x paltax/TrainConfigs/*.py paltax/InputConfigs/*.py
       - name: Test with pytest
         run: |
           cd paltax

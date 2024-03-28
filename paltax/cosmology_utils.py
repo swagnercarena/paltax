@@ -20,7 +20,7 @@ Peak value calculations follow colossus implementation:
 https://bitbucket.org/bdiemer/colossus/src/master/
 """
 
-from typing import Mapping, Optional, Union
+from typing import Dict, Mapping, Optional, Union
 
 import jax
 import jax.numpy as jnp
@@ -219,7 +219,7 @@ def add_lookup_tables_to_cosmology_params(
         cosmology_params: Mapping[str, Union[float, int]],
         z_lookup_max: float, dz: float, r_min: float, r_max: float,
         n_r_bins: Optional[float] = 1000,
-) -> Mapping[str, Union[float, int, jnp.ndarray]]:
+) -> Dict[str, Union[float, int, jnp.ndarray]]:
     """Add lookup tables to cosmology params.
 
     Args:
@@ -274,7 +274,7 @@ def add_lookup_tables_to_cosmology_params(
 
 
 def comoving_distance(
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_min: float, z_max: float) -> float:
     """Calculates the comoving distance at a given redshift using lookup.
 
@@ -332,7 +332,7 @@ def comoving_distance(
 
 
 def angular_diameter_distance(
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z: float) -> float:
     """Calculate the angular diameter distance at a given redshift.
 
@@ -348,7 +348,7 @@ def angular_diameter_distance(
 
 
 def angular_diameter_distance_between(
-        cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
         z_min: float, z_max: float) -> float:
     """Calculate the angular diameter distance between two redshifts.
 
@@ -365,7 +365,7 @@ def angular_diameter_distance_between(
 
 
 def kpc_per_arcsecond(
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z: float) -> float:
     """Calculate the physical kpc per arcsecond at a given redshift.
 
@@ -385,7 +385,7 @@ def kpc_per_arcsecond(
 
 def comoving_to_angle(comv_x: Union[float, jnp.ndarray],
     comv_y: Union[float, jnp.ndarray],
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_lens: float) -> Union[float, jnp.ndarray]:
     """Convert from comoving coordinates to angular units.
 
@@ -406,7 +406,7 @@ def comoving_to_angle(comv_x: Union[float, jnp.ndarray],
 
 def reduced_to_physical(
         reduced: Union[float, jnp.ndarray],
-        cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
         z_lens: float, z_source: float) -> Union[float, jnp.ndarray]:
     """Transform from reduced deflection angle to physical coordinates.
 
@@ -426,7 +426,7 @@ def reduced_to_physical(
                                               z_source))
 
 
-def rho_matter(cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+def rho_matter(cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z: float) -> float:
     """Return the matter density at redshift z.
 
@@ -442,7 +442,7 @@ def rho_matter(cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
 
 
 def collapse_overdensity(
-        cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
         z: float) -> float:
     """Return the collapse overdensity including first-order corrections.
 
@@ -460,7 +460,7 @@ def collapse_overdensity(
 
 
 def lagrangian_radius(
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     mass: Union[float, jnp.ndarray]) -> Union[float, jnp.ndarray]:
     """Return the lagrangian radius of halo of mass M.
 
@@ -479,7 +479,7 @@ def lagrangian_radius(
                      rho_matter(cosmology_params, 0.0))**(1.0 / 3.0))
 
 
-def sigma_tophat(cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+def sigma_tophat(cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     lagrangian_r: float, z: float) -> float:
     """The RMS variance of the linear density field, including growth factor.
 
@@ -526,7 +526,7 @@ def sigma_tophat(cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
 
 
 def derivative_log_sigma_log_r(
-        cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
         lagrangian_r: float, z: float) -> float:
     """Derivative of the log RMS variance with respect to log radius.
 
@@ -555,7 +555,7 @@ def derivative_log_sigma_log_r(
     return derivative * lagrangian_r / sigma
 
 
-def peak_height(cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+def peak_height(cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     mass: float, z: float) -> float:
     """Peak height for a specific mass and redshift
 
@@ -574,7 +574,7 @@ def peak_height(cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
     return collapse_overdensity(cosmology_params, z) / sigma
 
 
-def rho_crit(cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+def rho_crit(cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z: float) -> float:
     """Critical density of the universe at redshift z.
 
@@ -592,7 +592,7 @@ def rho_crit(cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
 
 
 def calculate_sigma_crit(
-    cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z: float, z_source: float) -> float:
     """Calculate the critical surface density for the lensing configuration.
 

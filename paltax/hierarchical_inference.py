@@ -18,7 +18,7 @@ This module contains the tools to conduct hierarchical inference on our
 network posteriors. This code is modified from the inference code in the
 paltas package.
 """
-from typing import Any
+from typing import Any, Callable, Self
 import warnings
 
 import numpy as np
@@ -39,7 +39,7 @@ MU_PRED_ARRAY = None
 PREC_PRED_ARRAY = None
 
 
-def log_p_omega(hyperparameters: np.array, eval_func_omega: Any) -> float:
+def log_p_omega(hyperparameters: np.ndarray, eval_func_omega: Any) -> float:
     """Calculate log p(omega) - the probability of the hyperparameters.
 
     Args:
@@ -62,9 +62,9 @@ def log_p_omega(hyperparameters: np.array, eval_func_omega: Any) -> float:
 
 @numba.njit
 def gaussian_product_analytical(
-    mu_pred: np.array, prec_pred: np.array, mu_omega_i: np.array,
-    prec_omega_i: np.array, mu_omega: np.array,
-    prec_omega: np.array) -> float:  # pragma: no cover
+    mu_pred: np.ndarray, prec_pred: np.ndarray, mu_omega_i: np.ndarray,
+    prec_omega_i: np.ndarray, mu_omega: np.ndarray,
+    prec_omega: np.ndarray) -> float:  # pragma: no cover
     """Calculate the log of the integral of importance sampling ratio.
 
     Calculate the log of the integral of p(xi_k|omega)*p(xi_k|d_k,omega_int)/
@@ -133,8 +133,8 @@ class ProbabilityClassAnalytical:
         eval_func_omega: Mapping from (hyperparameters) to value of log
             p(omega).
     """
-    def __init__(self: Any, mu_omega_i: np.array, cov_omega_i: np.array,
-                 eval_func_omega: np.array):
+    def __init__(self, mu_omega_i: np.ndarray, cov_omega_i: np.ndarray,
+                 eval_func_omega: Callable[[np.ndarray], float]):
         # Save each parameter to the class
         self.mu_omega_i = mu_omega_i
         self.cov_omega_i = cov_omega_i
@@ -145,8 +145,8 @@ class ProbabilityClassAnalytical:
         # A flag to make sure the prediction values are set
         self.predictions_init = False
 
-    def set_predictions(self: Any, mu_pred_array: np.array,
-                        prec_pred_array: np.array):
+    def set_predictions(self, mu_pred_array: np.ndarray,
+                        prec_pred_array: np.ndarray):
         """Set the global lens mean and covariance prediction values.
 
         Args:
@@ -165,9 +165,9 @@ class ProbabilityClassAnalytical:
     @staticmethod
     @numba.njit
     def log_integral_product(
-        mu_pred_array: np.array, prec_pred_array: np.array,
-        mu_omega_i: np.array, prec_omega_i: np.array,
-        mu_omega: np.array, prec_omega: np.array) -> float:  # pragma: no cover
+        mu_pred_array: np.ndarray, prec_pred_array: np.ndarray,
+        mu_omega_i: np.ndarray, prec_omega_i: np.ndarray,
+        mu_omega: np.ndarray, prec_omega: np.ndarray) -> float:  # pragma: no cover
         """Calculate the log importance sampling integral over all lenses.
 
         For the case of Gaussian distributions, calculate the log of the
@@ -199,7 +199,7 @@ class ProbabilityClassAnalytical:
 
         return integral
 
-    def log_post_omega(self: Any, hyperparameters: np.array):
+    def log_post_omega(self, hyperparameters: np.ndarray):
         """Calculate the log posterior of a specific distribution.
 
         Args:

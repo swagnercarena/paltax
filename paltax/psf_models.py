@@ -17,7 +17,7 @@ Implementation differs significantly from lenstronomy, but nomenclature is kept
 identical: https://github.com/lenstronomy/lenstronomy.
 """
 
-from typing import Any, Mapping, Union
+from typing import Any, Dict, Mapping, Union
 
 import dm_pix
 import jax
@@ -37,7 +37,7 @@ class _PSFModelBase():
 
     def modify_cosmology_params(
         self: Any,
-        cosmology_params: Mapping[str, Union[float, int, jnp.ndarray]]
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
     ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
             """Modify cosmology params to include information required by model.
 

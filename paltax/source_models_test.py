@@ -19,6 +19,7 @@ https://github.com/lenstronomy/lenstronomy.
 
 import functools
 import inspect
+import pathlib
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -31,6 +32,12 @@ import numpy as np
 from paltax import cosmology_utils
 from paltax import source_models
 from paltax import utils
+
+
+COSMOS_TEST_PATH = (
+    str(pathlib.Path(__file__).parent) +
+    '/test_files/cosmos_galaxies_testing.npz'
+)
 
 
 COSMOLOGY_PARAMS_INIT = immutabledict({
@@ -149,12 +156,15 @@ class SourceModelBaseTest(chex.TestCase):
         input_dict = {'a': 1.0, 'b': 12.0, 'c': 2}
         cosmology_params = {}
 
-        def call_convert_to_angular(input_dict, cosmology_params, cls):
-            return cls.convert_to_angular(input_dict, cosmology_params)
+        def call_convert_to_angular(input_dict, cosmology_params, cls_to_call):
+            return cls_to_call.convert_to_angular(input_dict, cosmology_params)
 
         convert_to_angular = self.variant(
             functools.partial(
-                call_convert_to_angular, cls=source_models._SourceModelBase()))
+                call_convert_to_angular,
+                cls_to_call=source_models._SourceModelBase()
+            )
+        )
 
         self.assertDictEqual(
             input_dict, convert_to_angular(input_dict, cosmology_params))
@@ -282,16 +292,11 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
 
     def test__init__(self):
         # Test that the intialization unpackes the desired images.
-        cosmos_catalog = source_models.CosmosCatalog(
-            'test_files/cosmos_galaxies_testing.npz'
-        )
-        self.assertEqual(cosmos_catalog.cosmos_path,
-                         'test_files/cosmos_galaxies_testing.npz')
+        cosmos_catalog = source_models.CosmosCatalog(COSMOS_TEST_PATH)
+        self.assertEqual(cosmos_catalog.cosmos_path, COSMOS_TEST_PATH)
 
     def test_modify_cosmology_params(self):
-        cosmos_catalog = source_models.CosmosCatalog(
-            'test_files/cosmos_galaxies_testing.npz'
-        )
+        cosmos_catalog = source_models.CosmosCatalog(COSMOS_TEST_PATH)
         cosmology_params = {}
         cosmology_params = cosmos_catalog.modify_cosmology_params(
             cosmology_params
@@ -308,9 +313,7 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
     def test_convert_to_angular(self):
         # Test that it returns the parameters we need for the interpolation
         # function.
-        cosmos_catalog = source_models.CosmosCatalog(
-            'test_files/cosmos_galaxies_testing.npz'
-        )
+        cosmos_catalog = source_models.CosmosCatalog(COSMOS_TEST_PATH)
 
 
         # Start with the redshifts and zeropoints being equal.
@@ -386,9 +389,7 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
         # just to make sure that it doesn't crash when provided the angular
         # kwargs from convert_to_angular.
         parameters = _prepare_cosmos_parameters()
-        cosmos_catalog = source_models.CosmosCatalog(
-            'test_files/cosmos_galaxies_testing.npz'
-        )
+        cosmos_catalog = source_models.CosmosCatalog(COSMOS_TEST_PATH)
         cosmology_params = _prepare_cosmology_params(
             COSMOLOGY_PARAMS_INIT, 2.0, 0.1
         )

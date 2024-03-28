@@ -148,7 +148,8 @@ class ProbabilityClassAnalyticalTest(parameterized.TestCase):
         )
         mu_omega_i = np.ones(10)
         cov_omega_i = np.identity(10)
-        eval_func_omega = None
+        def eval_func_omega(_):
+            return 0.0
 
         # Establish our ProbabilityClassAnalytical
         prob_class = hierarchical_inference.ProbabilityClassAnalytical(
