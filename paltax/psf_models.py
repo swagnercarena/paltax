@@ -17,13 +17,16 @@ Implementation differs significantly from lenstronomy, but nomenclature is kept
 identical: https://github.com/lenstronomy/lenstronomy.
 """
 
-from typing import Any, Dict, Mapping, Union
+from typing import Dict, Mapping, Union
 
 import dm_pix
 import jax
 import jax.numpy as jnp
+import numpy as np
 
-__all__ = ['Gaussian', 'Pixel']
+from paltax import utils
+
+__all__ = ['Gaussian', 'PixelCatalog']
 
 
 class _PSFModelBase():
@@ -36,19 +39,19 @@ class _PSFModelBase():
     parameters = ()
 
     def modify_cosmology_params(
-        self: Any,
+        self,
         cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
-    ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
-            """Modify cosmology params to include information required by model.
+    ) -> Dict[str, Union[float, int, jnp.ndarray]]:
+        """Modify cosmology params to include information required by model.
 
-            Args:
-                    cosmology_params: Cosmological parameters that define the universe's
-                            expansion.
+        Args:
+            cosmology_params: Cosmological parameters that define the
+                universe's expansion.
 
-            Returns:
-                    Modified cosmology parameters.
-            """
-            return cosmology_params
+        Returns:
+            Modified cosmology parameters.
+        """
+        return cosmology_params
 
 
 class Gaussian(_PSFModelBase):
@@ -58,17 +61,25 @@ class Gaussian(_PSFModelBase):
 
     @staticmethod
     def convolve(
-            image,
-            kwargs_psf):
+        image: jnp.ndarray,
+        kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+    ) -> jnp.ndarray:
         """Convolve an image with the Gaussian point spread function.
 
         Args:
             image: Image to convolve
             kwargs_psf: Keyword arguments defining the point spread function.
+            cosmology_params: Cosmological parameters that define the universe's
+                expansion.
 
         Returns:
             Convolved image.
         """
+        # Cosmology parameters aren't used, but add this call to avoid upsetting
+        # the linter.
+        _ = cosmology_params
+
         sigma_angular = kwargs_psf['fwhm'] / (2 * jnp.sqrt(2 * jnp.log(2)))
         sigma_pixel = sigma_angular / kwargs_psf['pixel_width']
 
@@ -78,27 +89,100 @@ class Gaussian(_PSFModelBase):
             )[:, :, 0]
 
 
-class Pixel(_PSFModelBase):
-    """Implementation of Pixel point spread function."""
+class _Pixel(_PSFModelBase):
+    """Implementation of pixel point spread function."""
 
     parameters = ('kernel_point_source',)
 
     @staticmethod
     def convolve(
-            image,
-            kwargs_psf):
-        """Convolve an image with the pixel point spread function.
+        image: jnp.ndarray,
+        kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+    ) -> jnp.ndarray:
+        """Convolve an image with the Gaussian point spread function.
 
         Args:
             image: Image to convolve
             kwargs_psf: Keyword arguments defining the point spread function.
+            cosmology_params: Cosmological parameters that define the universe's
+                expansion.
 
         Returns:
             Convolved image.
         """
+        # Cosmology parameters aren't used, but add this call to avoid upsetting
+        # the linter.
+        _ = cosmology_params
+
         # Always normalize kernel to 1 to avoid user error.
         kernel = (
                 kwargs_psf['kernel_point_source'] /
                 jnp.sum(kwargs_psf['kernel_point_source']))
         return jax.scipy.signal.convolve(
                 image, kernel, mode='same')
+
+
+class PixelCatalog(_PSFModelBase):
+    """Extension of _Pixel psf to allow for a catalog of PSFs."""
+
+    parameters = ('kernel_index',)
+
+    def __init__(self, kernel_path: str):
+        """Initialize the path to the kernels.
+
+        Args:
+            kernel_path: Path to the npz file containing the kernel images
+        """
+        # Save the kernel image path.
+        self.kernel_path = kernel_path
+
+    def modify_cosmology_params(
+        self,
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+    ) -> Dict[str, Union[float, int, jnp.ndarray]]:
+        """Modify cosmology params to include information required by model.
+
+        Args:
+            cosmology_params: Cosmological parameters that define the
+                universe's expansion.
+
+        Returns:
+            Modified cosmology parameters.
+        """
+        # Load the kernel images from disk.
+        kernel_images = np.load(self.kernel_path)
+        cosmology_params['kernels_n_images'] = len(kernel_images)
+
+        # Convert attributes we need later to jax arrays.
+        cosmology_params['kernel_images'] = jnp.asarray(kernel_images)
+
+        return cosmology_params
+
+    @staticmethod
+    def convolve(
+        image: jnp.ndarray,
+        kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+    ) -> jnp.ndarray:
+        """Convolve an image with the Gaussian point spread function.
+
+        Args:
+            image: Image to convolve
+            kwargs_psf: Keyword arguments defining the point spread function.
+            cosmology_params: Cosmological parameters that define the universe's
+                expansion.
+
+        Returns:
+            Convolved image.
+        """
+        # Extract the kernel and pass it to the Pixel class.
+        kernel_index = jnp.floor(
+            kwargs_psf['kernel_index'] * cosmology_params['kernels_n_images']
+        ).astype(int)
+        kernel_point_source = cosmology_params['kernel_images'][kernel_index]
+
+        return _Pixel.convolve(
+            image, {'kernel_point_source': kernel_point_source},
+            cosmology_params
+        )

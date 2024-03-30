@@ -15,6 +15,7 @@
 
 import functools
 import itertools
+import pathlib
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -75,10 +76,7 @@ def _prepare_kwargs_psf():
     kwargs_psf['pixel_width'] = (
         kwargs_detector['pixel_width'] / kwargs_detector['supersampling_factor']
     )
-    x = jnp.arange(-0.5, 0.5, 0.04) / 0.02
-    kernel = jnp.outer(jnp.exp(-x**2), jnp.exp(-x**2))
-    kwargs_psf['kernel_point_source'] = kernel
-    kwargs_psf['model_index'] = psf_models.__all__.index('Pixel')
+    kwargs_psf['model_index'] = psf_models.__all__.index('PixelCatalog')
     return kwargs_psf
 
 
@@ -108,8 +106,19 @@ def _prepare_image():
 
 
 def _prepare_all_psf_models():
-    models = psf_models.__all__
-    return tuple([psf_models.__getattribute__(model)() for model in models])
+    all_psf_models =[]
+    kernel_path = str(pathlib.Path(__file__).parent.parent)
+    kernel_path += '/datasets/hst_psf/psf_test_catalog.npy'
+    for model in psf_models.__all__:
+        if model == 'PixelCatalog':
+            all_psf_models.append(
+                psf_models.__getattribute__(model)(kernel_path)
+            )
+        else:
+            all_psf_models.append(
+                psf_models.__getattribute__(model)()
+            )
+    return tuple(all_psf_models)
 
 def _prepare_all_lens_models(model_group):
     if model_group == 'los':
@@ -123,11 +132,13 @@ def _prepare_all_lens_models(model_group):
     else:
         raise ValueError(f'Unsupported lens_models specification {model_group}')
 
-    return tuple([lens_models.__getattribute__(model) for model in models])
+    return tuple([lens_models.__getattribute__(model)() for model in models])
 
 
 def _prepare_all_source_models():
     all_source_models = []
+    cosmos_path = str(pathlib.Path(__file__).parent)
+    cosmos_path += '/test_files/cosmos_galaxies_testing.npz'
     for model in source_models.__all__:
         # CosmosCatalog model required initialization parameters.
         if model != 'CosmosCatalog':
@@ -136,9 +147,7 @@ def _prepare_all_source_models():
             )
         else:
             all_source_models.append(
-                source_models.__getattribute__(model)(
-                    'test_files/cosmos_galaxies_testing.npz'
-                )
+                source_models.__getattribute__(model)(cosmos_path)
             )
     return tuple(all_source_models)
 
@@ -264,11 +273,16 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         kwargs_source_slice = _prepare_kwargs_source_slice()
         kwargs_lens_light_slice = _prepare_kwargs_source_slice()
         kwargs_detector = _prepare_kwargs_detector()
-        kwargs_psf = _prepare_kwargs_psf()
+        # A little hacky but I want the draws to behave like an array.
+        kwargs_psf = jax.vmap(lambda x: _prepare_kwargs_psf())(jnp.zeros(1))
         z_source = 0.5
         cosmology_params = _prepare_cosmology_params(
             COSMOLOGY_PARAMS_LENSTRONOMY, z_source, 0.1
         )
+        # Modify the cosmology_params as required by each model.
+        for model_group in all_models.values():
+            for model in model_group:
+                cosmology_params = model.modify_cosmology_params(cosmology_params)
         # Need to evaluate on coordinate grid to match lenstronomy.
         grid_x, grid_y = utils.coordinates_evaluate(
             kwargs_detector['n_x'], kwargs_detector['n_y'],
@@ -296,20 +310,29 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         all_psf_models = _prepare_all_psf_models()
         kwargs_psf = _prepare_kwargs_psf()
         image = _prepare_image()
+        cosmology_params = {}
+
+        # Add the cosmology params for the PixelCatalog.
+        pc_model = all_psf_models[psf_models.__all__.index('PixelCatalog')]
+        cosmology_params = pc_model.modify_cosmology_params(cosmology_params)
 
         convolve = self.variant(functools.partial(
             image_simulation.psf_convolution, all_psf_models=all_psf_models))
 
         # Default model is Pixel
-        expected = psf_models.Pixel.convolve(image, kwargs_psf)
-        np.testing.assert_allclose(convolve(image, kwargs_psf), expected,
-                                   rtol=1e-5)
+        expected = psf_models.PixelCatalog.convolve(image, kwargs_psf,
+            cosmology_params)
+        np.testing.assert_allclose(
+            convolve(image, kwargs_psf, cosmology_params), expected, rtol=1e-5
+        )
 
         # Try Gaussian model
         kwargs_psf['model_index'] = psf_models.__all__.index('Gaussian')
-        expected = psf_models.Gaussian.convolve(image, kwargs_psf)
-        np.testing.assert_allclose(convolve(image, kwargs_psf), expected,
-                                   rtol=1e-5)
+        expected = psf_models.Gaussian.convolve(image, kwargs_psf,
+            cosmology_params)
+        np.testing.assert_allclose(
+            convolve(image, kwargs_psf, cosmology_params), expected, rtol=1e-5
+        )
 
     @chex.all_variants
     def test_noise_realization(self):

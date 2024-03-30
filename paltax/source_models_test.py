@@ -142,7 +142,7 @@ class AllTest(absltest.TestCase):
 
 
 class SourceModelBaseTest(chex.TestCase):
-    """Runs tests of __SourceModelBase functions."""
+    """Runs tests of _SourceModelBase functions."""
 
     def test_modify_cosmology_params(self):
         # Make sure the dict is modified by default.
@@ -291,7 +291,7 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
     """Runs tests of elliptical Sersic brightness functions."""
 
     def test__init__(self):
-        # Test that the intialization unpackes the desired images.
+        # Test that the intialization saves the path.
         cosmos_catalog = source_models.CosmosCatalog(COSMOS_TEST_PATH)
         self.assertEqual(cosmos_catalog.cosmos_path, COSMOS_TEST_PATH)
 

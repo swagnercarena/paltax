@@ -275,7 +275,7 @@ class CosmosCatalog(Interpol):
             cosmos_path: Path to the npz file containing the cosmos images,
                 redshift array, and pixel sizes.
         """
-        # Load the cosmos images and redshifts
+        # Save the cosmos image path.
         self.cosmos_path = cosmos_path
 
     def modify_cosmology_params(
@@ -334,6 +334,7 @@ class CosmosCatalog(Interpol):
         image = (cosmology_params['cosmos_images'][galaxy_index] /
                  pixel_scale_catalog ** 2)
 
+        # TODO: Do we still need to do this?
         # Force the image onto the default device (gpu if one is present).
         image = jax.device_put(image, jax.devices()[0])
 
