@@ -925,7 +925,10 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             'subhalos_pad_length': 10,
             'sampling_pad_length': 100,
         }
-        kwargs_psf = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 0.02}
+        kwargs_psf = {
+            'fwhm': input_pipeline.encode_constant(0.04),
+            'pixel_width': input_pipeline.encode_constant(0.02)
+        }
         truth_parameters = (
             [
                 'main_deflector_params', 'subhalo_params',

@@ -811,6 +811,12 @@ def draw_image_and_truth(
         len(all_models['all_subhalo_models'])
     )
 
+    # PSF kwargs are allowed to be random.
+    rng_psf, rng = jax.random.split(rng, 2)
+    kwargs_psf = extract_multiple_models(
+        kwargs_psf, rng_psf, len(all_models['all_psf_models'])
+    )
+
     # Repackage the parameters.
     all_params = {
         'source_params': source_params,

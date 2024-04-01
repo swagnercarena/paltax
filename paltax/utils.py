@@ -14,7 +14,7 @@
 """Strong lensing utility functions."""
 
 import functools
-from typing import Any, Callable, Protocol, Sequence, Tuple
+from typing import Any, Protocol, Sequence, Tuple
 
 import jax
 import jax.numpy as jnp

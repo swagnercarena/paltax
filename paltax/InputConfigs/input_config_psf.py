@@ -32,7 +32,7 @@ def get_config():
     # Specify the configuration for each one of the parameters.
     config['lensing_config'] = {
         'los_params':{
-            'delta_los': encode_constant(0.1),
+            'delta_los': encode_constant(0.0),
             'r_min': encode_constant(0.5),
             'r_max': encode_constant(10.0),
             'm_min': encode_constant(1e7),
@@ -40,11 +40,11 @@ def get_config():
             'dz': encode_constant(0.01),
             'cone_angle': encode_constant(8.0),
             'angle_buffer': encode_constant(0.8),
-            'c_zero': encode_constant(18),
-            'conc_zeta': encode_constant(-0.2),
-            'conc_beta': encode_constant(0.8),
+            'c_zero': encode_normal(mean=16.0, std=2.0),
+            'conc_zeta': encode_normal(mean=-0.3, std=0.1),
+            'conc_beta': encode_normal(mean=0.55, std=0.3),
             'conc_m_ref': encode_constant(1e8),
-            'conc_dex_scatter': encode_constant(0.1)
+            'conc_dex_scatter': encode_normal(mean=0.1, std=0.06),
         },
         'main_deflector_params': {
             'mass': encode_constant(1e13),
@@ -53,9 +53,10 @@ def get_config():
             'slope': encode_normal(mean=2.0, std=0.1),
             'center_x': encode_normal(mean=0.0, std=0.16),
             'center_y': encode_normal(mean=0.0, std=0.16),
-            'axis_ratio': encode_normal(mean=1.0, std=0.1),
-            'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
-            'gamma_ext': encode_normal(mean=0.0, std=0.1),
+            'ellip_x': encode_normal(mean=0.0, std=0.1),
+            'ellip_xy': encode_normal(mean=0.0, std=0.1),
+            'gamma_one': encode_normal(mean=0.0, std=0.05),
+            'gamma_two': encode_normal(mean=0.0, std=0.05),
             'zero_x': encode_constant(0.0),
             'zero_y': encode_constant(0.0)
         },
@@ -67,21 +68,18 @@ def get_config():
             'm_max': encode_constant(1e10),
             'k_one': encode_constant(0.0),
             'k_two': encode_constant(0.0),
-            'c_zero': encode_constant(18),
-            'conc_zeta': encode_constant(-0.2),
-            'conc_beta': encode_constant(0.8),
+            'c_zero': encode_normal(mean=16.0, std=2.0),
+            'conc_zeta': encode_normal(mean=-0.3, std=0.1),
+            'conc_beta': encode_normal(mean=0.55, std=0.3),
             'conc_m_ref': encode_constant(1e8),
-            'conc_dex_scatter': encode_constant(0.1)
+            'conc_dex_scatter': encode_normal(mean=0.1, std=0.06),
         },
         'source_params':{
             'galaxy_index': encode_uniform(minimum=0.0, maximum=1.0),
-            'output_ab_zeropoint': encode_constant(25.0),
-            'catalog_ab_zeropoint': encode_constant(25.0),
+            'output_ab_zeropoint': encode_constant(25.127),
+            'catalog_ab_zeropoint': encode_constant(25.127),
             'z_source': encode_constant(1.5),
-            'amp': encode_constant(1.0),
-            'sersic_radius': encode_uniform(minimum=1.0, maximum=3.0),
-            'n_sersic': encode_uniform(minimum=1.0, maximum=1.5),
-            'axis_ratio': encode_normal(mean=1.0, std=0.05),
+            'amp': encode_uniform(minimum=0.5, maximum=2.0),
             'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
             'center_x': encode_normal(mean=0.0, std=0.16),
             'center_y': encode_normal(mean=0.0, std=0.16)
@@ -99,19 +97,22 @@ def get_config():
 
     # The remaining parameters should not be drawn from random distributions.
     config['kwargs_detector'] = {
-        'n_x': 4, 'n_y': 4, 'pixel_width': 1.28, 'supersampling_factor': 1,
+        'n_x': 128, 'n_y': 128, 'pixel_width': 0.04, 'supersampling_factor': 2,
         'exposure_time': 1024, 'num_exposures': 2.0, 'sky_brightness': 22,
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
-    cosmos_path = str(pathlib.Path(__file__).parent.parent)
-    cosmos_path += '/test_files/cosmos_galaxies_testing.npz'
+    root_path = str(pathlib.Path(__file__).parent.parent.parent)
+    cosmos_path = root_path + '/datasets/cosmos/cosmos_galaxies_train.npz'
+    kernel_path = root_path + '/datasets/hst_psf/emp_psf_f814w_2x.npy'
+
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),
-        'all_main_deflector_models': (lens_models.EPL(), lens_models.Shear()),
+        'all_main_deflector_models': (lens_models.EPLEllip(),
+                                      lens_models.ShearCart()),
         'all_source_models': (source_models.CosmosCatalog(cosmos_path),),
         'all_lens_light_models': (source_models.SersicElliptic(),),
-        'all_psf_models': (psf_models.Gaussian(),)
+        'all_psf_models': (psf_models.PixelCatalog(kernel_path),)
     }
     # Some objects (subhalos for example) want to know the properties of another
     # object (main deflector). There can be multiple objects belonging to
@@ -135,21 +136,25 @@ def get_config():
         'sigma_eight': encode_constant(0.815)
     }
     config['kwargs_simulation'] = {
-        'num_z_bins': 10,
+        'num_z_bins': 1000,
         'los_pad_length': 10,
-        'subhalos_pad_length': 75,
-        'sampling_pad_length': 200,
+        'subhalos_pad_length': 750,
+        'sampling_pad_length': 200000,
     }
 
+    # Sample a few probable psfs.
     config['kwargs_psf'] = {
-        'fwhm': encode_constant(0.04),
-        'pixel_width': encode_constant(0.02)
+        'kernel_index': encode_uniform(16/56, 19/56)
     }
 
     config['truth_parameters'] = (
         ['main_deflector_params', 'main_deflector_params',
-         'main_deflector_params', 'main_deflector_params', 'subhalo_params'],
-        ['theta_e', 'slope', 'center_x', 'center_y', 'sigma_sub'],
-        [0, 0, 0, 0, 0])
+         'main_deflector_params', 'main_deflector_params',
+         'main_deflector_params', 'main_deflector_params',
+         'main_deflector_params', 'main_deflector_params',
+         'source_params', 'source_params', 'subhalo_params'],
+        ['theta_e', 'slope', 'center_x', 'center_y', 'ellip_x', 'ellip_xy',
+         'gamma_one', 'gamma_two', 'center_x', 'center_y', 'sigma_sub'],
+        [0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0])
 
     return config

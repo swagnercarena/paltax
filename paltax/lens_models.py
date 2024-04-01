@@ -17,7 +17,7 @@ Implementation of mass profiles for lensing closely following implementations
 in lenstronomy: https://github.com/lenstronomy/lenstronomy.
 """
 
-from typing import Any, Dict, Mapping, Tuple, Union
+from typing import Dict, Mapping, Tuple, Union
 
 import jax.numpy as jnp
 
@@ -37,9 +37,9 @@ class _LensModelBase():
     parameters = ()
 
     def modify_cosmology_params(
-            self: Any,
+            self,
             cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
-        ) -> Mapping[str, Union[float, int, jnp.ndarray]]:
+        ) -> Dict[str, Union[float, int, jnp.ndarray]]:
         """Modify cosmology params to include information required by model.
 
         Args:

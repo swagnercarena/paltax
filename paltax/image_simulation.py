@@ -34,7 +34,7 @@ def generate_image(
     kwargs_lens_all: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     kwargs_source_slice: Mapping[str, jnp.ndarray],
     kwargs_lens_light_slice: Mapping[str, jnp.ndarray],
-    kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
+    kwargs_psf: Mapping[str, jnp.ndarray],
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_source: float,
     kwargs_detector: Mapping[str, Union[float, int]],
@@ -94,7 +94,19 @@ def generate_image(
     )
 
     if apply_psf:
-        image = psf_convolution(image, kwargs_psf, all_models['all_psf_models'])
+        # This is a bit funny, but technically we allow for multiple PSF
+        # model to be applied to keep the code more consistent. We will
+        # scan over the provided PSFs (i.e. we will apply the blurings in
+        # the order that they were provided).
+        psf_convolution_partial = functools.partial(
+            psf_convolution, cosmology_params=cosmology_params,
+            all_psf_models=all_models['all_psf_models']
+        )
+        # scan requires the function to return two outputs. This will be
+        # ignored once the function is compiled.
+        def psf_conv_dup(image, kwargs_psf):
+            return psf_convolution_partial(image, kwargs_psf), None
+        image, _ = jax.lax.scan(psf_conv_dup, image, kwargs_psf)
 
     return image
 
@@ -102,6 +114,7 @@ def generate_image(
 def psf_convolution(
     image: jnp.ndarray,
     kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
+    cosmology_params:  Dict[str, Union[float, int, jnp.ndarray]],
     all_psf_models: Sequence[Any]
 ) -> jnp.ndarray:
     """Convolve image with the point spread function.
@@ -109,6 +122,8 @@ def psf_convolution(
     Args:
         image: Image to convolve
         kwargs_psf: Keyword arguments defining the point spread function.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
         all_psf_models: PSF models to use for model_index lookup.
 
     Returns:
@@ -118,7 +133,7 @@ def psf_convolution(
     # Consider changing.
     psf_functions = [model.convolve for model in all_psf_models]
     return jax.lax.switch(kwargs_psf['model_index'], psf_functions, image,
-                          kwargs_psf)
+                          kwargs_psf, cosmology_params)
 
 
 def noise_realization(
@@ -328,12 +343,6 @@ def _ray_shooting(
         cosmology_params=cosmology_params,
         z_source=z_source,
         all_lens_models=all_models['all_los_models']
-    )
-    ray_shooting_step_main_deflector = functools.partial(
-        _ray_shooting_step,
-        cosmology_params=cosmology_params,
-        z_source=z_source,
-        all_lens_models=all_models['all_main_deflector_models']
     )
 
     # Scan over all of the lens models in our system to calculate deflection and

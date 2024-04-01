@@ -15,7 +15,6 @@
 """
 import pathlib
 
-import jax
 import jax.numpy as jnp
 
 from paltax.input_pipeline import encode_normal, encode_uniform
@@ -141,7 +140,10 @@ def get_config():
         'sampling_pad_length': 200000,
     }
 
-    config['kwargs_psf'] = {'model_index': 0, 'fwhm': 0.04, 'pixel_width': 0.02}
+    config['kwargs_psf'] = {
+        'fwhm': encode_constant(0.04),
+        'pixel_width': encode_constant(0.02)
+    }
 
     config['truth_parameters'] = (
         ['main_deflector_params', 'main_deflector_params',
