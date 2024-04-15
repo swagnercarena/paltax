@@ -630,6 +630,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         r_max = cosmology_utils.lagrangian_radius(cosmology_params, 1e11)
         # Cosmological values are calculated in incriments of dz / 2.
         self.assertAlmostEqual(cosmology_params['dz'], dz / 2)
+        self.assertAlmostEqual(cosmology_params['z_lookup_max'], 2.0)
         self.assertAlmostEqual(cosmology_params['r_min'], r_min, places=6)
         self.assertAlmostEqual(cosmology_params['r_max'], r_max, places=6)
 
