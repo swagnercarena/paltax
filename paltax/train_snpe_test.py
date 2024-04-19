@@ -52,22 +52,21 @@ def _create_test_config():
     config.half_precision = False
 
     # One step of training and one step of refinement.
-    steps_per_epoch = ml_collections.config_dict.FieldReference(1)
-    config.steps_per_epoch = steps_per_epoch
-    config.num_initial_train_steps = steps_per_epoch * 1
-    config.num_steps_per_refinement = steps_per_epoch * 1
-    config.num_train_steps = steps_per_epoch * 2
+    config.steps_per_epoch = ml_collections.config_dict.FieldReference(1)
+    config.num_initial_train_steps = config.get_ref('steps_per_epoch') * 1
+    config.num_steps_per_refinement = config.get_ref('steps_per_epoch') * 1
+    config.num_train_steps = config.get_ref('steps_per_epoch') * 2
     config.num_refinements = ((
         config.get_ref('num_train_steps') -
          config.get_ref('num_initial_train_steps')) //
         config.get_ref('num_steps_per_refinement'))
 
     # Decide how often to save the model in checkpoints.
-    config.keep_every_n_steps = steps_per_epoch
+    config.keep_every_n_steps = config.get_ref('steps_per_epoch')
 
     # Parameters of the learning rate schedule
     config.learning_rate = 0.01
-    config.warmup_steps = 1 * steps_per_epoch
+    config.warmup_steps = 1 * config.get_ref('steps_per_epoch')
     config.refinement_base_value_multiplier = 0.5
 
     config.mu_prior = jnp.zeros(5)
