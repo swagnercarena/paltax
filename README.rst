@@ -57,7 +57,7 @@ Demos
 Figures
 -------
 
-Code for generating the plots included in some of the publications using ``paltax`` can be found under the corresponding arxiv number in the ``notebooks/papers/`` folder.
+Code for generating the plots included in some of the publications using ``paltax`` can be found under the corresponding arxiv number in the ``paltax/notebooks/papers/`` folder.
 
 Attribution
 -----------

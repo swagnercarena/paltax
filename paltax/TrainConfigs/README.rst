@@ -2,8 +2,7 @@ Config Files
 ------------
 
 NPE Configs
------------
-
+^^^^^^^^^^^^
 train_config_npe_base.py
     Base configuration for training the NPE model. Equivalent to the Fiducial model in `Wagner-Carena et al. 2024 <https://arxiv.org/abs/xxxx.yyyyy>`_.
 train_config_50k.py
@@ -34,8 +33,7 @@ train_config_res_d.py
     Base NPE config with ``ResNetD50`` model in place of ``ResNet50``. Equivalent to the Resnet-D 50 model in `Wagner-Carena et al. 2024 <https://arxiv.org/abs/xxxx.yyyyy>`_.
 
 SNPE Configs
------------
-
+^^^^^^^^^^^^
 train_config_snpe_base.py
     Base configuration for training the SNPE model. Equivalent to the Sequential model in `Wagner-Carena et al. 2024 <https://arxiv.org/abs/xxxx.yyyyy>`_.
 train_config_snpe_instant_avg.py
