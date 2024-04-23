@@ -15,7 +15,7 @@ required_packages = open('requirements.txt').read().splitlines()
 
 setup(
 	name='paltax',
-	version='0.0.0',
+	version='1.0.0',
 	description='Strong lensing package using jax',
 	long_description=readme,
 	author='Sebastian Wagner-Carena',
