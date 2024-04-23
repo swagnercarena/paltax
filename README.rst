@@ -45,7 +45,7 @@ The main functionality of ``paltax`` is to train (sequential) neural posterior e
 
     $ python main.py --workdir=path/to/model/output/folder --config=path/to/training/configuration
 
-``paltax`` comes preloaded with a number of training configuration files which are described in ``paltax/TrainConfigs/README.rst``. These training configuration files require input configuration files, examples of which can be found in ``paltax``  comes preloaded with a number of configuration files which are described in ``paltax/InputConfigs/``.
+``paltax`` comes preloaded with a number of training configuration files which are described in ``paltax/TrainConfigs/README.rst``. These training configuration files require input configuration files, examples of which can be found in ``paltax/InputConfigs/``.
 
 Demos
 -----
