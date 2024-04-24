@@ -61,6 +61,6 @@ Code for generating the plots included in some of the publications using ``palta
 
 Attribution
 -----------
-If you use ``paltax`` for your own research, please cite the ``paltax`` package (`Wagner-Carena et al. 2024 <https://arxiv.org/abs/xxxx.yyyyy>`_)
+If you use ``paltax`` for your own research, please cite the ``paltax`` package (`Wagner-Carena et al. 2024 <https://arxiv.org/abs/2404.14487>`_)
 
 ``paltax`` builds off of the publically released Google DeepMind codebase `jaxstronomy <https://github.com/google-research/google-research/tree/master/jaxstronomy>`_.
