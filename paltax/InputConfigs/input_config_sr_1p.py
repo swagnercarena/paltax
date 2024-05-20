@@ -22,7 +22,7 @@ def get_config():
     config = input_config_br.get_config()
 
     # Limit the number of unique batches.
-    config['source_params']['galaxy_index'] = encode_uniform(
+    config['lensing_config']['source_params']['galaxy_index'] = encode_uniform(
         minimum=0.0, maximum=0.01
     )
 
