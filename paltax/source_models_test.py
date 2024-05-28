@@ -482,9 +482,21 @@ class WeightedCatalogTest(chex.TestCase):
         )
 
         self.assertEqual(cosmology_params['cosmos_n_images'], 2)
+
         np.testing.assert_array_almost_equal(
             cosmology_params['catalog_weights_cdf'], catalog_weights_cdf
         )
+        
+        # Makes sure that when the number of weights don't match the
+        # number of sources, an error is raised
+        weighted_catalog = source_models.WeightedCatalog(
+            COSMOS_TEST_PATH, catalog_weights[1:]
+        )
+        with self.assertRaises(ValueError):
+            cosmology_params = weighted_catalog.modify_cosmology_params(
+                cosmology_params
+            )
+            
 
     @chex.all_variants
     def test_convert_to_angular(self):

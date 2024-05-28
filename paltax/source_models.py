@@ -488,7 +488,7 @@ class WeightedCatalog(CosmosCatalog):
             Arguments with any physical units parameters converted to angular
                 units.
         """
-        # Select the galaxy incdex from the uniform distribution.
+        # Select the galaxy index using the weighted distribution
         galaxy_index = jnp.searchsorted(
             cosmology_params['catalog_weights_cdf'], all_kwargs['galaxy_index']
         )
