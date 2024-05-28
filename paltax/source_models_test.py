@@ -295,7 +295,7 @@ class SersicEllipticTest(chex.TestCase, parameterized.TestCase):
 
 
 class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
-    """Runs tests of CosmosCatalogTest functions."""
+    """Runs tests of CosmosCatalog functions."""
 
     def test__init__(self):
         # Test that the intialization saves the path.
@@ -457,7 +457,7 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
 
 
 class WeightedCatalogTest(chex.TestCase):
-    """Runs tests of WeightedCatalogTest functions."""
+    """Runs tests of WeightedCatalog functions."""
 
     def test__init__(self):
         # Test that the intialization saves the path and weights.
