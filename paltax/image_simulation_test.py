@@ -139,15 +139,22 @@ def _prepare_all_source_models():
     all_source_models = []
     cosmos_path = str(pathlib.Path(__file__).parent)
     cosmos_path += '/test_files/cosmos_galaxies_testing.npz'
+    catalog_weights = jnp.array([2.0, 5.0])
     for model in source_models.__all__:
         # CosmosCatalog model required initialization parameters.
-        if model != 'CosmosCatalog':
+        if model == 'CosmosCatalog':
             all_source_models.append(
-                source_models.__getattribute__(model)()
+                source_models.__getattribute__(model)(cosmos_path)
+            )
+        elif model == 'WeightedCatalog':
+            all_source_models.append(
+                source_models.__getattribute__(model)(
+                    cosmos_path, catalog_weights
+                )
             )
         else:
             all_source_models.append(
-                source_models.__getattribute__(model)(cosmos_path)
+                source_models.__getattribute__(model)()
             )
     return tuple(all_source_models)
 
