@@ -51,9 +51,13 @@ COSMOLOGY_PARAMS_INIT = immutabledict({
         'sigma_eight': 0.8159,
 })
 
+
 def _prepare_catalog_weights():
+    # Generate a fixed set of catalog weights.
     catalog_weights = jnp.array([0.2, 10.0])
-    return catalog_weights, jnp.cumsum(catalog_weights)/jnp.sum(catalog_weights)
+    catalog_weights_cdf = jnp.cumsum(catalog_weights) / jnp.sum(catalog_weights)
+    return catalog_weights, catalog_weights_cdf
+
 
 def _prepare_cosmology_params(
         cosmology_params_init, z_lookup_max, dz, r_min=1e-4, r_max=1e3,
@@ -291,7 +295,7 @@ class SersicEllipticTest(chex.TestCase, parameterized.TestCase):
 
 
 class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
-    """Runs tests of elliptical Sersic brightness functions."""
+    """Runs tests of CosmosCatalogTest functions."""
 
     def test__init__(self):
         # Test that the intialization saves the path.
@@ -384,7 +388,7 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
         self.assertGreater(angular_kwargs['amp'], 1.0)
         self.assertAlmostEqual(angular_kwargs['scale'],
                                cosmology_params['cosmos_pixel_sizes'][0])
-                
+
 
     @chex.all_variants
     def test_function(self):
@@ -451,11 +455,12 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
             expected, k_correct_image(z_old, z_new), places=6
         )
 
+
 class WeightedCatalogTest(chex.TestCase):
-    """Runs tests of elliptical Sersic brightness functions."""
+    """Runs tests of WeightedCatalogTest functions."""
 
     def test__init__(self):
-        # Test that the intialization saves the path.
+        # Test that the intialization saves the path and weights.
         catalog_weights, catalog_weights_cdf = _prepare_catalog_weights()
         weighted_catalog = source_models.WeightedCatalog(
             COSMOS_TEST_PATH, catalog_weights
@@ -464,10 +469,13 @@ class WeightedCatalogTest(chex.TestCase):
         np.testing.assert_array_almost_equal(
             catalog_weights_cdf, weighted_catalog.catalog_weights_cdf
         )
-    
+
     def test_modify_cosmology_params(self):
+        # Test that the weights are saved to the cosmology params.
         catalog_weights, catalog_weights_cdf = _prepare_catalog_weights()
-        weighted_catalog = source_models.WeightedCatalog(COSMOS_TEST_PATH, catalog_weights)
+        weighted_catalog = source_models.WeightedCatalog(
+            COSMOS_TEST_PATH, catalog_weights
+        )
         cosmology_params = {}
         cosmology_params = weighted_catalog.modify_cosmology_params(
             cosmology_params
@@ -480,12 +488,11 @@ class WeightedCatalogTest(chex.TestCase):
 
     @chex.all_variants
     def test_convert_to_angular(self):
-        # Test that it returns the parameters we need for the interpolation
-        # function.
+        # Test that we sample accoding to the weights
         catalog_weights, _ = _prepare_catalog_weights()
-        weighted_catalog = source_models.WeightedCatalog(COSMOS_TEST_PATH, catalog_weights)
-
-        # Start with the redshifts and zeropoints being equal.
+        weighted_catalog = source_models.WeightedCatalog(
+            COSMOS_TEST_PATH, catalog_weights
+        )
         cosmology_params = _prepare_cosmology_params(
             COSMOLOGY_PARAMS_INIT, 1.0, 0.01
         )
@@ -499,9 +506,8 @@ class WeightedCatalogTest(chex.TestCase):
             'output_ab_zeropoint': 23.5,
             'catalog_ab_zeropoint': 23.5
         }
-
         convert_to_angular = self.variant(weighted_catalog.convert_to_angular)
-        
+
         # Makes sure that the first image is returned when the galaxy index
         # is below 0.02
         angular_kwargs = convert_to_angular(all_kwargs, cosmology_params)
@@ -510,7 +516,7 @@ class WeightedCatalogTest(chex.TestCase):
             (cosmology_params['cosmos_images'][0] /
                 cosmology_params['cosmos_pixel_sizes'][0] ** 2),
             decimal=4)
-        
+
         # Makes sure that the second image is returned when the galaxy index
         # is above 0.02
         all_kwargs['galaxy_index'] = 0.1
@@ -520,6 +526,7 @@ class WeightedCatalogTest(chex.TestCase):
             (cosmology_params['cosmos_images'][1] /
                 cosmology_params['cosmos_pixel_sizes'][1] ** 2),
             decimal=4)
+
 
 if __name__ == '__main__':
     absltest.main()

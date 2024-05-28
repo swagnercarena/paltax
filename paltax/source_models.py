@@ -326,9 +326,10 @@ class CosmosCatalog(Interpol):
             all_kwargs['galaxy_index'] * cosmology_params['cosmos_n_images']
         ).astype(int)
 
-        return CosmosCatalog._convert_to_angular(all_kwargs, cosmology_params,
-                                                 galaxy_index)
-    
+        return CosmosCatalog._convert_to_angular(
+            all_kwargs, cosmology_params, galaxy_index
+        )
+
     @staticmethod
     def _convert_to_angular(
             all_kwargs: Dict[str, jnp.ndarray],
@@ -346,6 +347,9 @@ class CosmosCatalog(Interpol):
         Returns:
             Arguments with any physical units parameters converted to angular
                 units.
+
+        Notes:
+            Galaxy index must have already been converted to an index.
         """
         # Read the catalog values directly from the stored arrays.
         z_catalog = cosmology_params['cosmos_redshifts'][galaxy_index]
@@ -417,23 +421,27 @@ class CosmosCatalog(Interpol):
         mag_k_correction -= utils.get_k_correction(z_old)
         return 10 ** (-mag_k_correction / 2.5)
 
+
 class WeightedCatalog(CosmosCatalog):
     """Light profiles from catalog with custom weights
     """
 
     def __init__(self, cosmos_path: str, catalog_weights: jnp.ndarray):
-        """Initialize the path to the COSMOS galaxies.
+        """Initialize the path to the catalog galaxies and catalog weights.
 
         Args:
             cosmos_path: Path to the npz file containing the cosmos images,
                 redshift array, and pixel sizes.
-            catalog_weights: Weights for the sources in the catalog
+            catalog_weights: Weights for the sources in the catalog. Do not
+                need to be normalized.
         """
         # Save the cosmos image path.
         super().__init__(cosmos_path=cosmos_path)
 
         # Turns the catalog_weights pdf into a normalized cdf
-        catalog_weights_cdf = jnp.cumsum(catalog_weights)/jnp.sum(catalog_weights)
+        catalog_weights_cdf = (
+            jnp.cumsum(catalog_weights) / jnp.sum(catalog_weights)
+        )
         self.catalog_weights_cdf = catalog_weights_cdf
 
     def modify_cosmology_params(
@@ -454,12 +462,15 @@ class WeightedCatalog(CosmosCatalog):
         )
         cosmology_params['catalog_weights_cdf'] = self.catalog_weights_cdf
 
-        if not cosmology_params['cosmos_n_images'] == len(cosmology_params['catalog_weights_cdf']):
-            raise ValueError('Number of weights %s should be equal to the number of sources %s'
-                             % (len(cosmology_params['catalog_weights_cdf'], cosmology_params['cosmos_n_images'])))
-        
+        n_weights = len(cosmology_params['catalog_weights_cdf'])
+        if cosmology_params['cosmos_n_images'] != n_weights:
+            raise ValueError(
+                f'Number of weights {n_weights} should be equal to the ' +
+                f'number of sources {cosmology_params["cosmos_n_images"]}'
+            )
+
         return cosmology_params
-    
+
     @staticmethod
     def convert_to_angular(
             all_kwargs: Dict[str, jnp.ndarray],
@@ -482,9 +493,6 @@ class WeightedCatalog(CosmosCatalog):
             cosmology_params['catalog_weights_cdf'], all_kwargs['galaxy_index']
         )
 
-        return CosmosCatalog._convert_to_angular(all_kwargs, cosmology_params,
-                                                 galaxy_index)
-
-
-
-
+        return CosmosCatalog._convert_to_angular(
+            all_kwargs, cosmology_params, galaxy_index
+        )
