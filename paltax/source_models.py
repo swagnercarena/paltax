@@ -454,6 +454,10 @@ class WeightedCatalog(CosmosCatalog):
         )
         cosmology_params['catalog_weights_cdf'] = self.catalog_weights_cdf
 
+        if not cosmology_params['cosmos_n_images'] == len(cosmology_params['catalog_weights_cdf']):
+            raise ValueError('Number of weights %s should be equal to the number of sources %s'
+                             % (len(cosmology_params['catalog_weights_cdf'], cosmology_params['cosmos_n_images'])))
+        
         return cosmology_params
     
     @staticmethod
