@@ -27,7 +27,9 @@ import numpy as np
 from paltax import cosmology_utils
 from paltax import utils
 
-__all__ = ['Interpol', 'SersicElliptic', 'CosmosCatalog']
+__all__ = [
+    'Interpol', 'SersicElliptic', 'CosmosCatalog', 'WeightedCatalog'
+]
 
 
 class _SourceModelBase():
