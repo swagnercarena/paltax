@@ -52,6 +52,13 @@ COSMOLOGY_PARAMS_INIT = immutabledict({
 })
 
 
+def _prepare_catalog_weights():
+    # Generate a fixed set of catalog weights.
+    catalog_weights = jnp.array([0.2, 10.0])
+    catalog_weights_cdf = jnp.cumsum(catalog_weights) / jnp.sum(catalog_weights)
+    return catalog_weights, catalog_weights_cdf
+
+
 def _prepare_cosmology_params(
         cosmology_params_init, z_lookup_max, dz, r_min=1e-4, r_max=1e3,
         n_r_bins=2):
@@ -288,7 +295,7 @@ class SersicEllipticTest(chex.TestCase, parameterized.TestCase):
 
 
 class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
-    """Runs tests of elliptical Sersic brightness functions."""
+    """Runs tests of CosmosCatalog functions."""
 
     def test__init__(self):
         # Test that the intialization saves the path.
@@ -447,6 +454,90 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(
             expected, k_correct_image(z_old, z_new), places=6
         )
+
+
+class WeightedCatalogTest(chex.TestCase):
+    """Runs tests of WeightedCatalog functions."""
+
+    def test__init__(self):
+        # Test that the intialization saves the path and weights.
+        catalog_weights, catalog_weights_cdf = _prepare_catalog_weights()
+        weighted_catalog = source_models.WeightedCatalog(
+            COSMOS_TEST_PATH, catalog_weights
+        )
+        self.assertEqual(weighted_catalog.cosmos_path, COSMOS_TEST_PATH)
+        np.testing.assert_array_almost_equal(
+            catalog_weights_cdf, weighted_catalog.catalog_weights_cdf
+        )
+
+    def test_modify_cosmology_params(self):
+        # Test that the weights are saved to the cosmology params.
+        catalog_weights, catalog_weights_cdf = _prepare_catalog_weights()
+        weighted_catalog = source_models.WeightedCatalog(
+            COSMOS_TEST_PATH, catalog_weights
+        )
+        cosmology_params = {}
+        cosmology_params = weighted_catalog.modify_cosmology_params(
+            cosmology_params
+        )
+
+        self.assertEqual(cosmology_params['cosmos_n_images'], 2)
+        np.testing.assert_array_almost_equal(
+            cosmology_params['catalog_weights_cdf'], catalog_weights_cdf
+        )
+
+        # Makes sure that when the number of weights don't match the
+        # number of sources, an error is raised
+        weighted_catalog = source_models.WeightedCatalog(
+            COSMOS_TEST_PATH, catalog_weights[1:]
+        )
+        with self.assertRaises(ValueError):
+            cosmology_params = weighted_catalog.modify_cosmology_params(
+                cosmology_params
+            )
+
+
+    @chex.all_variants
+    def test_convert_to_angular(self):
+        # Test that we sample accoding to the weights
+        catalog_weights, _ = _prepare_catalog_weights()
+        weighted_catalog = source_models.WeightedCatalog(
+            COSMOS_TEST_PATH, catalog_weights
+        )
+        cosmology_params = _prepare_cosmology_params(
+            COSMOLOGY_PARAMS_INIT, 1.0, 0.01
+        )
+        cosmology_params = weighted_catalog.modify_cosmology_params(
+            cosmology_params
+        )
+        all_kwargs = {
+            'galaxy_index': 0.01,
+            'amp': 1.0,
+            'z_source': cosmology_params['cosmos_redshifts'][0],
+            'output_ab_zeropoint': 23.5,
+            'catalog_ab_zeropoint': 23.5
+        }
+        convert_to_angular = self.variant(weighted_catalog.convert_to_angular)
+
+        # Makes sure that the first image is returned when the galaxy index
+        # is below 0.02
+        angular_kwargs = convert_to_angular(all_kwargs, cosmology_params)
+        np.testing.assert_array_almost_equal(
+            angular_kwargs['image'],
+            (cosmology_params['cosmos_images'][0] /
+                cosmology_params['cosmos_pixel_sizes'][0] ** 2),
+            decimal=4)
+
+        # Makes sure that the second image is returned when the galaxy index
+        # is above 0.02
+        all_kwargs['galaxy_index'] = 0.1
+        angular_kwargs = convert_to_angular(all_kwargs, cosmology_params)
+        np.testing.assert_array_almost_equal(
+            angular_kwargs['image'],
+            (cosmology_params['cosmos_images'][1] /
+                cosmology_params['cosmos_pixel_sizes'][1] ** 2),
+            decimal=4)
+
 
 if __name__ == '__main__':
     absltest.main()

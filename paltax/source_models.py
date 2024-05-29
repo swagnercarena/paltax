@@ -27,7 +27,9 @@ import numpy as np
 from paltax import cosmology_utils
 from paltax import utils
 
-__all__ = ['Interpol', 'SersicElliptic', 'CosmosCatalog']
+__all__ = [
+    'Interpol', 'SersicElliptic', 'CosmosCatalog', 'WeightedCatalog'
+]
 
 
 class _SourceModelBase():
@@ -326,6 +328,31 @@ class CosmosCatalog(Interpol):
             all_kwargs['galaxy_index'] * cosmology_params['cosmos_n_images']
         ).astype(int)
 
+        return CosmosCatalog._convert_to_angular(
+            all_kwargs, cosmology_params, galaxy_index
+        )
+
+    @staticmethod
+    def _convert_to_angular(
+            all_kwargs: Dict[str, jnp.ndarray],
+            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
+            galaxy_index: int
+        ) -> Dict[str, jnp.ndarray]:
+        """Convert any parameters in physical units to angular units.
+
+        Args:
+            all_kwargs: All of the arguments, possibly including some in
+                physical units.
+            cosmology_params: Cosmological parameters that define the universe's
+                expansion.
+
+        Returns:
+            Arguments with any physical units parameters converted to angular
+                units.
+
+        Notes:
+            Galaxy index must have already been converted to an index.
+        """
         # Read the catalog values directly from the stored arrays.
         z_catalog = cosmology_params['cosmos_redshifts'][galaxy_index]
         pixel_scale_catalog = (
@@ -395,3 +422,79 @@ class CosmosCatalog(Interpol):
         mag_k_correction = utils.get_k_correction(z_new)
         mag_k_correction -= utils.get_k_correction(z_old)
         return 10 ** (-mag_k_correction / 2.5)
+
+
+class WeightedCatalog(CosmosCatalog):
+    """Light profiles from catalog with custom weights
+    """
+
+    def __init__(self, cosmos_path: str, catalog_weights: jnp.ndarray):
+        """Initialize the path to the catalog galaxies and catalog weights.
+
+        Args:
+            cosmos_path: Path to the npz file containing the cosmos images,
+                redshift array, and pixel sizes.
+            catalog_weights: Weights for the sources in the catalog. Do not
+                need to be normalized.
+        """
+        # Save the cosmos image path.
+        super().__init__(cosmos_path=cosmos_path)
+
+        # Turns the catalog_weights pdf into a normalized cdf
+        catalog_weights_cdf = (
+            jnp.cumsum(catalog_weights) / jnp.sum(catalog_weights)
+        )
+        self.catalog_weights_cdf = catalog_weights_cdf
+
+    def modify_cosmology_params(
+            self,
+            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+        ) -> Dict[str, Union[float, int, jnp.ndarray]]:
+        """Modify cosmology params to include information required by model.
+
+        Args:
+            cosmology_params: Cosmological parameters that define the universe's
+                expansion. Must be mutable.
+
+        Returns:
+            Modified cosmology parameters.
+        """
+        cosmology_params = super().modify_cosmology_params(
+            cosmology_params=cosmology_params
+        )
+        cosmology_params['catalog_weights_cdf'] = self.catalog_weights_cdf
+
+        n_weights = len(cosmology_params['catalog_weights_cdf'])
+        if cosmology_params['cosmos_n_images'] != n_weights:
+            raise ValueError(
+                f'Number of weights {n_weights} should be equal to the ' +
+                f'number of sources {cosmology_params["cosmos_n_images"]}'
+            )
+
+        return cosmology_params
+
+    @staticmethod
+    def convert_to_angular(
+            all_kwargs: Dict[str, jnp.ndarray],
+            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+        ) -> Dict[str, jnp.ndarray]:
+        """Convert any parameters in physical units to angular units.
+
+        Args:
+            all_kwargs: All of the arguments, possibly including some in
+                physical units.
+            cosmology_params: Cosmological parameters that define the universe's
+                expansion.
+
+        Returns:
+            Arguments with any physical units parameters converted to angular
+                units.
+        """
+        # Select the galaxy index using the weighted distribution
+        galaxy_index = jnp.searchsorted(
+            cosmology_params['catalog_weights_cdf'], all_kwargs['galaxy_index']
+        )
+
+        return CosmosCatalog._convert_to_angular(
+            all_kwargs, cosmology_params, galaxy_index
+        )
