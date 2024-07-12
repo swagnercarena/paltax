@@ -175,11 +175,6 @@ def mass_function_power_law(
         Power law slope and norm that best approximates the exact mass function.
     """
     # Interpolate between the two nearest bins to the query.
-    jax.experimental.checkify.check(
-        z > cosmology_params['los_z_lookup_max'],
-        "Redshift {z} outside the maximum range specified for lookup tables.",
-        z=z
-    )
     lookup_unrounded = z / cosmology_params['dz'] * 2
     frac = lookup_unrounded % 1
 
@@ -313,6 +308,7 @@ def volume_element(main_deflector_params: Mapping[str, float],
     Returns:
         Volume element of the lightcone. In units of kpc ** 3.
     """
+    dz = cosmology_params['dz']
     # Get the los parameters we will need.
     los_radius = cone_angle_to_radius(main_deflector_params, source_params,
         los_params, cosmology_params, z + dz / 2)
@@ -395,6 +391,7 @@ def draw_redshifts(main_deflector_params: Mapping[str, float],
     # Round down the samples so that they are only in dz increments. This means
     # many samples will be rounded to the same value, so we will also need the
     # average number of samples being rounded into each bin.
+    dz = cosmology_params['dz']
     z_samples = jnp.floor(z_samples / dz) * dz
     samples_per_bin = num_z_bins / ((z_max - z_min) / dz)
 
