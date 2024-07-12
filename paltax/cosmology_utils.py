@@ -215,6 +215,53 @@ def _growth_factor_exact_unormalized(
                     _e_z_rad_to_dark(cosmology_params, z) * integral)
 
 
+def _correlation_function_exact(
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
+    radius: float
+) -> float:
+    """Calculate the exact correlation function at a given comoving radius.
+
+    Args:
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        radius: Scale radius at which to evaluate the correlation
+            function in units of comoving Mpc / h.
+
+    Returns:
+        Correlation function at the given redshift.
+
+    Notes:
+        Growth factor is not included in this correlation function (i.e. this
+        is z=0 correlation function).
+    """
+    # Set the integration bins. TODO: Number of bins is fixed.
+    k_bins = jnp.logspace(
+        jnp.log10(1e-6 / radius), jnp.log10(1e5 / radius), 10000
+    )
+
+    # Calculate the normalized powerspectrum.
+    ps_norm = (
+        cosmology_params['sigma_eight'] /
+        _sigma_numerical(cosmology_params, 8.0)
+    ) ** 2
+    ps = power_spectrum.matter_power_spectrum(
+        k_bins, cosmology_params['omega_m_zero'],
+        cosmology_params['omega_b_zero'], cosmology_params['temp_cmb_zero'],
+        cosmology_params['hubble_constant'], cosmology_params['n_s']
+    )
+    ps *= ps_norm
+
+    integrand = ps * k_bins / radius
+    integrand *= jnp.exp(-(k_bins * radius / 1e3) ** 2)
+    integrand *= jnp.sin(k_bins * radius)
+    integral = jax.scipy.integrate.trapezoid(integrand, k_bins)
+
+    # Normalize the integral.
+    integral /= (2.0 * jnp.pi ** 2)
+
+    return integral
+
+
 def add_lookup_tables_to_cosmology_params(
         cosmology_params: Mapping[str, Union[float, int]],
         z_lookup_max: float, dz: float, r_min: float, r_max: float,
@@ -240,23 +287,32 @@ def add_lookup_tables_to_cosmology_params(
     comoving_distance_numerical = jax.jit(_comoving_distance_numerical)
     sigma_exact = jax.jit(_sigma_numerical)
     sigma_norm = jax.jit(_sigma_norm)
-    growth_factor = jax.jit(_growth_factor_exact_unormalized)
+    growth_factor_exact = jax.jit(_growth_factor_exact_unormalized)
+    correlation_function_exact = jax.jit(_correlation_function_exact)
 
     z_range = jnp.arange(0, z_lookup_max + dz, dz)
     radius_range = jnp.linspace(r_min, r_max, n_r_bins)
 
     # Normalize growth factor at redshift 0 to 1.
-    growth_norm = 1.0 / growth_factor(cosmology_params, 0.0)
+    growth_norm = 1.0 / growth_factor_exact(cosmology_params, 0.0)
     sigma_norm = sigma_norm(cosmology_params)
 
     comoving_lookup_table = jax.vmap(
-            jax.vmap(comoving_distance_numerical, in_axes=[None, None, 0]),
-            in_axes=[None, 0, None])(cosmology_params, z_range, z_range)
+        jax.vmap(comoving_distance_numerical, in_axes=[None, None, 0]),
+        in_axes=[None, 0, None])(cosmology_params, z_range, z_range)
     sigma_lookup_table = jax.vmap(
-            sigma_exact, in_axes=[None, 0])(cosmology_params, radius_range)
+        sigma_exact, in_axes=[None, 0])(cosmology_params, radius_range
+    )
     growth_lookup_table = (
-            jax.vmap(growth_factor, in_axes=[None, 0])(cosmology_params,
-                                                       z_range))
+        jax.vmap(growth_factor_exact, in_axes=[None, 0])(
+            cosmology_params, z_range
+        )
+    )
+    correlation_lookup_table = (
+        jax.vmap(correlation_function_exact, in_axes=[None, 0])(
+            cosmology_params, radius_range
+        )
+    )
 
     cosmology_params_lookup = {
             'dz': dz,
@@ -266,7 +322,8 @@ def add_lookup_tables_to_cosmology_params(
             'dr': (r_max - r_min) / (n_r_bins - 1),
             'comoving_lookup_table': comoving_lookup_table,
             'sigma_lookup_table': sigma_lookup_table * sigma_norm,
-            'growth_lookup_table': growth_lookup_table * growth_norm
+            'growth_lookup_table': growth_lookup_table * growth_norm,
+            'correlation_lookup_table': correlation_lookup_table
     }
     cosmology_params_lookup.update(cosmology_params)
 
@@ -479,6 +536,35 @@ def lagrangian_radius(
                      rho_matter(cosmology_params, 0.0))**(1.0 / 3.0))
 
 
+def growth_factor(cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
+    z: float) -> float:
+    """Return the linear growth factor.
+
+    Args:
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        z: Redshift at which to evaluate the linear growth factor.
+
+    Returns:
+        Linear growth factor.
+    """
+    # Use linear interpolation between bins.
+    lookup_z_unrounded = z / cosmology_params['dz']
+    frac_z = lookup_z_unrounded % 1
+
+    lookup_z_upper = jax.lax.min(
+            jnp.ceil(lookup_z_unrounded).astype(int),
+            len(cosmology_params['growth_lookup_table']) - 1)
+    lookup_z_lower = jax.lax.max(jnp.floor(lookup_z_unrounded).astype(int), 0)
+    frac_z = lookup_z_unrounded % 1
+    growth = (
+        frac_z * cosmology_params['growth_lookup_table'][lookup_z_upper] +
+        (1 - frac_z) *
+        cosmology_params['growth_lookup_table'][lookup_z_lower]
+    )
+    return growth
+
+
 def sigma_tophat(cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     lagrangian_r: float, z: float) -> float:
     """The RMS variance of the linear density field, including growth factor.
@@ -493,19 +579,10 @@ def sigma_tophat(cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     Returns:
         RMS variance of the linear density field.
     """
-    # For both calculations, use linear interpolation between bins.
-    lookup_z_unrounded = z / cosmology_params['dz']
-    frac_z = lookup_z_unrounded % 1
-
-    lookup_z_upper = jax.lax.min(
-            jnp.ceil(lookup_z_unrounded).astype(int),
-            len(cosmology_params['growth_lookup_table']) - 1)
-    lookup_z_lower = jax.lax.max(jnp.floor(lookup_z_unrounded).astype(int), 0)
-
+    # Use linear interpolation between bins.
     lookup_sigma_unrounded = ((lagrangian_r - cosmology_params['r_min']) /
                                                         cosmology_params['dr'])
     frac_sigma = lookup_sigma_unrounded % 1
-
     lookup_sigma_upper = jax.lax.min(
             jnp.ceil(lookup_sigma_unrounded).astype(int),
             len(cosmology_params['sigma_lookup_table']) - 1)
@@ -517,10 +594,7 @@ def sigma_tophat(cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
             cosmology_params['sigma_lookup_table'][lookup_sigma_upper] +
             (1 - frac_sigma) *
             cosmology_params['sigma_lookup_table'][lookup_sigma_lower])
-    growth = (
-            frac_z * cosmology_params['growth_lookup_table'][lookup_z_upper] +
-            (1 - frac_z) *
-            cosmology_params['growth_lookup_table'][lookup_z_lower])
+    growth = growth_factor(cosmology_params, z)
 
     return sigma_no_growth * growth
 
@@ -616,9 +690,46 @@ def calculate_sigma_crit(
     return ds / (dd * dds) * norm / mpc_to_kpc ** 2
 
 
-def correlation_function(cosmology_params, comoving_r, z_lens):
-    # TODO: This function is incomplete.
-    return 0.0
+def correlation_function(
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
+    radius: float, z_lens: float
+) -> float:
+    """Calculate the correlation function at a given comoving radius.
+
+    Args:
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        radius: Scale radius at which to evaluate the correlation
+            function in units of comoving Mpc / h.
+        z_lens: Redshift of the lens.
+
+    Returns:
+        Correlation function at the given redshift.
+    """
+    # Find the lookup bin for the radius.
+    lookup_correlation_unrounded = (
+        (radius - cosmology_params['r_min']) / cosmology_params['dr']
+    )
+    frac_sigma = lookup_correlation_unrounded % 1
+    lookup_correlation_upper = jax.lax.min(
+        jnp.ceil(lookup_correlation_unrounded).astype(int),
+        len(cosmology_params['correlation_lookup_table']) - 1
+    )
+    lookup_correlation_lower = jax.lax.max(
+        jnp.floor(lookup_correlation_unrounded).astype(int), 0
+    )
+
+    # Lookup the integral and include the growth factor.
+    integral = (
+        frac_sigma *
+        cosmology_params['correlation_lookup_table'][lookup_correlation_upper] +
+        (1 - frac_sigma) *
+        cosmology_params['correlation_lookup_table'][lookup_correlation_lower]
+    )
+    growth = growth_factor(cosmology_params, z_lens)
+    integral *= growth ** 2
+
+    return integral
 
 
 def halo_bias(cosmology_params, mass, z_lens):
