@@ -643,6 +643,25 @@ class CosmologyUtilsTest(chex.TestCase, parameterized.TestCase):
             expected, places=2
         )
 
+    @chex.all_variants
+    @parameterized.named_parameters([
+    (f'_m_{m}_z_{z}', m, z, expected) for
+        m, z, expected in zip([1e6, 1e7, 1e8], [0.2, 0.4, 0.6],
+        [0.6686, 0.6508, 0.6545])
+    ])
+    def test_halo_bias(self, mass, z_lens, expected):
+        # Test a few reference values of the critical surface overdensity.
+        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT,
+            z_lens, 0.1, 1e-4, 1e1, n_r_bins=2)
+        radius = cosmology_utils.lagrangian_radius(cosmology_params, mass)
+        cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT,
+            z_lens, 0.1, 1e-4, radius, n_r_bins=2)
+
+        halo_bias = self.variant(cosmology_utils.halo_bias)
+        self.assertAlmostEqual(
+            halo_bias(cosmology_params, mass, z_lens),
+            expected, places=3
+        )
 
 if __name__ == '__main__':
     absltest.main()

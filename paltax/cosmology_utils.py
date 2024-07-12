@@ -732,6 +732,46 @@ def correlation_function(
     return integral
 
 
-def halo_bias(cosmology_params, mass, z_lens):
-    # TODO: This function is incomplete.
-    return 0.0
+def halo_bias(
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
+    mass: float, z_lens: float
+):
+    """Calculate the halo bias for a given mass and redshift.
+
+    Args:
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        mass: Mass at which to calculate the halo bias in units M_sun / h.
+        z_lens: Redshift of the lens.
+
+    Returns:
+        Halo bias at the given mass and redshift.
+
+    Notes:
+        Asummes the Tinker 2010 model for halo bias.
+    """
+    # Get the peak height, the density threshold, and the matter density.
+    nu = peak_height(cosmology_params, mass, z_lens)
+    rho_m = rho_matter(cosmology_params, z_lens)
+    rho_crit_200 = rho_crit(cosmology_params, z_lens) * 200 * 1e9 # Mpc units.
+    delta_log =  jnp.log10(rho_crit_200 / rho_m)
+
+    # Norms and slopes.
+    norm_a = 1.0 + 0.24 * delta_log * jnp.exp(-1.0 * (4.0 / delta_log) ** 4)
+    norm_b = 0.183
+    norm_c = (
+        0.019 + 0.107 * delta_log +
+        0.19 * jnp.exp(-1.0 * (4.0 / delta_log) ** 4)
+    )
+    slope_a = 0.44 * delta_log - 0.88
+    slope_b = 1.5
+    slope_c = 2.4
+
+    bias = 1.0
+    bias -= norm_a * nu ** slope_a / (
+        nu ** slope_a + DELTA_COLLAPSE_UNCORRECTED ** slope_a
+    )
+    bias += norm_b * nu ** slope_b
+    bias += norm_c * nu ** slope_c
+
+    return bias
