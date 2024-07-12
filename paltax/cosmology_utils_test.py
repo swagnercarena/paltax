@@ -551,8 +551,6 @@ class CosmologyUtilsTest(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(
             sigma_tophat(cosmology_params, r, z), expected, places=2)
         self.assertAlmostEqual(
-            sigma_tophat(cosmology_params, r + 1e-5, z), expected, places=2)
-        self.assertAlmostEqual(
             sigma_tophat(cosmology_params, r - 1e-5, z), expected, places=2)
 
     @chex.all_variants

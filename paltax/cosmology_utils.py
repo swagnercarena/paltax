@@ -263,9 +263,9 @@ def _correlation_function_exact(
 
 
 def add_lookup_tables_to_cosmology_params(
-        cosmology_params: Mapping[str, Union[float, int]],
-        z_lookup_max: float, dz: float, r_min: float, r_max: float,
-        n_r_bins: Optional[float] = 1000,
+    cosmology_params: Mapping[str, Union[float, int]],
+    z_lookup_max: float, dz: float, r_min: float, r_max: float,
+    n_r_bins: Optional[float] = 1000,
 ) -> Dict[str, Union[float, int, jnp.ndarray]]:
     """Add lookup tables to cosmology params.
 
@@ -330,6 +330,64 @@ def add_lookup_tables_to_cosmology_params(
     return cosmology_params_lookup
 
 
+def _get_radial_index(
+    cosmology_params: Mapping[str, Union[float, int]],
+    radius: float
+) -> int:
+    """Return the indices and fraction for linear interpolation.
+
+    Args:
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        radius: Radius in units of comoving Mpc / h.
+
+    Returns:
+        Upper and lower indices along with fractional interpolation.
+    """
+    # Use linear interpolation between bins.
+    lookup_unrounded = (
+        (radius - cosmology_params['r_min']) / cosmology_params['dr']
+    )
+
+    frac = lookup_unrounded % 1
+    lookup_upper = jax.lax.min(
+        jnp.ceil(lookup_unrounded).astype(int),
+        len(cosmology_params['sigma_lookup_table']) - 1
+    )
+    lookup_lower = jax.lax.max(
+        jnp.floor(lookup_unrounded).astype(int), 0
+    )
+    return lookup_upper, lookup_lower, frac
+
+
+def _get_redshift_index(
+    cosmology_params: Mapping[str, Union[float, int]],
+    z: float
+):
+    """Return the indices and fraction for linear interpolation.
+
+    Args:
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        z: Redshift in units of comoving Mpc / h.
+
+    Returns:
+        Upper and lower indices along with fractional interpolation.
+    """
+    # Use linear interpolation between bins.
+    lookup_unrounded = z / cosmology_params['dz']
+
+    frac = lookup_unrounded % 1
+    lookup_upper = jax.lax.min(
+        jnp.ceil(lookup_unrounded).astype(int),
+        len(cosmology_params['comoving_lookup_table']) - 1
+    )
+    lookup_lower = jax.lax.max(
+        jnp.floor(lookup_unrounded).astype(int), 0
+    )
+    return lookup_upper, lookup_lower, frac
+
+
 def comoving_distance(
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_min: float, z_max: float) -> float:
@@ -350,21 +408,12 @@ def comoving_distance(
         offending parameter(s) with `z_lookup_max`.
     """
     # Interpolate between the four nearest binds to the query.
-    unrounded_i = z_min / cosmology_params['dz']
-    unrounded_j = z_max / cosmology_params['dz']
-
-    lookup_i_upper = jax.lax.min(
-            jnp.ceil(unrounded_i).astype(int),
-            len(cosmology_params['comoving_lookup_table'] - 1))
-    lookup_i_lower = jax.lax.max(jnp.floor(unrounded_i).astype(int), 0)
-    lookup_j_upper = jax.lax.min(
-            jnp.ceil(unrounded_j).astype(int),
-            len(cosmology_params['comoving_lookup_table'] - 1))
-    lookup_j_lower = jax.lax.max(jnp.floor(unrounded_j).astype(int), 0)
-
-    # Conduct a bilinear interpolation.
-    frac_i = unrounded_i % 1
-    frac_j = unrounded_j % 1
+    lookup_i_upper, lookup_i_lower, frac_i = _get_redshift_index(
+        cosmology_params, z_min
+    )
+    lookup_j_upper, lookup_j_lower, frac_j = _get_redshift_index(
+        cosmology_params, z_max
+    )
 
     # Replacing these lines with a matrix multiplication would be cleaner, but
     # leads to slightly slower code due to fraction matrix initialization.
@@ -532,8 +581,10 @@ def lagrangian_radius(
     """
     # rho_matter returns in h units, so convert here for radius to be returned in
     # Mpc.
-    return ((3.0 * mass / 4.0 / jnp.pi /
-                     rho_matter(cosmology_params, 0.0))**(1.0 / 3.0))
+    return (
+        (3.0 * mass / 4.0 / jnp.pi / rho_matter(cosmology_params, 0.0)) **
+        (1.0 / 3.0)
+    )
 
 
 def growth_factor(cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
@@ -549,14 +600,9 @@ def growth_factor(cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
         Linear growth factor.
     """
     # Use linear interpolation between bins.
-    lookup_z_unrounded = z / cosmology_params['dz']
-    frac_z = lookup_z_unrounded % 1
-
-    lookup_z_upper = jax.lax.min(
-            jnp.ceil(lookup_z_unrounded).astype(int),
-            len(cosmology_params['growth_lookup_table']) - 1)
-    lookup_z_lower = jax.lax.max(jnp.floor(lookup_z_unrounded).astype(int), 0)
-    frac_z = lookup_z_unrounded % 1
+    lookup_z_upper, lookup_z_lower, frac_z = _get_redshift_index(
+        cosmology_params, z
+    )
     growth = (
         frac_z * cosmology_params['growth_lookup_table'][lookup_z_upper] +
         (1 - frac_z) *
@@ -580,14 +626,9 @@ def sigma_tophat(cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
         RMS variance of the linear density field.
     """
     # Use linear interpolation between bins.
-    lookup_sigma_unrounded = ((lagrangian_r - cosmology_params['r_min']) /
-                                                        cosmology_params['dr'])
-    frac_sigma = lookup_sigma_unrounded % 1
-    lookup_sigma_upper = jax.lax.min(
-            jnp.ceil(lookup_sigma_unrounded).astype(int),
-            len(cosmology_params['sigma_lookup_table']) - 1)
-    lookup_sigma_lower = jax.lax.max(
-            jnp.floor(lookup_sigma_unrounded).astype(int), 0)
+    lookup_sigma_upper, lookup_sigma_lower, frac_sigma = _get_radial_index(
+        cosmology_params, lagrangian_r
+    )
 
     sigma_no_growth = (
             frac_sigma *
@@ -707,23 +748,15 @@ def correlation_function(
         Correlation function at the given redshift.
     """
     # Find the lookup bin for the radius.
-    lookup_correlation_unrounded = (
-        (radius - cosmology_params['r_min']) / cosmology_params['dr']
-    )
-    frac_sigma = lookup_correlation_unrounded % 1
-    lookup_correlation_upper = jax.lax.min(
-        jnp.ceil(lookup_correlation_unrounded).astype(int),
-        len(cosmology_params['correlation_lookup_table']) - 1
-    )
-    lookup_correlation_lower = jax.lax.max(
-        jnp.floor(lookup_correlation_unrounded).astype(int), 0
+    lookup_correlation_upper, lookup_correlation_lower, frac_correlation = (
+        _get_radial_index(cosmology_params, radius)
     )
 
     # Lookup the integral and include the growth factor.
     integral = (
-        frac_sigma *
+        frac_correlation *
         cosmology_params['correlation_lookup_table'][lookup_correlation_upper] +
-        (1 - frac_sigma) *
+        (1 - frac_correlation) *
         cosmology_params['correlation_lookup_table'][lookup_correlation_lower]
     )
     growth = growth_factor(cosmology_params, z_lens)
