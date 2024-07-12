@@ -71,7 +71,7 @@ def _prepare_source_params():
 
 def _prepare_los_params():
     los_params = {'delta_los': 1.1, 'r_min':0.5, 'r_max':10.0, 'm_min': 1e6,
-        'm_max': 1e10, 'dz':0.1, 'cone_angle': 8.0, 'angle_buffer': 0.8,
+        'm_max': 1e10, 'cone_angle': 8.0, 'angle_buffer': 0.8,
         'c_zero': 18, 'conc_zeta': -0.2, 'conc_beta': 0.8, 'conc_m_ref': 1e8,
         'conc_dex_scatter': 0.0}
     return los_params
@@ -203,6 +203,10 @@ class LosTests(chex.TestCase, parameterized.TestCase):
             norm_expected, places=3
         )
 
+        # Test global properties.
+        self.assertAlmostEqual(cosmology_params['los_z_lookup_max'], 1.12)
+        self.assertAlmostEqual(cosmology_params['los_num_z_bins'], 10)
+
 
     @chex.all_variants(without_device=False)
     def test_mass_function_power_law(self):
@@ -323,6 +327,13 @@ class LosTests(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(expected_num_halos(main_deflector_params,
             source_params, los_params, cosmology_params, z) / hand_calc,
             hand_calc / hand_calc, places=3)
+
+        # Negative normalization should be treated like 0.0
+        los_params['delta_los'] = -1.0
+        self.assertAlmostEqual(
+            expected_num_halos(main_deflector_params, source_params,
+                los_params, cosmology_params, z),
+            0.0)
 
     @chex.all_variants(without_device=False)
     def test_draw_redshifts(self):

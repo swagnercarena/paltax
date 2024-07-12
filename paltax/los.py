@@ -84,6 +84,7 @@ def mass_function_exact(
     return (-1 / 3 * nu_function_eval * rho_matter / masses ** 2 *
         derivative_sigma)
 
+
 def _mass_function_power_law_numerical(
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]], z: float,
     m_min: float, m_max: float) -> Tuple[float, float]:
@@ -143,7 +144,7 @@ def add_los_lookup_tables_to_cosmology_params(
         _mass_function_power_law_numerical)
     m_min = los_params['m_min']
     m_max = los_params['m_max']
-    dz = los_params['dz']
+    dz = cosmology_params['dz'] # dz already set in cosmology_params.
 
     z_range = jnp.arange(0, z_lookup_max + dz / 2, dz / 2)
 
@@ -173,7 +174,12 @@ def mass_function_power_law(
     Returns:
         Power law slope and norm that best approximates the exact mass function.
     """
-    # Interpolate between the two nearest binds to the query.
+    # Interpolate between the two nearest bins to the query.
+    jax.experimental.checkify.check(
+        z > cosmology_params['los_z_lookup_max'],
+        "Redshift {z} outside the maximum range specified for lookup tables.",
+        z=z
+    )
     lookup_unrounded = z / cosmology_params['dz'] * 2
     frac = lookup_unrounded % 1
 
@@ -212,27 +218,29 @@ def two_halo_boost(main_deflector_params: Mapping[str, float],
         Boost at the given redshift.
     """
     # Extract the los and main deflector parameters we will need.
-    dz = los_params['dz']
     host_mass = main_deflector_params['mass']
     z_lens = main_deflector_params['z_lens']
     r_min = los_params['r_min']
     r_max = los_params['r_max']
     h = cosmology_params['hubble_constant'] / 100
 
-    # TODO: For now use a fixed range of redshift values to calculate the boost.
-    z_range = jnp.linspace(z, z+dz, 100)
-
     # Only consider the two-point statistics within the radial limits.
-    comoving_r = jnp.abs(jax.vmap(cosmology_utils.comoving_distance,
-        in_axes = [None, 0, None])(cosmology_params, z_range, z_lens))
+    comoving_r = jnp.abs(
+        cosmology_utils.comoving_distance(cosmology_params, z, z_lens)
+    )
 
     # The two halo term consists of the correlation function and the halo bias.
-    two_halo = cosmology_utils.correlation_function(cosmology_params,
-        comoving_r, z_lens)
-    two_halo *= cosmology_utils.halo_bias(cosmology_params, host_mass * h,
-        z_lens)
+    two_halo = cosmology_utils.correlation_function(
+        cosmology_params, comoving_r, z_lens
+    )
+    two_halo *= cosmology_utils.halo_bias(
+        cosmology_params, host_mass * h, z_lens
+    )
 
-    return 1 + jnp.mean(two_halo)
+    # Set two_halo to zero if outside the specified radius.
+    two_halo_mask = jnp.logical_and(comoving_r < r_min, comoving_r > r_max)
+
+    return 1 + two_halo * two_halo_mask
 
 
 def cone_angle_to_radius(main_deflector_params: Mapping[str, float],
@@ -306,8 +314,6 @@ def volume_element(main_deflector_params: Mapping[str, float],
         Volume element of the lightcone. In units of kpc ** 3.
     """
     # Get the los parameters we will need.
-    dz = los_params['dz']
-
     los_radius = cone_angle_to_radius(main_deflector_params, source_params,
         los_params, cosmology_params, z + dz / 2)
 
@@ -335,6 +341,9 @@ def expected_num_halos(main_deflector_params: Mapping[str, float],
 
     Returns:
         Expected number of los halos in the slice.
+
+    Notes:
+        Negative delta_los are treated as 0.0 for consistency.
     """
     # Extract the main deflector, source, and los parameters we need.
     m_min = los_params['m_min']
@@ -346,7 +355,7 @@ def expected_num_halos(main_deflector_params: Mapping[str, float],
         los_params, cosmology_params, z)
     norm_pl *= two_halo_boost(main_deflector_params, los_params,
         cosmology_params, z)
-    norm_pl *= delta_los
+    norm_pl *= jax.lax.max(delta_los, 0.0)
 
     return norm_pl * power_law.power_law_integrate(m_min , m_max, slope_pl)
 
@@ -379,8 +388,6 @@ def draw_redshifts(main_deflector_params: Mapping[str, float],
         z_min is the lower bou
     """
     rng_num, rng_cdf = jax.random.split(rng)
-    # Extract the main deflector, source, and los parameters we will need.
-    dz = los_params['dz']
 
     # Get the redshift bins which we'll use for our cdf interpolation.
     z_samples = jnp.linspace(z_min, z_max - 1e-6, num_z_bins)
