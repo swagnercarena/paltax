@@ -213,6 +213,7 @@ def mass_concentration(substructure_params: Mapping[str, float],
     beta = substructure_params['conc_beta']
     m_ref = substructure_params['conc_m_ref']
     dex_scatter = substructure_params['conc_dex_scatter']
+    m_hm = 10 ** substructure_params['log_m_hm']
 
     # Use peak heights to calculate concentrations
     h = cosmology_params['hubble_constant'] / 100
@@ -222,6 +223,9 @@ def mass_concentration(substructure_params: Mapping[str, float],
         0.0)
     concentrations = (c_zero * (1+z) ** zeta *
         (peak_heights / peak_height_ref) ** (-beta))
+
+    # Warm dark matter modification to concentration
+    concentrations *= (1.0 + 60.0 * m_hm / masses) ** (-0.17)
 
     # Add scatter and return concentrations
     conc_scatter = jax.random.normal(rng, shape=concentrations.shape)

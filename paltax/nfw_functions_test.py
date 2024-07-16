@@ -59,7 +59,7 @@ def _prepare_main_deflector_params():
 
 def _prepare_substructure_params():
     substructure_params = {'c_zero': 18, 'conc_zeta': -0.2, 'conc_beta': 0.8,
-        'conc_m_ref': 1e8, 'conc_dex_scatter': 0.0}
+        'conc_m_ref': 1e8, 'conc_dex_scatter': 0.0, 'log_m_hm': 0.0}
     return substructure_params
 
 
@@ -234,6 +234,16 @@ class NfwFuntionsTests(chex.TestCase, parameterized.TestCase):
             jnp.full((10000,), m), z, rng)
         scatter = jnp.log10(conc) - expected
         self.assertAlmostEqual(jnp.std(scatter), 0.1, places=2)
+
+        # Finally check that the half-mode mass creates the desired supression.
+        subhalo_params['conc_dex_scatter'] = 0.0
+        subhalo_params['log_m_hm'] = 8.0
+        conc = mass_concentration(subhalo_params, cosmology_params,
+            jnp.full((10,), m), z, rng)
+        expected *= (1.0 + 60.0 * 1e8 / m) ** (-0.17)
+        np.testing.assert_array_almost_equal(conc, jnp.full((10,), expected),
+            decimal=0)
+
 
 if __name__ == '__main__':
     absltest.main()
