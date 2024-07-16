@@ -37,6 +37,7 @@ def get_config():
             'r_max': encode_constant(10.0),
             'm_min': encode_constant(1e7),
             'm_max': encode_constant(1e10),
+            'log_m_hm': encode_constant(0.0),
             'dz': encode_constant(0.01),
             'cone_angle': encode_constant(8.0),
             'angle_buffer': encode_constant(0.8),

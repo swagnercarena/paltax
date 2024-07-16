@@ -40,6 +40,7 @@ def _prepare_lensing_config():
             'r_max': encode_constant(10.0),
             'm_min': encode_constant(1e8),
             'm_max': encode_constant(1e10),
+            'log_m_hm': encode_constant(0.0),
             'dz': encode_constant(0.1),
             'cone_angle': encode_constant(8.0),
             'angle_buffer': encode_constant(0.8),

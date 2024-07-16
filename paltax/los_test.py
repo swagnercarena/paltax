@@ -71,9 +71,9 @@ def _prepare_source_params():
 
 def _prepare_los_params():
     los_params = {'delta_los': 1.1, 'r_min':0.5, 'r_max':10.0, 'm_min': 1e6,
-        'm_max': 1e10, 'dz':0.1, 'cone_angle': 8.0, 'angle_buffer': 0.8,
-        'c_zero': 18, 'conc_zeta': -0.2, 'conc_beta': 0.8, 'conc_m_ref': 1e8,
-        'conc_dex_scatter': 0.0}
+        'm_max': 1e10, 'log_m_hm': 0.0, 'dz':0.1, 'cone_angle': 8.0,
+        'angle_buffer': 0.8, 'c_zero': 18, 'conc_zeta': -0.2, 'conc_beta': 0.8,
+        'conc_m_ref': 1e8, 'conc_dex_scatter': 0.0}
     return los_params
 
 
