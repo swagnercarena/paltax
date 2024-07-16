@@ -85,6 +85,48 @@ class PowerLawTests(chex.TestCase, parameterized.TestCase):
                 power_law.power_law_integrate(p_min, p_max, slope), places=2
             )
 
+    @chex.all_variants
+    def test_suppressed_power_law_draw(self):
+        # Check that draws roughly follow the power law and the norm
+        # we expect
+        p_min = 1e6
+        p_max = 1e9
+        p_supp = 1e8
+        slope = -1.9
+        desired_count = 10000
+        norm = desired_count / power_law.power_law_integrate(p_min, p_max,
+            slope)
+
+        supp_pl_draw = self.variant(
+            functools.partial(
+                power_law.suppressed_power_law_draw,
+                pad_length = 20000
+            )
+        )
+
+        # Check that the ratio between the 10^7 and 10^8 draws meet our
+        # expectations.
+        total_m_7 = 0
+        total_m_8 = 0
+        rng = jax.random.PRNGKey(0)
+        n_loops = 500
+        eps = 1e6
+        for _ in range(n_loops):
+            rng_draw, rng = jax.random.split(rng)
+            draws = supp_pl_draw(p_supp, p_min, p_max, slope, norm, rng_draw)
+            total_m_7 += jnp.sum(
+                jnp.logical_and(draws > 1e7 - eps, draws < 1e7 + eps)
+            )
+            total_m_8 += jnp.sum(
+                jnp.logical_and(draws > 1e8 - eps, draws < 1e8 + eps)
+            )
+
+        correct_ratio = (
+            ((1e7 ** slope) * (1 + p_supp / 1e7) ** (-1.5)) /
+            ((1e8 ** slope) * (1 + p_supp / 1e8) ** (-1.5))
+        )
+        self.assertAlmostEqual(total_m_7 / total_m_8, correct_ratio, places=1)
+
 
 if __name__ == '__main__':
     absltest.main()
