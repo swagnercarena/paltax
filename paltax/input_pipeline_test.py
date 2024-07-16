@@ -69,6 +69,7 @@ def _prepare_lensing_config():
             'm_pivot': encode_constant(1e10),
             'm_min': encode_constant(1e6),
             'm_max': encode_constant(1e9),
+            'log_m_hm': encode_constant(0),
             'k_one': encode_constant(0.0),
             'k_two': encode_constant(0.0),
             'c_zero': encode_constant(18),

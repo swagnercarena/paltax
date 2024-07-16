@@ -66,6 +66,7 @@ def get_config():
             'm_pivot': encode_constant(1e10),
             'm_min': encode_constant(7e7),
             'm_max': encode_constant(1e10),
+            'log_m_hm': encode_constant(0.0),
             'k_one': encode_constant(0.0),
             'k_two': encode_constant(0.0),
             'c_zero': encode_normal(mean=16.0, std=2.0),
