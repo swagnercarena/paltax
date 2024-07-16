@@ -28,16 +28,17 @@ def get_config():
     """Return the config for input generation.
     """
     config = {}
+    m_wdm_log_distribution = encode_constant(0.0)
 
     # Specify the configuration for each one of the parameters.
     config['lensing_config'] = {
         'los_params':{
             'delta_los': encode_constant(0.0),
+            'm_wdm_log': m_wdm_log_distribution,
             'r_min': encode_constant(0.5),
             'r_max': encode_constant(10.0),
             'm_min': encode_constant(1e7),
             'm_max': encode_constant(1e10),
-            'dz': encode_constant(0.01),
             'cone_angle': encode_constant(8.0),
             'angle_buffer': encode_constant(0.8),
             'c_zero': encode_normal(mean=16.0, std=2.0),
@@ -62,6 +63,7 @@ def get_config():
         },
         'subhalo_params':{
             'sigma_sub': encode_normal(mean=2.0e-3, std=1.1e-3),
+            'm_wdm_log': m_wdm_log_distribution,
             'shmf_plaw_index': encode_uniform(minimum=-2.02, maximum=-1.92),
             'm_pivot': encode_constant(1e10),
             'm_min': encode_constant(7e7),
@@ -134,10 +136,11 @@ def get_config():
         'sigma_eight': encode_constant(0.815)
     }
     config['kwargs_simulation'] = {
-        'num_z_bins': 1000,
+        'num_z_bins': 1000, # Number of redshift slices to use for los
         'los_pad_length': 10,
         'subhalos_pad_length': 750,
         'sampling_pad_length': 200000,
+        'cosmology_dz': 0.01 # dz grid on which to create lookup tables
     }
 
     config['kwargs_psf'] = {

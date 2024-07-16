@@ -513,7 +513,7 @@ def initialize_cosmology_params(
     """
     max_source_z = decode_maximum(
         config['lensing_config']['source_params']['z_source'])
-    dz = decode_minimum(config['lensing_config']['los_params']['dz'])
+    dz = config['kwargs_simulation']['cosmology_dz']
     m_max = max(
         decode_maximum(config['lensing_config']['subhalo_params']['m_max']),
         decode_maximum(config['lensing_config']['los_params']['m_max']))
@@ -526,10 +526,13 @@ def initialize_cosmology_params(
     # Initial bounds on lagrangian radius are just placeholders.
     cosmology_params = cosmology_utils.add_lookup_tables_to_cosmology_params(
         cosmology_params_init, max_source_z, dz / 2, 1e-4, 1e3, 2)
-    r_min = cosmology_utils.lagrangian_radius(cosmology_params,
-                                              m_min / 10)
-    r_max = cosmology_utils.lagrangian_radius(cosmology_params,
-                                              m_max * 10)
+
+    # Minimum is set by either mass or los parameters
+    r_min = cosmology_utils.lagrangian_radius(cosmology_params, m_min / 10)
+    r_min = jax.lax.min(r_min, config['lensing_config']['los_params']['r_min'])
+    r_max = cosmology_utils.lagrangian_radius(cosmology_params, m_max * 10)
+    r_max = jax.lax.max(r_min, config['lensing_config']['los_params']['r_max'])
+
     cosmology_params = cosmology_utils.add_lookup_tables_to_cosmology_params(
         cosmology_params_init, max_source_z, dz / 2, r_min, r_max, 10000)
     extrenal_los_params = {'m_min': m_min, 'm_max': m_max, 'dz': dz}

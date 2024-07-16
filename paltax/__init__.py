@@ -1,6 +1,6 @@
 __author__ = 'Sebastian Wagner-Carena'
 __email__ = 'sebaswagner@outlook.com'
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 
 from . import cosmology_utils
 from . import hierarchical_inference

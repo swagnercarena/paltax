@@ -40,7 +40,6 @@ def _prepare_lensing_config():
             'r_max': encode_constant(10.0),
             'm_min': encode_constant(1e8),
             'm_max': encode_constant(1e10),
-            'dz': encode_constant(0.1),
             'cone_angle': encode_constant(8.0),
             'angle_buffer': encode_constant(0.8),
             'c_zero': encode_constant(18),
@@ -610,7 +609,9 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             'los_params': {
                 'dz': encode_constant(dz),
                 'm_max': encode_constant(1e9),
-                'm_min': encode_constant(1e7)
+                'm_min': encode_constant(1e7),
+                'r_min': encode_constant(0.5),
+                'r_max': encode_constant(10.0)
             }
         }
         config['all_models'] = {
@@ -618,6 +619,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
                 'test_files/cosmos_galaxies_testing.npz'
                 ),)
         }
+        config['kwargs_simulation'] = {'cosmology_dz': 0.1}
         rng = jax.random.PRNGKey(0)
 
         cosmology_params = input_pipeline.initialize_cosmology_params(
@@ -633,6 +635,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(cosmology_params['z_lookup_max'], 2.0)
         self.assertAlmostEqual(cosmology_params['r_min'], r_min, places=6)
         self.assertAlmostEqual(cosmology_params['r_max'], r_max, places=6)
+        self.assertTrue(False) # Check that the los r_min and r_max are taken into account.
 
         # Test that the cosmos images are present
         self.assertTupleEqual(cosmology_params['cosmos_images'].shape,
@@ -747,6 +750,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         config['all_models'] = {
             'all_source_models': all_source_models
         }
+        config['kwargs_simulation'] = {'cosmology_dz': 0.1}
         cosmology_params = input_pipeline.initialize_cosmology_params(config,
                                                                      rng)
 
@@ -908,9 +912,17 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         normalize_config = _prepare_lensing_config()
         normalize_config['main_deflector_params']['theta_e'] = (
             input_pipeline.encode_uniform(minimum=1.0, maximum=1.2))
+        config['kwargs_simulation'] = {
+            'num_z_bins': 10,
+            'los_pad_length': 10,
+            'subhalos_pad_length': 10,
+            'sampling_pad_length': 100,
+            'cosmology_dz': 0.1
+        }
 
-        cosmology_params = input_pipeline.initialize_cosmology_params(config,
-                                                                     rng)
+        cosmology_params = input_pipeline.initialize_cosmology_params(
+            config, rng
+        )
         n_x = 4
         n_y = 4
         config['kwargs_detector'] = {
@@ -920,12 +932,6 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             'magnitude_zero_point': 25, 'read_noise': 1e-8
         }
         grid_x, grid_y = input_pipeline.generate_grids(config)
-        kwargs_simulation = {
-            'num_z_bins': 10,
-            'los_pad_length': 10,
-            'subhalos_pad_length': 10,
-            'sampling_pad_length': 100,
-        }
         kwargs_psf = {
             'fwhm': input_pipeline.encode_constant(0.04),
             'pixel_width': input_pipeline.encode_constant(0.02)
@@ -942,7 +948,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         draw_image_and_truth = self.variant(functools.partial(
             input_pipeline.draw_image_and_truth, all_models=all_models,
             principal_model_indices=principal_model_indices,
-            kwargs_simulation=kwargs_simulation,
+            kwargs_simulation=config['kwargs_simulation'],
             kwargs_detector=config['kwargs_detector'],
             kwargs_psf=kwargs_psf, truth_parameters=truth_parameters,
             normalize_config=normalize_config))

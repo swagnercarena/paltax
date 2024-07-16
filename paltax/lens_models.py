@@ -519,3 +519,15 @@ class TNFW(NFW):
             jnp.arctan((reduced_radius**2 - 1)**.5)) * is_above_one
 
         return nfw_function
+
+
+class RadialLOSCorrection(_LensModelBase):
+    """Radial correction for line-of-sight halos.
+
+    A radial profile meant to correct for the overdensity produced by
+    line-of-sight halos.
+    """
+    parameters = (
+            'theta_e', 'slope', 'ellip_x', 'ellip_xy', 'center_x', 'center_y'
+    )
+
