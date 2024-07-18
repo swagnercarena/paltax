@@ -27,11 +27,6 @@ from paltax import utils
 __all__ = ['EPL', 'EPLEllip', 'NFW', 'ShearCart', 'Shear', 'TNFW']
 
 
-# Static lookup table to accelerate
-TNFW_LOOKUP_RADII = jnp.logspace(-3, 4, 701)
-TNFW_DR = 0.01
-TNFW_LOOKUP_VALUES = TNFW._nfw_function_exact(TNFW_LOOKUP_RADII)
-
 class _LensModelBase():
     """Base source model.
 
@@ -394,6 +389,33 @@ class Shear(_LensModelBase):
         return gamma_ext * jnp.cos(2 * angle), gamma_ext * jnp.sin(2 * angle)
 
 
+def _nfw_function_exact(reduced_radius: jnp.ndarray) -> jnp.ndarray:
+    """Evaluate NFW function.
+
+    Args:
+        reduced_radius: Upper limits for integrals in reduced units.
+
+    Returns:
+        NFW function output.
+    """
+    nfw_function = jnp.zeros_like(reduced_radius)
+
+    # There are three regimes for the NFW function, which we will calculate
+    # with masks to avoid indexing.
+    is_below_one = reduced_radius < 1
+    is_one = reduced_radius == 1
+    is_above_one = reduced_radius > 1
+    nfw_function += jnp.nan_to_num(
+        (1 - reduced_radius**2)**-.5 *
+        jnp.arctanh((1 - reduced_radius**2)**.5)) * is_below_one
+    nfw_function += is_one
+    nfw_function += jnp.nan_to_num(
+        (reduced_radius**2 - 1)**-.5 *
+        jnp.arctan((reduced_radius**2 - 1)**.5)) * is_above_one
+
+    return nfw_function
+
+
 class TNFW(NFW):
     """Truncated Navarro Frenk White (TNFW) mass profile.
 
@@ -401,6 +423,10 @@ class TNFW(NFW):
     class in Lenstronomy.
     """
 
+    # Static lookup table to accelerate computation.
+    _TNFW_LOOKUP_RADII = jnp.logspace(-3, 4, 7001)
+    _TNFW_DR = 0.001
+    _TNFW_LOOKUP_VALUES = _nfw_function_exact(_TNFW_LOOKUP_RADII)
     parameters = (
         'scale_radius', 'alpha_rs', 'trunc_radius', 'center_x', 'center_y'
     )
@@ -500,33 +526,6 @@ class TNFW(NFW):
                                                   reduced_trunc_radius**2))**-1)
 
     @staticmethod
-    def _nfw_function_exact(reduced_radius: jnp.ndarray) -> jnp.ndarray:
-        """Evaluate NFW function.
-
-        Args:
-            reduced_radius: Upper limits for integrals in reduced units.
-
-        Returns:
-            NFW function output.
-        """
-        nfw_function = jnp.zeros_like(reduced_radius)
-
-        # There are three regimes for the NFW function, which we will calculate
-        # with masks to avoid indexing.
-        is_below_one = reduced_radius < 1
-        is_one = reduced_radius == 1
-        is_above_one = reduced_radius > 1
-        nfw_function += jnp.nan_to_num(
-            (1 - reduced_radius**2)**-.5 *
-            jnp.arctanh((1 - reduced_radius**2)**.5)) * is_below_one
-        nfw_function += is_one
-        nfw_function += jnp.nan_to_num(
-            (reduced_radius**2 - 1)**-.5 *
-            jnp.arctan((reduced_radius**2 - 1)**.5)) * is_above_one
-
-        return nfw_function
-
-    @staticmethod
     def _nfw_function(reduced_radius: jnp.ndarray) -> jnp.ndarray:
         """Evaluate NFW function.
 
@@ -539,17 +538,17 @@ class TNFW(NFW):
         # Conduct a linear interpolation between the static lookup table
         # values.
         unrounded_i = (
-            jnp.log10(reduced_radius) - jnp.log10(TNFW_LOOKUP_RADII[0])
-        ) / TNFW_DR
+            jnp.log10(reduced_radius) - jnp.log10(TNFW._TNFW_LOOKUP_RADII[0])
+        ) / TNFW._TNFW_DR
 
         lookup_i_upper = jax.lax.min(
-            jnp.ceil(unrounded_i).astype(int), len(TNFW_LOOKUP_VALUES) - 1
+            jnp.ceil(unrounded_i).astype(int), len(TNFW._TNFW_LOOKUP_VALUES) - 1
         )
         lookup_i_lower = jax.lax.max(jnp.floor(unrounded_i).astype(int), 0)
         frac_i = unrounded_i % 1
 
         # Interpolation using the lookup table.
-        interpolated = (1 - frac_i) * TNFW_LOOKUP_VALUES[lookup_i_lower]
-        interpolated += (frac_i) * TNFW_LOOKUP_VALUES[lookup_i_upper]
+        interpolated = (1 - frac_i) * TNFW._TNFW_LOOKUP_VALUES[lookup_i_lower]
+        interpolated += (frac_i) * TNFW._TNFW_LOOKUP_VALUES[lookup_i_upper]
 
         return interpolated
