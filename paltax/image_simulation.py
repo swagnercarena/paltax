@@ -74,7 +74,7 @@ def generate_image(
         not the supersampling resolution.
 
     Notes:
-        The parameters kwargs_detector and all_models must be made static if to
+        The parameters kwargs_detector and all_models must be made static to
         jit compile this function.
     """
     image_array = source_surface_brightness(
