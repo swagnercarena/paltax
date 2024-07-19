@@ -89,24 +89,64 @@ class UtilsTest(chex.TestCase, parameterized.TestCase):
 
     @chex.all_variants
     def test_unpack_parameters_xy(self):
+        # Test that the parameters are unpacked.
         x, y = _prepare_x_y_angular()
         kwargs_lens = {
-                'alpha_rs': 1.0,
-                'scale_radius': 1.0,
-                'center_x': 0.0,
-                'center_y': 0.0,
-                'fake_param': 19.2
+            'alpha_rs': 1.0,
+            'scale_radius': 1.0,
+            'center_x': 0.0,
+            'center_y': 0.0,
+            'fake_param': 19.2
         }
-        expected = jnp.array([[-0.90657, -0.29612964, 0.22304466],
-                              [0.44380534, -0.9504099, 0.97678715]])
+        expected = lens_models.NFW.derivatives(
+            x, y, kwargs_lens['scale_radius'], kwargs_lens['alpha_rs'],
+            kwargs_lens['center_x'], kwargs_lens['center_y']
+        )
 
         unpack_parameters_derivatives = self.variant(
-                utils.unpack_parameters_xy(lens_models.NFW.derivatives,
-                                           lens_models.NFW.parameters))
+            utils.unpack_parameters_xy(
+                lens_models.NFW.derivatives, lens_models.NFW.parameters
+            )
+        )
 
         np.testing.assert_allclose(
-                unpack_parameters_derivatives(x, y, kwargs_lens), expected,
-                rtol=1e-5)
+            unpack_parameters_derivatives(x, y, kwargs_lens), expected,
+            rtol=1e-5
+        )
+
+    @chex.all_variants
+    def test_unpack_parameters_xy_lookup_tables(self):
+        # Test that unpack_parameters_xy successfully passes the lookup_tables.
+        x, y = _prepare_x_y_angular()
+        kwargs_lens = {
+            'alpha_rs': 1.0,
+            'scale_radius': 1.0,
+            'center_x': 0.0,
+            'center_y': 0.0,
+            'trunc_radius': 0.5
+        }
+        expected = lens_models.TNFW.derivatives(
+            x, y, kwargs_lens['scale_radius'], kwargs_lens['alpha_rs'],
+            kwargs_lens['trunc_radius'], kwargs_lens['center_x'],
+            kwargs_lens['center_y']
+        )
+        # Modify the lookup tables from the correct value to make sure
+        # it's being used.
+        lookup_tables = lens_models.TNFW.add_lookup_tables({})
+        lookup_tables['tnfw_lookup_nfw_func'] = jnp.ones(5) * 10
+
+        unpack_parameters_derivatives = self.variant(
+            utils.unpack_parameters_xy(
+                lens_models.TNFW.derivatives, lens_models.TNFW.parameters,
+                lookup_tables
+            )
+        )
+
+        # We can just test the x derivative here.
+        np.testing.assert_array_less(
+            jnp.abs(expected[0]),
+            jnp.abs(unpack_parameters_derivatives(x, y, kwargs_lens)[0])
+        )
 
     def test_downsampling(self):
         downsample = utils.downsample

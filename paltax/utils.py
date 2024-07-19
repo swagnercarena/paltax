@@ -14,7 +14,7 @@
 """Strong lensing utility functions."""
 
 import functools
-from typing import Any, Protocol, Sequence, Tuple
+from typing import Any, Dict, Optional, Protocol, Sequence, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -57,6 +57,7 @@ def coordinates_evaluate(
 def unpack_parameters_xy(
         func: Callback,
         parameters:Sequence[str],
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
 ) -> Callback:
     """Returns function wrapper that unpacks parameters for grid functions.
 
@@ -75,7 +76,9 @@ def unpack_parameters_xy(
     """
 
     def derivative_wrapper(x, y, kwargs, parameters):
-        return func(x, y, *[kwargs[param] for param in parameters])
+        return func(
+            x, y, *[kwargs[param] for param in parameters], lookup_tables
+        )
 
     return functools.partial(derivative_wrapper, parameters=parameters)
 

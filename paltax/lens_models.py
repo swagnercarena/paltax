@@ -74,10 +74,9 @@ class _LensModelBase():
         _ = cosmology_params
         return all_kwargs
 
-
     @staticmethod
     def add_lookup_tables(
-        lookup_tables: Dict[str, jnp.ndarray]
+        lookup_tables: Dict[str, Union[float, jnp.ndarray]]
     ) ->  Dict[str, jnp.ndarray]:
         """Add lookup tables used for derivative calculations.
 
@@ -107,7 +106,7 @@ class EPL(_LensModelBase):
     def derivatives(
         x: jnp.ndarray, y: jnp.ndarray, theta_e: float, slope: float,
         axis_ratio: float, angle: float, center_x: float, center_y: float,
-        lookup_tables: Optional[Dict[str, jnp.ndarray]] = None
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Calculate the derivative of the potential for the EPL mass profile.
 
@@ -202,7 +201,7 @@ class EPLEllip(_LensModelBase):
     def derivatives(
         x: jnp.ndarray, y: jnp.ndarray, theta_e: float, slope: float,
         ellip_x: float, ellip_xy: float, center_x: float, center_y: float,
-        lookup_tables: Optional[Dict[str, jnp.ndarray]] = None
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Calculate the derivative of the potential for the EPL mass profile.
 
@@ -239,7 +238,7 @@ class NFW(_LensModelBase):
     def derivatives(
         x: jnp.ndarray, y: jnp.ndarray, scale_radius: float, alpha_rs: float,
         center_x: float, center_y: float,
-        lookup_tables: Optional[Dict[str, jnp.ndarray]] = None
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the NFW profile derivatives.
 
@@ -280,7 +279,7 @@ class NFW(_LensModelBase):
     def _nfw_derivatives(
         radius: jnp.ndarray, scale_radius: float, rho_input: float,
         x_centered: jnp.ndarray, y_centered: jnp.ndarray,
-        lookup_tables: Optional[Dict[str, jnp.ndarray]] = None
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the NFW profile derivatives.
 
@@ -345,7 +344,7 @@ class ShearCart(_LensModelBase):
     def derivatives(
         x: jnp.ndarray, y: jnp.ndarray, gamma_one: float, gamma_two: float,
         zero_x: float, zero_y: float,
-        lookup_tables: Optional[Dict[str, jnp.ndarray]] = None
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the shear profile derivatives.
 
@@ -380,7 +379,7 @@ class Shear(_LensModelBase):
     def derivatives(
         x: jnp.ndarray, y: jnp.ndarray, gamma_ext: float, angle: float,
         zero_x: float, zero_y: float,
-        lookup_tables: Optional[Dict[str, jnp.ndarray]] = None
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the shear profile derivatives.
 
@@ -432,7 +431,7 @@ class TNFW(NFW):
     def derivatives(
         x: jnp.ndarray, y: jnp.ndarray, scale_radius: float, alpha_rs: float,
         trunc_radius: float, center_x: float, center_y: float,
-        lookup_tables: Optional[Dict[str, jnp.ndarray]] = None
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the TNFW profile derivatives.
 
@@ -462,7 +461,7 @@ class TNFW(NFW):
     def _tnfw_derivatives(
         radius: jnp.ndarray, scale_radius: float, rho_input: float,
         trunc_radius: float, x_centered: jnp.ndarray, y_centered: jnp.ndarray,
-        lookup_tables: Optional[Dict[str, jnp.ndarray]] = None
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the TNFW profile derivatives.
 
@@ -491,7 +490,7 @@ class TNFW(NFW):
     @staticmethod
     def _tnfw_integral(
         reduced_radius: jnp.ndarray, reduced_trunc_radius: float,
-        lookup_tables: Optional[Dict[str, jnp.ndarray]] = None
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> jnp.ndarray:
         """Return analytic solution to integral of TNFW profile.
 
@@ -538,7 +537,7 @@ class TNFW(NFW):
     @staticmethod
     def _nfw_function(
         reduced_radius: jnp.ndarray,
-        lookup_tables: Optional[Dict[str, jnp.ndarray]] = None
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> jnp.ndarray:
         """Evaluate NFW function.
 
@@ -591,7 +590,7 @@ class TNFW(NFW):
 
     @staticmethod
     def add_lookup_tables(
-        lookup_tables: Dict[str, jnp.ndarray]
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]]
     ) ->  Dict[str, jnp.ndarray]:
         """Add lookup tables used for derivative calculations.
 

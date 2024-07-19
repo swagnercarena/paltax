@@ -17,7 +17,7 @@ Implementation of light profiles for lensing closely following implementations
 in lenstronomy: https://github.com/lenstronomy/lenstronomy.
 """
 
-from typing import Dict, Mapping, Tuple, Union
+from typing import Dict, Mapping, Optional, Tuple, Union
 
 import dm_pix
 import jax
@@ -79,6 +79,21 @@ class _SourceModelBase():
         _ = cosmology_params
         return all_kwargs
 
+    @staticmethod
+    def add_lookup_tables(
+        lookup_tables: Dict[str, Union[float, jnp.ndarray]]
+    ) ->  Dict[str, jnp.ndarray]:
+        """Add lookup tables used for function calculations.
+
+        Args:
+            lookup_tables: Potentially empty dictionary of current lookup
+                tables. Will be modified.
+
+        Return:
+            Modified lookup tables.
+        """
+        return lookup_tables
+
 
 class Interpol(_SourceModelBase):
     """Interpolated light profile.
@@ -90,9 +105,11 @@ class Interpol(_SourceModelBase):
     parameters = ('image', 'amp', 'center_x', 'center_y', 'angle', 'scale')
 
     @staticmethod
-    def function(x: jnp.ndarray, y: jnp.ndarray, image: jnp.ndarray,
-                 amp: float, center_x: float, center_y: float, angle: float,
-                 scale: float) -> jnp.ndarray:
+    def function(
+        x: jnp.ndarray, y: jnp.ndarray, image: jnp.ndarray, amp: float,
+        center_x: float, center_y: float, angle: float, scale: float,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
+    ) -> jnp.ndarray:
         """Calculate the brightness for the interpolated light profile.
 
         Args:
@@ -105,6 +122,7 @@ class Interpol(_SourceModelBase):
             angle: Clockwise rotation angle of simulated image with respect to
                 simulation grid.
             scale: Pixel scale of the simulated image.
+            lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
             Surface brightness at each coordinate.
@@ -176,14 +194,17 @@ class SersicElliptic(_SourceModelBase):
     """
 
     parameters = (
-            'amp', 'sersic_radius', 'n_sersic', 'axis_ratio', 'angle',
-            'center_x', 'center_y'
+        'amp', 'sersic_radius', 'n_sersic', 'axis_ratio', 'angle', 'center_x',
+        'center_y'
     )
 
     @staticmethod
-    def function(x: jnp.ndarray, y: jnp.ndarray, amp: float,
-                 sersic_radius: float, n_sersic: float, axis_ratio: float,
-                 angle: float, center_x: float, center_y: float) -> jnp.ndarray:
+    def function(
+        x: jnp.ndarray, y: jnp.ndarray, amp: float, sersic_radius: float,
+        n_sersic: float, axis_ratio: float, angle: float, center_x: float,
+        center_y: float,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
+    ) -> jnp.ndarray:
         """"Calculate the brightness for the elliptical Sersic light profile.
 
         Args:
@@ -196,6 +217,7 @@ class SersicElliptic(_SourceModelBase):
             angle: Clockwise angle of orientation of major axis.
             center_x: X-coordinate center of the Sersic profile.
             center_y: Y-coordinate center of the Sersic profile.
+            lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
             Brightness from elliptical Sersic profile.
@@ -281,9 +303,9 @@ class CosmosCatalog(Interpol):
         self.cosmos_path = cosmos_path
 
     def modify_cosmology_params(
-            self,
-            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
-        ) -> Dict[str, Union[float, int, jnp.ndarray]]:
+        self,
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+    ) -> Dict[str, Union[float, int, jnp.ndarray]]:
         """Modify cosmology params to include information required by model.
 
         Args:
@@ -308,9 +330,9 @@ class CosmosCatalog(Interpol):
 
     @staticmethod
     def convert_to_angular(
-            all_kwargs: Dict[str, jnp.ndarray],
-            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
-        ) -> Dict[str, jnp.ndarray]:
+        all_kwargs: Dict[str, jnp.ndarray],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+    ) -> Dict[str, jnp.ndarray]:
         """Convert any parameters in physical units to angular units.
 
         Args:
@@ -334,10 +356,10 @@ class CosmosCatalog(Interpol):
 
     @staticmethod
     def _convert_to_angular(
-            all_kwargs: Dict[str, jnp.ndarray],
-            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-            galaxy_index: int
-        ) -> Dict[str, jnp.ndarray]:
+        all_kwargs: Dict[str, jnp.ndarray],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
+        galaxy_index: int
+    ) -> Dict[str, jnp.ndarray]:
         """Convert any parameters in physical units to angular units.
 
         Args:
@@ -447,9 +469,9 @@ class WeightedCatalog(CosmosCatalog):
         self.catalog_weights_cdf = catalog_weights_cdf
 
     def modify_cosmology_params(
-            self,
-            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
-        ) -> Dict[str, Union[float, int, jnp.ndarray]]:
+        self,
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+    ) -> Dict[str, Union[float, int, jnp.ndarray]]:
         """Modify cosmology params to include information required by model.
 
         Args:
@@ -475,9 +497,9 @@ class WeightedCatalog(CosmosCatalog):
 
     @staticmethod
     def convert_to_angular(
-            all_kwargs: Dict[str, jnp.ndarray],
-            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
-        ) -> Dict[str, jnp.ndarray]:
+        all_kwargs: Dict[str, jnp.ndarray],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+    ) -> Dict[str, jnp.ndarray]:
         """Convert any parameters in physical units to angular units.
 
         Args:

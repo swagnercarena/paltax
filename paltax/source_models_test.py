@@ -176,6 +176,14 @@ class SourceModelBaseTest(chex.TestCase):
         self.assertDictEqual(
             input_dict, convert_to_angular(input_dict, cosmology_params))
 
+    def test_add_lookup_tables(self):
+        # Test that the dictionary isn't modified.
+        lookup_tables = {}
+        lookup_tables = source_models._SourceModelBase.add_lookup_tables(
+            lookup_tables
+        )
+        self.assertEmpty(lookup_tables)
+
 
 class InterpolTest(chex.TestCase, parameterized.TestCase):
     """Runs tests of Interpol brightness functions."""

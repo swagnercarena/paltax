@@ -75,6 +75,14 @@ class PSFModelBaseTest(chex.TestCase):
                 input_dict)
         self.assertDictEqual(input_dict, new_dict)
 
+    def test_add_lookup_tables(self):
+        # Test that the dictionary isn't modified.
+        lookup_tables = {}
+        lookup_tables = psf_models._PSFModelBase.add_lookup_tables(
+            lookup_tables
+        )
+        self.assertEmpty(lookup_tables)
+
 
 class GaussianTest(chex.TestCase):
     """Runs tests of Gaussian derivative functions."""

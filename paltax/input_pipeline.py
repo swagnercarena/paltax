@@ -545,6 +545,25 @@ def initialize_cosmology_params(
     return cosmology_params
 
 
+def initialize_lookup_tables(
+    config: Mapping[str, Mapping[str, Union[Any,jnp.ndarray]]],
+) -> Dict[str, Union[float, int, jnp.ndarray]]:
+    """Initialize lookup tables from provided models.
+
+    Args:
+        all_models: Tuple of model classes to consider for each component.
+
+    Returns:
+        Lookup tables for all the included models.
+    """
+    lookup_tables = {}
+    for model_group in config['all_models']:
+        for model in config['all_models'][model_group]:
+            lookup_tables = model.add_lookup_tables(lookup_tables)
+
+    return lookup_tables
+
+
 def draw_sample(
         encoded_configuration: Mapping[str, Union[float, Mapping[str, Any]]],
         rng: Sequence[int]
@@ -727,19 +746,20 @@ def extract_truth_values(
 
 
 def draw_image_and_truth(
-        lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
-        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-        grid_x: jnp.ndarray, grid_y: jnp.ndarray, rng: Sequence[int],
-        rotation_angle: float,
-        all_models: Mapping[str, Sequence[Any]],
-        principal_model_indices: Mapping[str, int],
-        kwargs_simulation: Mapping[str, int],
-        kwargs_detector:  Mapping[str, Union[int, float]],
-        kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
-        truth_parameters: Tuple[Sequence[str], Sequence[str], Sequence[int]],
-        normalize_image: Optional[bool] = True,
-        normalize_truths: Optional[bool] = True,
-        normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
+    lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
+    grid_x: jnp.ndarray, grid_y: jnp.ndarray, rng: Sequence[int],
+    rotation_angle: float,
+    all_models: Mapping[str, Sequence[Any]],
+    principal_model_indices: Mapping[str, int],
+    kwargs_simulation: Mapping[str, int],
+    kwargs_detector:  Mapping[str, Union[int, float]],
+    kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
+    truth_parameters: Tuple[Sequence[str], Sequence[str], Sequence[int]],
+    normalize_image: Optional[bool] = True,
+    normalize_truths: Optional[bool] = True,
+    normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None,
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Draw image and truth values for a realization of the lensing config.
 
@@ -769,6 +789,8 @@ def draw_image_and_truth(
             encoded distribtion.
         normalize_config: The lensing config to use for normalization. If None
             will default to the lensing config.
+        lookup_tables: Optional lookup tables for source and derivative
+            functions.
 
     Returns:
         Image and corresponding truth values.
@@ -837,14 +859,16 @@ def draw_image_and_truth(
         source_params=all_params_principal['source_params'],
         los_params=all_params_principal['los_params'],
         cosmology_params=cosmology_params, rng=rng_los, num_z_bins=num_z_bins,
-        los_pad_length=los_pad_length)
+        los_pad_length=los_pad_length
+    )
     subhalos_z, subhalos_kwargs = subhalos.draw_subhalos(
         main_deflector_params=all_params_principal['main_deflector_params'],
         source_params=all_params_principal['source_params'],
         subhalo_params=all_params_principal['subhalo_params'],
         cosmology_params=cosmology_params, rng=rng_sub,
         subhalos_pad_length=subhalos_pad_length,
-        sampling_pad_length=sampling_pad_length)
+        sampling_pad_length=sampling_pad_length
+    )
 
     kwargs_lens_all = {
         'z_array_los_before': los_before_tuple[0],
@@ -853,7 +877,8 @@ def draw_image_and_truth(
         'kwargs_los_after': los_after_tuple[1],
         'kwargs_main_deflector': main_deflector_params,
         'z_array_main_deflector': main_deflector_params['z_lens'],
-        'z_array_subhalos': subhalos_z, 'kwargs_subhalos': subhalos_kwargs}
+        'z_array_subhalos': subhalos_z, 'kwargs_subhalos': subhalos_kwargs
+    }
     z_source = all_params_principal['source_params']['z_source']
 
     # Apply the rotation angle to the image through the grid. This requires
@@ -863,11 +888,14 @@ def draw_image_and_truth(
     image_supersampled = image_simulation.generate_image(
         grid_x, grid_y, kwargs_lens_all, source_params,
         lens_light_params, kwargs_psf, cosmology_params, z_source,
-        kwargs_detector, all_models)
-    image = utils.downsample(image_supersampled,
-                             kwargs_detector['supersampling_factor'])
-    image += image_simulation.noise_realization(image, rng_noise,
-                                                kwargs_detector)
+        kwargs_detector, all_models, lookup_tables
+    )
+    image = utils.downsample(
+        image_supersampled, kwargs_detector['supersampling_factor']
+    )
+    image += image_simulation.noise_realization(
+        image, rng_noise, kwargs_detector
+    )
     # Normalize and the image to have standard deviation 1.
     if normalize_image:
         image /= jnp.std(image)

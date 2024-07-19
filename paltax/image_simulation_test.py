@@ -286,10 +286,16 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         cosmology_params = _prepare_cosmology_params(
             COSMOLOGY_PARAMS_LENSTRONOMY, z_source, 0.1
         )
-        # Modify the cosmology_params as required by each model.
+        # Modify the cosmology_params as required by each model and add lookup
+        # tables.
+        lookup_tables = {}
         for model_group in all_models.values():
             for model in model_group:
-                cosmology_params = model.modify_cosmology_params(cosmology_params)
+                cosmology_params = model.modify_cosmology_params(
+                    cosmology_params
+                )
+                lookup_tables = model.add_lookup_tables(lookup_tables)
+
         # Need to evaluate on coordinate grid to match lenstronomy.
         grid_x, grid_y = utils.coordinates_evaluate(
             kwargs_detector['n_x'], kwargs_detector['n_y'],
@@ -303,14 +309,41 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
             functools.partial(
                 image_simulation.generate_image,
                 kwargs_detector=kwargs_detector,
-                all_models=all_models))
+                all_models=all_models, lookup_tables=lookup_tables,
+            )
+        )
 
         result = utils.downsample(
-        g_image(grid_x, grid_y, kwargs_lens_all, kwargs_source_slice,
+            g_image(
+                grid_x, grid_y, kwargs_lens_all, kwargs_source_slice,
                 kwargs_lens_light_slice, kwargs_psf, cosmology_params,
-                z_source),
-        kwargs_detector['supersampling_factor'])
+                z_source
+            ),
+            kwargs_detector['supersampling_factor']
+        )
         np.testing.assert_allclose(result, expected, rtol=1e-3)
+
+        # Repeat with corrupted lookup_tables to make sure they're being used.
+        lookup_tables['tnfw_lookup_nfw_func'] = jnp.ones(5) * 10
+        g_image = self.variant(
+            functools.partial(
+                image_simulation.generate_image,
+                kwargs_detector=kwargs_detector,
+                all_models=all_models, lookup_tables=lookup_tables,
+            )
+        )
+        new_result = utils.downsample(
+            g_image(
+                grid_x, grid_y, kwargs_lens_all, kwargs_source_slice,
+                kwargs_lens_light_slice, kwargs_psf, cosmology_params,
+                z_source
+            ),
+            kwargs_detector['supersampling_factor']
+        )
+        np.testing.assert_array_less(
+            jnp.ones_like(expected) * 1e-4,
+            jnp.abs(result - new_result)
+        )
 
     @chex.all_variants
     def test_psf_convolution(self):

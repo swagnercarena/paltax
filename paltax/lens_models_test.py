@@ -445,9 +445,20 @@ class TNFWTest(chex.TestCase, parameterized.TestCase):
                 lens_models.TNFW.derivatives, lookup_tables=lookup_tables
             )
         )
-
         np.testing.assert_allclose(
             jnp.asarray(derivatives_lookup(x, y, **tnfw_parameters)),
             jnp.asarray(lens_models.TNFW.derivatives(x, y, **tnfw_parameters)),
             rtol=1e-5
+        )
+
+        # Test that the lookup tables are being used.
+        lookup_tables['tnfw_lookup_nfw_func'] = jnp.ones(5) * 10
+        derivatives_lookup = self.variant(
+            functools.partial(
+                lens_models.TNFW.derivatives, lookup_tables=lookup_tables
+            )
+        )
+        np.testing.assert_array_less(
+            jnp.abs(lens_models.TNFW.derivatives(x, y, **tnfw_parameters)[0]),
+            jnp.abs(derivatives_lookup(x, y, **tnfw_parameters)[0])
         )
