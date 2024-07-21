@@ -807,6 +807,7 @@ def draw_image_and_truth(
     num_z_bins = kwargs_simulation['num_z_bins']
     los_pad_length = kwargs_simulation['los_pad_length']
     subhalos_pad_length = kwargs_simulation['subhalos_pad_length']
+    subhalos_n_chunks = kwargs_simulation.get('subhalos_n_chunks', 1)
     sampling_pad_length = kwargs_simulation['sampling_pad_length']
 
     # Draw an instance of the parameter values for each object in our lensing
@@ -888,7 +889,8 @@ def draw_image_and_truth(
     image_supersampled = image_simulation.generate_image(
         grid_x, grid_y, kwargs_lens_all, source_params,
         lens_light_params, kwargs_psf, cosmology_params, z_source,
-        kwargs_detector, all_models, lookup_tables
+        kwargs_detector, all_models, apply_psf=True,
+        lookup_tables=lookup_tables, subhalos_n_chunks=subhalos_n_chunks
     )
     image = utils.downsample(
         image_supersampled, kwargs_detector['supersampling_factor']

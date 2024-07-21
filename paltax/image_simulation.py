@@ -29,18 +29,16 @@ from paltax import utils
 
 
 def generate_image(
-    grid_x: jnp.ndarray,
-    grid_y: jnp.ndarray,
+    grid_x: jnp.ndarray, grid_y: jnp.ndarray,
     kwargs_lens_all: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     kwargs_source_slice: Mapping[str, jnp.ndarray],
     kwargs_lens_light_slice: Mapping[str, jnp.ndarray],
     kwargs_psf: Mapping[str, jnp.ndarray],
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-    z_source: float,
-    kwargs_detector: Mapping[str, Union[float, int]],
-    all_models: Mapping[str, Sequence[Any]],
-    apply_psf: Optional[bool] = True,
-    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
+    z_source: float, kwargs_detector: Mapping[str, Union[float, int]],
+    all_models: Mapping[str, Sequence[Any]], apply_psf: Optional[bool] = True,
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None,
+    subhalos_n_chunks: Optional[int] = 1
 ) -> jnp.ndarray:
     """Generate an image given the source, lens light, and mass profiles.
 
@@ -70,6 +68,8 @@ def generate_image(
             spread function.
         lookup_tables: Optional lookup tables for source and derivative
             functions.
+        subhalos_n_chunks: Number of chunks to break the subhalo computation
+            into. Helps with memory issues when there are too many subhalos.
 
     Returns:
         Image after gravitational lensing at supersampling resolution. For
@@ -82,7 +82,8 @@ def generate_image(
     """
     image_array = source_surface_brightness(
         grid_x, grid_y, kwargs_lens_all, kwargs_source_slice, kwargs_detector,
-        cosmology_params, z_source, all_models, lookup_tables
+        cosmology_params, z_source, all_models, lookup_tables,
+        subhalos_n_chunks
     )
     image_array += lens_light_surface_brightness(
         grid_x, grid_y, kwargs_lens_light_slice, kwargs_detector,
@@ -216,15 +217,14 @@ def lens_light_surface_brightness(
 
 
 def source_surface_brightness(
-    alpha_x: jnp.ndarray,
-    alpha_y: jnp.ndarray,
+    alpha_x: jnp.ndarray, alpha_y: jnp.ndarray,
     kwargs_lens_all: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     kwargs_source_slice: Mapping[str, jnp.ndarray],
     kwargs_detector: Mapping[str, jnp.ndarray],
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-    z_source: float,
-    all_models: Mapping[str, Sequence[Any]],
-    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
+    z_source: float, all_models: Mapping[str, Sequence[Any]],
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None,
+    subhalos_n_chunks: Optional[int] = 1
 ) -> jnp.ndarray:
     """Return the lensed source surface brightness.
 
@@ -241,13 +241,16 @@ def source_surface_brightness(
         z_source: Redshift of the source.
         all_models: Tuple of model classes to consider for each component.
         lookup_tables: Optional lookup tables for source functions.
+        subhalos_n_chunks: Number of chunks to break the subhalo computation
+            into. Helps with memory issues when there are too many subhalos.
 
     Returns:
         Lensed source surface brightness as 1D array.
     """
     image_flux_array = _image_flux(
         alpha_x, alpha_y, kwargs_lens_all, kwargs_source_slice,
-        cosmology_params, z_source, all_models, lookup_tables
+        cosmology_params, z_source, all_models, lookup_tables,
+        subhalos_n_chunks
     )
     # Scale by pixel area to go from flux to surface brightness.
     pixel_width = kwargs_detector['pixel_width']
@@ -256,14 +259,13 @@ def source_surface_brightness(
 
 
 def _image_flux(
-    alpha_x: jnp.ndarray,
-    alpha_y: jnp.ndarray,
+    alpha_x: jnp.ndarray, alpha_y: jnp.ndarray,
     kwargs_lens_all: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     kwargs_source_slice: Mapping[str, jnp.ndarray],
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-    z_source: float,
-    all_models: Mapping[str, Sequence[Any]],
-    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
+    z_source: float, all_models: Mapping[str, Sequence[Any]],
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None,
+    subhalos_n_chunks: Optional[int] = 1
 ) -> jnp.ndarray:
     """Calculate image flux after ray tracing onto the source.
 
@@ -287,13 +289,15 @@ def _image_flux(
         all_models: Tuple of model classes to consider for each component.
         lookup_tables: Optional lookup tables for derivatives and source
             functions.
+        subhalos_n_chunks: Number of chunks to break the subhalo computation
+            into. Helps with memory issues when there are too many subhalos.
 
     Returns:
         Image flux.
     """
     x_source_comv, y_source_comv = _ray_shooting(
         alpha_x, alpha_y, kwargs_lens_all, cosmology_params, z_source,
-        all_models, lookup_tables
+        all_models, lookup_tables, subhalos_n_chunks
     )
     x_source, y_source = cosmology_utils.comoving_to_angle(
         x_source_comv, y_source_comv, cosmology_params, z_source
@@ -310,7 +314,8 @@ def _ray_shooting(
     kwargs_lens_all:  Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_source: float, all_models: Mapping[str, Sequence[Any]],
-    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None,
+    subhalos_n_chunks: Optional[int] = 1
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Ray shoot over all of the redshift slices between observer and source.
 
@@ -325,6 +330,8 @@ def _ray_shooting(
         z_source: Redshift of the source.
         all_models: Tuple of model classes to consider for each component.
         lookup_tables: Optional lookup tables for derivatives.
+        subhalos_n_chunks: Number of chunks to break the subhalo computation
+            into. Helps with memory issues when there are too many subhalos.
 
     Returns:
         Comoving x- and y-coordinate after ray shooting.
@@ -366,7 +373,7 @@ def _ray_shooting(
     state, _ = _ray_shooting_group(
         state, kwargs_lens_all['kwargs_subhalos'], cosmology_params, z_source,
         jnp.max(kwargs_lens_all['z_array_subhalos']),
-        all_models['all_subhalo_models'], lookup_tables
+        all_models['all_subhalo_models'], lookup_tables, subhalos_n_chunks
     )
     state, _ = _ray_shooting_group(
         state, kwargs_lens_all['kwargs_main_deflector'], cosmology_params,
@@ -397,7 +404,8 @@ def _ray_shooting_group(
     kwargs_lens_slice: Mapping[str, jnp.ndarray],
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_source: float, z_lens: float, all_lens_models: Sequence[Any],
-    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None,
+    n_vmap_chunks: Optional[int] = 1
 ) -> Tuple[Tuple, Tuple]:
     """Conduct ray shooting for a group of coplanar lens models.
 
@@ -416,6 +424,8 @@ def _ray_shooting_group(
         z_lens: Redshift of the coplanar group of lens models.
         all_lens_models: Lens models to use for model_index lookup.
         lookup_tables: Optional lookup tables for derivatives.
+        n_vmap_chunks: Number of chunks to break the computation into. Helps with
+            memory issues when there are too many lens models in the group.
 
     Returns:
         Two copies of the new state, which is a tuple of new comoving positions,
@@ -430,7 +440,8 @@ def _ray_shooting_group(
     comv_x, comv_y = _ray_step_add(comv_x, comv_y, alpha_x, alpha_y, delta_t)
     alpha_x, alpha_y = _add_deflection_group(
         comv_x, comv_y, alpha_x, alpha_y, kwargs_lens_slice,
-        cosmology_params, z_lens, z_source, all_lens_models, lookup_tables
+        cosmology_params, z_lens, z_source, all_lens_models, lookup_tables,
+        n_vmap_chunks
     )
 
     new_state = (comv_x, comv_y, alpha_x, alpha_y, z_lens)
@@ -512,16 +523,12 @@ def _ray_step_add(
 
 
 def _add_deflection_group(
-    comv_x: jnp.ndarray,
-    comv_y: jnp.ndarray,
-    alpha_x: jnp.ndarray,
-    alpha_y: jnp.ndarray,
-    kwargs_lens_slice: Mapping[str, jnp.ndarray],
-    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-    z_lens: float,
-    z_source: float,
-    all_lens_models: Sequence[Any],
-    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
+    comv_x: jnp.ndarray, comv_y: jnp.ndarray, alpha_x: jnp.ndarray,
+    alpha_y: jnp.ndarray, kwargs_lens_slice: Mapping[str, jnp.ndarray],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]], z_lens: float,
+    z_source: float, all_lens_models: Sequence[Any],
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None,
+    n_vmap_chunks: Optional[int] = 1
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Calculate the deflection angle for a group of co-planar lens models.
 
@@ -542,6 +549,8 @@ def _add_deflection_group(
         z_source: Redshift of the source.
         all_lens_models: Lens models to use for model_index lookup.
         lookup_tables: Optional lookup tables for derivatives.
+        n_vmap_chunks: Number of chunks to break the computation into. Helps with
+            memory issues when there are too many lens models in the group.
 
     Returns:
         New x- and y-component of the deflection at each specified position.
@@ -557,11 +566,19 @@ def _add_deflection_group(
         _calculate_derivatives, theta_x=theta_x, theta_y=theta_y,
         all_lens_models=all_lens_models, lookup_tables=lookup_tables
     )
-    alpha_x_reduced_array, alpha_y_reduced_array = jax.vmap(
-        calculate_derivatives, in_axes=0)(kwargs_lens_slice
+
+    # Because there are so many lens models, the memory overhead of vmap may be
+    # too large. Therefore we break the computation into chunks.
+    kwargs_lens_slice_map = jax.tree_util.tree_map(
+        lambda x: jnp.reshape(
+            x, (n_vmap_chunks, x.shape[0] // n_vmap_chunks) + x.shape[1:]
+        ), kwargs_lens_slice
     )
-    alpha_x_reduced = jnp.sum(alpha_x_reduced_array, axis=0)
-    alpha_y_reduced = jnp.sum(alpha_y_reduced_array, axis=0)
+    alpha_x_reduced_array, alpha_y_reduced_array = jax.lax.map(
+        jax.vmap(calculate_derivatives, in_axes=0), kwargs_lens_slice_map
+    )
+    alpha_x_reduced = jnp.sum(jnp.sum(alpha_x_reduced_array, axis=0), axis=0)
+    alpha_y_reduced = jnp.sum(jnp.sum(alpha_y_reduced_array, axis=0), axis=0)
 
     alpha_x_update = cosmology_utils.reduced_to_physical(
         alpha_x_reduced, cosmology_params, z_lens, z_source

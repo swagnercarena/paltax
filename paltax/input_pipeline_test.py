@@ -942,6 +942,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             'num_z_bins': 10,
             'los_pad_length': 10,
             'subhalos_pad_length': 10,
+            'subhalos_n_chunks': 2,
             'sampling_pad_length': 100,
         }
         kwargs_psf = {
