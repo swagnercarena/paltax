@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Configuration file using only 50 percent of sources.
+"""Configuration file for warm dark matter.
 """
 
 from  paltax.InputConfigs import input_config_br
@@ -45,7 +45,7 @@ def get_config():
         'num_z_bins': 1000,
         'los_pad_length': 10,
         'subhalos_pad_length': 8192,
-        'subhalos_n_chunks': 32,
+        'subhalos_n_chunks': 16,
         'sampling_pad_length': 2000000,
     }
 

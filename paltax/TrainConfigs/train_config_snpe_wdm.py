@@ -23,14 +23,14 @@ def get_config():
     config.model = 'ResNet50'
 
     config.momentum = 0.9
-    config.batch_size = 8
+    config.batch_size = 64
 
     config.cache = False
     config.half_precision = False
 
     # Need to set the boundaries of how long the model will train generically
     # and when the sequential training will turn on.
-    config.steps_per_epoch = FieldReference(15_600) # Assuming 4 GPUs
+    config.steps_per_epoch = FieldReference(1_950) # Assuming 4 GPUs
     config.num_initial_train_steps = config.get_ref('steps_per_epoch') * 10
     config.num_steps_per_refinement = config.get_ref('steps_per_epoch') * 10
     config.num_train_steps = config.get_ref('steps_per_epoch') * 500
