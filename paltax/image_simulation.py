@@ -29,17 +29,16 @@ from paltax import utils
 
 
 def generate_image(
-    grid_x: jnp.ndarray,
-    grid_y: jnp.ndarray,
+    grid_x: jnp.ndarray, grid_y: jnp.ndarray,
     kwargs_lens_all: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     kwargs_source_slice: Mapping[str, jnp.ndarray],
     kwargs_lens_light_slice: Mapping[str, jnp.ndarray],
     kwargs_psf: Mapping[str, jnp.ndarray],
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-    z_source: float,
-    kwargs_detector: Mapping[str, Union[float, int]],
-    all_models: Mapping[str, Sequence[Any]],
-    apply_psf: Optional[bool] = True,
+    z_source: float, kwargs_detector: Mapping[str, Union[float, int]],
+    all_models: Mapping[str, Sequence[Any]], apply_psf: Optional[bool] = True,
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None,
+    subhalos_n_chunks: Optional[int] = 1
 ) -> jnp.ndarray:
     """Generate an image given the source, lens light, and mass profiles.
 
@@ -67,6 +66,10 @@ def generate_image(
         all_models: Tuple of model classes to consider for each component.
         apply_psf: Whether or not to convolve the final image with the point
             spread function.
+        lookup_tables: Optional lookup tables for source and derivative
+            functions.
+        subhalos_n_chunks: Number of chunks to break the subhalo computation
+            into. Helps with memory issues when there are too many subhalos.
 
     Returns:
         Image after gravitational lensing at supersampling resolution. For
@@ -74,16 +77,17 @@ def generate_image(
         not the supersampling resolution.
 
     Notes:
-        The parameters kwargs_detector and all_models must be made static to
-        jit compile this function.
+        The parameters kwargs_detector, all_models, and lokup_tables must be
+        made static to jit compile this function.
     """
     image_array = source_surface_brightness(
         grid_x, grid_y, kwargs_lens_all, kwargs_source_slice, kwargs_detector,
-        cosmology_params, z_source, all_models
+        cosmology_params, z_source, all_models, lookup_tables,
+        subhalos_n_chunks
     )
     image_array += lens_light_surface_brightness(
         grid_x, grid_y, kwargs_lens_light_slice, kwargs_detector,
-        all_models['all_lens_light_models']
+        all_models['all_lens_light_models'], lookup_tables
     )
     image = jnp.reshape(
         image_array,
@@ -184,7 +188,8 @@ def lens_light_surface_brightness(
     theta_y: jnp.ndarray,
     kwargs_lens_light_slice: Mapping[str, jnp.ndarray],
     kwargs_detector: Mapping[str, Union[float, int]],
-    all_source_models: Sequence[Any]
+    all_source_models: Sequence[Any],
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
 ) -> jnp.ndarray:
     """Return the lens light surface brightness.
 
@@ -197,12 +202,14 @@ def lens_light_surface_brightness(
             which defines the model to pass the parameters to.
         kwargs_detector: Keyword arguments defining the detector configuration.
         all_source_models: Source models to use for model_index lookup.
+        lookup_tables: Optional lookup tables for source functions.
 
     Returns:
         Surface brightness of lens light as 1D array.
     """
     lens_light_flux = _surface_brightness(
-        theta_x, theta_y, kwargs_lens_light_slice, all_source_models
+        theta_x, theta_y, kwargs_lens_light_slice, all_source_models,
+        lookup_tables
     )
     pixel_width = kwargs_detector['pixel_width']
     pixel_width /= kwargs_detector['supersampling_factor']
@@ -210,14 +217,14 @@ def lens_light_surface_brightness(
 
 
 def source_surface_brightness(
-    alpha_x: jnp.ndarray,
-    alpha_y: jnp.ndarray,
+    alpha_x: jnp.ndarray, alpha_y: jnp.ndarray,
     kwargs_lens_all: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     kwargs_source_slice: Mapping[str, jnp.ndarray],
     kwargs_detector: Mapping[str, jnp.ndarray],
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-    z_source: float,
-    all_models: Mapping[str, Sequence[Any]],
+    z_source: float, all_models: Mapping[str, Sequence[Any]],
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None,
+    subhalos_n_chunks: Optional[int] = 1
 ) -> jnp.ndarray:
     """Return the lensed source surface brightness.
 
@@ -233,18 +240,17 @@ def source_surface_brightness(
             expansion.
         z_source: Redshift of the source.
         all_models: Tuple of model classes to consider for each component.
+        lookup_tables: Optional lookup tables for source functions.
+        subhalos_n_chunks: Number of chunks to break the subhalo computation
+            into. Helps with memory issues when there are too many subhalos.
 
     Returns:
         Lensed source surface brightness as 1D array.
     """
     image_flux_array = _image_flux(
-        alpha_x,
-        alpha_y,
-        kwargs_lens_all,
-        kwargs_source_slice,
-        cosmology_params,
-        z_source,
-        all_models
+        alpha_x, alpha_y, kwargs_lens_all, kwargs_source_slice,
+        cosmology_params, z_source, all_models, lookup_tables,
+        subhalos_n_chunks
     )
     # Scale by pixel area to go from flux to surface brightness.
     pixel_width = kwargs_detector['pixel_width']
@@ -253,13 +259,13 @@ def source_surface_brightness(
 
 
 def _image_flux(
-    alpha_x: jnp.ndarray,
-    alpha_y: jnp.ndarray,
+    alpha_x: jnp.ndarray, alpha_y: jnp.ndarray,
     kwargs_lens_all: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     kwargs_source_slice: Mapping[str, jnp.ndarray],
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-    z_source: float,
-    all_models: Mapping[str, Sequence[Any]],
+    z_source: float, all_models: Mapping[str, Sequence[Any]],
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None,
+    subhalos_n_chunks: Optional[int] = 1
 ) -> jnp.ndarray:
     """Calculate image flux after ray tracing onto the source.
 
@@ -281,23 +287,24 @@ def _image_flux(
             expansion.
         z_source: Redshift of the source.
         all_models: Tuple of model classes to consider for each component.
+        lookup_tables: Optional lookup tables for derivatives and source
+            functions.
+        subhalos_n_chunks: Number of chunks to break the subhalo computation
+            into. Helps with memory issues when there are too many subhalos.
 
     Returns:
         Image flux.
     """
     x_source_comv, y_source_comv = _ray_shooting(
-        alpha_x,
-        alpha_y,
-        kwargs_lens_all,
-        cosmology_params,
-        z_source,
-        all_models,
+        alpha_x, alpha_y, kwargs_lens_all, cosmology_params, z_source,
+        all_models, lookup_tables, subhalos_n_chunks
     )
     x_source, y_source = cosmology_utils.comoving_to_angle(
         x_source_comv, y_source_comv, cosmology_params, z_source
     )
     return _surface_brightness(
-        x_source, y_source, kwargs_source_slice, all_models['all_source_models']
+        x_source, y_source, kwargs_source_slice,
+        all_models['all_source_models'], lookup_tables
     )
 
 
@@ -306,8 +313,9 @@ def _ray_shooting(
     alpha_y: jnp.ndarray,
     kwargs_lens_all:  Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-    z_source: float,
-    all_models: Mapping[str, Sequence[Any]]
+    z_source: float, all_models: Mapping[str, Sequence[Any]],
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None,
+    subhalos_n_chunks: Optional[int] = 1
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Ray shoot over all of the redshift slices between observer and source.
 
@@ -321,6 +329,9 @@ def _ray_shooting(
             expansion.
         z_source: Redshift of the source.
         all_models: Tuple of model classes to consider for each component.
+        lookup_tables: Optional lookup tables for derivatives.
+        subhalos_n_chunks: Number of chunks to break the subhalo computation
+            into. Helps with memory issues when there are too many subhalos.
 
     Returns:
         Comoving x- and y-coordinate after ray shooting.
@@ -342,7 +353,8 @@ def _ray_shooting(
         _ray_shooting_step,
         cosmology_params=cosmology_params,
         z_source=z_source,
-        all_lens_models=all_models['all_los_models']
+        all_lens_models=all_models['all_los_models'],
+        lookup_tables=lookup_tables
     )
 
     # Scan over all of the lens models in our system to calculate deflection and
@@ -358,14 +370,16 @@ def _ray_shooting(
     # We can do all the subhalos at once, which is a lot faster for large
     # number of subhalos.
     # Use max instead of mean here, in case things are padded with zeros
-    state, _ = _ray_shooting_group(
+    state = _ray_shooting_group(
         state, kwargs_lens_all['kwargs_subhalos'], cosmology_params, z_source,
         jnp.max(kwargs_lens_all['z_array_subhalos']),
-        all_models['all_subhalo_models'])
-    state, _ = _ray_shooting_group(
+        all_models['all_subhalo_models'], lookup_tables, subhalos_n_chunks
+    )
+    state = _ray_shooting_group(
         state, kwargs_lens_all['kwargs_main_deflector'], cosmology_params,
         z_source, jnp.max(kwargs_lens_all['z_array_main_deflector']),
-        all_models['all_main_deflector_models'])
+        all_models['all_main_deflector_models'], lookup_tables
+    )
     state, _ = jax.lax.scan(
         ray_shooting_step_los,
         state,
@@ -389,9 +403,9 @@ def _ray_shooting_group(
     state: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, float],
     kwargs_lens_slice: Mapping[str, jnp.ndarray],
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-    z_source: float,
-    z_lens: float,
-    all_lens_models: Sequence[Any]
+    z_source: float, z_lens: float, all_lens_models: Sequence[Any],
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None,
+    n_vmap_chunks: Optional[int] = 1
 ) -> Tuple[Tuple, Tuple]:
     """Conduct ray shooting for a group of coplanar lens models.
 
@@ -409,6 +423,9 @@ def _ray_shooting_group(
         z_source: Redshift of the source.
         z_lens: Redshift of the coplanar group of lens models.
         all_lens_models: Lens models to use for model_index lookup.
+        lookup_tables: Optional lookup tables for derivatives.
+        n_vmap_chunks: Number of chunks to break the computation into. Helps with
+            memory issues when there are too many lens models in the group.
 
     Returns:
         Two copies of the new state, which is a tuple of new comoving positions,
@@ -423,19 +440,20 @@ def _ray_shooting_group(
     comv_x, comv_y = _ray_step_add(comv_x, comv_y, alpha_x, alpha_y, delta_t)
     alpha_x, alpha_y = _add_deflection_group(
         comv_x, comv_y, alpha_x, alpha_y, kwargs_lens_slice,
-        cosmology_params, z_lens, z_source, all_lens_models)
+        cosmology_params, z_lens, z_source, all_lens_models, lookup_tables,
+        n_vmap_chunks
+    )
 
     new_state = (comv_x, comv_y, alpha_x, alpha_y, z_lens)
 
-    # Second return is required by scan, but will be ignored by the compiler.
-    return new_state, new_state
+    return new_state
 
 def _ray_shooting_step(
     state: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, float],
     kwargs_z_lens: Mapping[str, Union[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-    z_source: float,
-    all_lens_models: Sequence[Any]
+    z_source: float, all_lens_models: Sequence[Any],
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
 ) -> Tuple[Tuple, Tuple]:
     """Conduct ray shooting between two lens models.
 
@@ -453,6 +471,7 @@ def _ray_shooting_step(
             expansion.
         z_source: Redshift of the source.
         all_lens_models: Lens models to use for model_index lookup.
+        lookup_tables: Optional lookup tables for derivatives.
 
     Returns:
         Two copies of the new state, which is a tuple of new comoving positions,
@@ -469,21 +488,15 @@ def _ray_shooting_step(
     )
     comv_x, comv_y = _ray_step_add(comv_x, comv_y, alpha_x, alpha_y, delta_t)
     alpha_x, alpha_y = _add_deflection(
-        comv_x,
-        comv_y,
-        alpha_x,
-        alpha_y,
-        kwargs_z_lens['kwargs_lens'],
-        cosmology_params,
-        kwargs_z_lens['z_lens'],
-        z_source,
-        all_lens_models,
+        comv_x, comv_y, alpha_x, alpha_y, kwargs_z_lens['kwargs_lens'],
+        cosmology_params, kwargs_z_lens['z_lens'], z_source, all_lens_models,
+        lookup_tables
     )
 
     new_state = (comv_x, comv_y, alpha_x, alpha_y, kwargs_z_lens['z_lens'])
 
     # Second return is required by scan, but will be ignored by the compiler.
-    return new_state, new_state
+    return new_state, None
 
 
 def _ray_step_add(
@@ -509,15 +522,12 @@ def _ray_step_add(
 
 
 def _add_deflection_group(
-    comv_x: jnp.ndarray,
-    comv_y: jnp.ndarray,
-    alpha_x: jnp.ndarray,
-    alpha_y: jnp.ndarray,
-    kwargs_lens_slice: Mapping[str, jnp.ndarray],
-    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-    z_lens: float,
-    z_source: float,
-    all_lens_models: Sequence[Any],
+    comv_x: jnp.ndarray, comv_y: jnp.ndarray, alpha_x: jnp.ndarray,
+    alpha_y: jnp.ndarray, kwargs_lens_slice: Mapping[str, jnp.ndarray],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]], z_lens: float,
+    z_source: float, all_lens_models: Sequence[Any],
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None,
+    n_vmap_chunks: Optional[int] = 1
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Calculate the deflection angle for a group of co-planar lens models.
 
@@ -537,6 +547,9 @@ def _add_deflection_group(
         z_lens: Redshift of the slice (i.e. current redshift).
         z_source: Redshift of the source.
         all_lens_models: Lens models to use for model_index lookup.
+        lookup_tables: Optional lookup tables for derivatives.
+        n_vmap_chunks: Number of chunks to break the computation into. Helps with
+            memory issues when there are too many lens models in the group.
 
     Returns:
         New x- and y-component of the deflection at each specified position.
@@ -550,9 +563,40 @@ def _add_deflection_group(
     # parallelization performance.
     calculate_derivatives = functools.partial(
         _calculate_derivatives, theta_x=theta_x, theta_y=theta_y,
-        all_lens_models=all_lens_models)
-    alpha_x_reduced_array, alpha_y_reduced_array = jax.vmap(
-        calculate_derivatives, in_axes=0)(kwargs_lens_slice)
+        all_lens_models=all_lens_models, lookup_tables=lookup_tables
+    )
+
+    # Because there are so many lens models, the memory overhead of vmap may be
+    # too large. Therefore we break the computation into chunks.
+    vmap_dim = kwargs_lens_slice['model_index'].shape[0] // n_vmap_chunks
+    kwargs_lens_slice_map = jax.tree_util.tree_map(
+        lambda x: jnp.reshape(
+            x, (n_vmap_chunks, vmap_dim) + x.shape[1:]
+        ), kwargs_lens_slice
+    )
+    alpha_x_reduced_array = jnp.zeros((vmap_dim,) + theta_x.shape)
+    alpha_y_reduced_array = jnp.zeros((vmap_dim,) + theta_y.shape)
+
+    # Scan needs to return a second value, but it will be dropped at compile
+    # time.
+    def scan_wrapper(alpha_state, kwargs_lens_slice):
+        # Unpack the state and calculate the updates.
+        alpha_x_reduced_array, alpha_y_reduced_array = alpha_state
+        alpha_x_update, alpha_y_update = jax.vmap(
+            calculate_derivatives, in_axes=0
+        )(kwargs_lens_slice)
+        new_state = (
+            alpha_x_reduced_array + alpha_x_update,
+            alpha_y_reduced_array + alpha_y_update
+        )
+
+        # Return in the format desired by scan.
+        return new_state, None
+
+    (alpha_x_reduced_array, alpha_y_reduced_array), _ = jax.lax.scan(
+        scan_wrapper, (alpha_x_reduced_array, alpha_y_reduced_array),
+        kwargs_lens_slice_map
+    )
     alpha_x_reduced = jnp.sum(alpha_x_reduced_array, axis=0)
     alpha_y_reduced = jnp.sum(alpha_y_reduced_array, axis=0)
 
@@ -576,6 +620,7 @@ def _add_deflection(
     z_lens: float,
     z_source: float,
     all_lens_models: Sequence[Any],
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Calculate the deflection for a specific lens model.
 
@@ -595,6 +640,7 @@ def _add_deflection(
         z_lens: Redshift of the slice (i.e. current redshift).
         z_source: Redshift of the source.
         all_lens_models: Lens models to use for model_index lookup.
+        lookup_tables: Optional lookup tables for derivatives.
 
     Returns:
         New x- and y-component of the deflection at each specified position.
@@ -605,7 +651,7 @@ def _add_deflection(
 
     # All of our derivatives are defined in reduced coordinates.
     alpha_x_reduced, alpha_y_reduced = _calculate_derivatives(
-        kwargs_lens, theta_x, theta_y, all_lens_models
+        kwargs_lens, theta_x, theta_y, all_lens_models, lookup_tables
     )
 
     alpha_x_update = cosmology_utils.reduced_to_physical(
@@ -623,6 +669,7 @@ def _calculate_derivatives(
     theta_x: jnp.ndarray,
     theta_y: jnp.ndarray,
     all_lens_models: Sequence[Any],
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Calculate the derivatives for the specified lens model.
 
@@ -636,6 +683,7 @@ def _calculate_derivatives(
         theta_x: X-coordinate at which to evaluate the derivative.
         theta_y: Y-coordinate at which to evaluate the derivative.
         all_lens_models: Lens models to use for model_index lookup.
+        lookup_tables: Optional lookup tables for derivatives.
 
     Returns:
         Change in x- and y-component of derivative caused by lens model.
@@ -644,7 +692,9 @@ def _calculate_derivatives(
     # same inputs. We accomplish this using our wrapper and picking out only the
     # parameters required for that model.
     derivative_functions = [
-        utils.unpack_parameters_xy(model.derivatives, model.parameters)
+        utils.unpack_parameters_xy(
+            model.derivatives, model.parameters, lookup_tables
+        )
         for model in all_lens_models
     ]
 
@@ -671,7 +721,8 @@ def _surface_brightness(
     theta_x: jnp.ndarray,
     theta_y: jnp.ndarray,
     kwargs_source_slice: Mapping[str, jnp.ndarray],
-    all_source_models: Sequence[Any]
+    all_source_models: Sequence[Any],
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
 ) -> jnp.ndarray:
     """Return the surface brightness for a slice of light models.
 
@@ -688,15 +739,15 @@ def _surface_brightness(
             more detailed discussion see documentation of `jax.lax.scan`, which
             is used to iterate over the models.
         all_source_models: Source models to use for model_index lookup.
+        lookup_tables: Optional lookup tables for source functions.
 
     Returns:
         Surface brightness summed over all sources.
     """
     add_surface_brightness = functools.partial(
         _add_surface_brightness,
-        theta_x=theta_x,
-        theta_y=theta_y,
-        all_source_models=all_source_models,
+        theta_x=theta_x, theta_y=theta_y, all_source_models=all_source_models,
+        lookup_tables=lookup_tables
     )
     brightness_total = jnp.zeros_like(theta_x)
     brightness_total, _ = jax.lax.scan(
@@ -710,7 +761,8 @@ def _add_surface_brightness(
     kwargs_source: Mapping[str, Union[int, float, jnp.ndarray]],
     theta_x: jnp.ndarray,
     theta_y: jnp.ndarray,
-    all_source_models: Sequence[Any]
+    all_source_models: Sequence[Any],
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
 ) -> jnp.ndarray:
     """Return the surface brightness for a single light model.
 
@@ -720,12 +772,14 @@ def _add_surface_brightness(
         theta_x: X-coordinate at which to evaluate the surface brightness.
         theta_y: Y-coordinate at which to evaluate the surface brightness.
         all_source_models: Source models to use for model_index lookup.
+        lookup_tables: Optional lookup tables for source functions.
 
     Returns:
         Surface brightness of the source at given coordinates.
     """
     source_functions = [
-        utils.unpack_parameters_xy(model.function, model.parameters)
+        utils.unpack_parameters_xy(
+            model.function, model.parameters, lookup_tables)
         for model in all_source_models
     ]
     brightness = jax.lax.switch(

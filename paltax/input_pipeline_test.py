@@ -637,8 +637,22 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(cosmology_params['r_max'], r_max, places=6)
 
         # Test that the cosmos images are present
-        self.assertTupleEqual(cosmology_params['cosmos_images'].shape,
-                              (2, 256, 256))
+        self.assertTupleEqual(
+            cosmology_params['cosmos_images'].shape, (2, 256, 256)
+        )
+
+    def test_initialize_lookup_tables(self):
+        # Test that the lookup tables are added for the provided models.
+        config = {
+            'all_models': {
+                'all_los_models': (lens_models.TNFW(),)
+            }
+        }
+        lookup_tables = input_pipeline.initialize_lookup_tables(config)
+
+        self.assertTrue('tnfw_lookup_dr' in lookup_tables)
+        self.assertTrue('tnfw_lookup_log_min_radius' in lookup_tables)
+        self.assertTrue('tnfw_lookup_nfw_func' in lookup_tables)
 
     @chex.all_variants(without_device=False)
     def test_draw_sample(self):
@@ -911,8 +925,10 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         normalize_config['main_deflector_params']['theta_e'] = (
             input_pipeline.encode_uniform(minimum=1.0, maximum=1.2))
 
-        cosmology_params = input_pipeline.initialize_cosmology_params(config,
-                                                                     rng)
+        cosmology_params = input_pipeline.initialize_cosmology_params(
+            config, rng
+        )
+        lookup_tables = input_pipeline.initialize_lookup_tables(config)
         n_x = 4
         n_y = 4
         config['kwargs_detector'] = {
@@ -926,6 +942,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             'num_z_bins': 10,
             'los_pad_length': 10,
             'subhalos_pad_length': 10,
+            'subhalos_n_chunks': 2,
             'sampling_pad_length': 100,
         }
         kwargs_psf = {
@@ -947,11 +964,13 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             kwargs_simulation=kwargs_simulation,
             kwargs_detector=config['kwargs_detector'],
             kwargs_psf=kwargs_psf, truth_parameters=truth_parameters,
-            normalize_config=normalize_config))
+            normalize_config=normalize_config,
+            lookup_tables=lookup_tables))
         rotation_angle = 0.0
-        image, truth = draw_image_and_truth(config['lensing_config'],
-                                            cosmology_params, grid_x, grid_y,
-                                            rng, rotation_angle)
+        image, truth = draw_image_and_truth(
+            config['lensing_config'], cosmology_params, grid_x, grid_y, rng,
+            rotation_angle
+        )
 
         # Just test that the data and truths vary and that they are normalized
         # as expected.

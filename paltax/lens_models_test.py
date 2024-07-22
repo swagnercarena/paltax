@@ -100,8 +100,8 @@ def _prepare__polar_to_cartesian_expected(gamma_ext, angle):
         return jnp.array([19.4777074, 5.719170904])
     else:
         raise ValueError(
-                f'gamma_ext={gamma_ext} angle={angle} are not a supported parameter'
-                ' combination.')
+                f'gamma_ext={gamma_ext} angle={angle} are not a supported '
+                ' parameter combination.')
 
 
 class AllTest(chex.TestCase):
@@ -119,7 +119,7 @@ class AllTest(chex.TestCase):
 
 
 class LensModelBaseTest(chex.TestCase):
-    """Runs tests of __SourceModelBase functions."""
+    """Runs tests of __LensModelBase functions."""
 
     def test_modify_cosmology_params(self):
         # Make sure the dict is modified by default.
@@ -145,6 +145,14 @@ class LensModelBaseTest(chex.TestCase):
 
         self.assertDictEqual(
             input_dict, convert_to_angular(input_dict, cosmology_params))
+
+    def test_add_lookup_tables(self):
+        # Test that the dictionary isn't modified.
+        lookup_tables = {}
+        lookup_tables = lens_models._LensModelBase.add_lookup_tables(
+            lookup_tables
+        )
+        self.assertEmpty(lookup_tables)
 
 
 class EPLTest(chex.TestCase, parameterized.TestCase):
@@ -188,7 +196,8 @@ class EPLTest(chex.TestCase, parameterized.TestCase):
 
     @chex.all_variants
     def test__hypergeometric_series(self):
-        ellip_angle = jax.random.normal(jax.random.PRNGKey(0), shape=(3,)) * np.pi
+        ellip_angle = jax.random.normal(jax.random.PRNGKey(0), shape=(3,))
+        ellip_angle *= np.pi
         parameters = _prepare_epl_parameters()
         expected = jnp.array([
                 0.83773771 - 0.4450688j,
@@ -196,11 +205,16 @@ class EPLTest(chex.TestCase, parameterized.TestCase):
                 0.60248699 + 0.86020766j,
         ])
 
-        hypergeometric_series = self.variant(lens_models.EPL._hypergeometric_series)
+        hypergeometric_series = self.variant(
+            lens_models.EPL._hypergeometric_series
+        )
 
         np.testing.assert_allclose(
-                hypergeometric_series(ellip_angle, parameters['slope'],
-                                                            parameters['axis_ratio']), expected)
+            hypergeometric_series(
+                ellip_angle, parameters['slope'],
+                parameters['axis_ratio']
+            ), expected
+        )
 
 
 class EPLEllipTest(chex.TestCase):
@@ -248,12 +262,15 @@ class NFWTest(chex.TestCase, parameterized.TestCase):
         derivatives = self.variant(lens_models.NFW.derivatives)
 
         np.testing.assert_allclose(
-                jnp.array(derivatives(x, y, **nfw_parameters)), expected, rtol=1e-4)
+            jnp.array(derivatives(x, y, **nfw_parameters)), expected, rtol=1e-4
+        )
 
     @chex.all_variants
     @parameterized.named_parameters([
-            (f'_ars_{ars}_sr_{sr}', ars, sr, expected) for ars, sr, expected in zip(
-                    [0.5, 1.2], [0.1, 1.5], [40.736141915886606, 0.43451884710279054])
+            (f'_ars_{ars}_sr_{sr}', ars, sr, expected)
+                for ars, sr, expected in zip(
+                    [0.5, 1.2], [0.1, 1.5],
+                    [40.736141915886606, 0.43451884710279054])
     ])
     def test__alpha_to_rho(self, ars, sr, expected):
         self.assertAlmostEqual(
@@ -265,17 +282,18 @@ class NFWTest(chex.TestCase, parameterized.TestCase):
         radius = jnp.sqrt(x**2 + y**2)
         rho_input = 2.0
         nfw_parameters = _prepare_nfw_parameters()
-        expected = jnp.array([[0.42659888, 1.3704396, -2.2209157],
-                                                    [3.4939308, -3.2851558, -2.4732482]])
+        expected = jnp.array(
+            [[0.42659888, 1.3704396, -2.2209157],
+            [3.4939308, -3.2851558, -2.4732482]]
+        )
 
         nfw_derivatives = self.variant(lens_models.NFW._nfw_derivatives)
 
         np.testing.assert_allclose(
-                jnp.array(
-                        nfw_derivatives(radius, nfw_parameters['scale_radius'], rho_input,
-                                                        x, y)),
-                expected,
-                rtol=1e-4)
+            jnp.array(nfw_derivatives(
+                radius, nfw_parameters['scale_radius'], rho_input, x, y
+            )), expected, rtol=1e-4
+        )
 
     @chex.all_variants
     def test__nfw_integral(self):
@@ -336,13 +354,17 @@ class TNFWTest(chex.TestCase, parameterized.TestCase):
     def test_derivatives(self):
         x, y = _prepare_x_y()
         tnfw_parameters = _prepare_tnfw_parameters()
-        expected = jnp.array([[-0.13036814, 0.8646701, -2.6658154],
-                                                    [2.8560917, -2.8538284, -1.4275427]])
+        expected = jnp.array(
+            [[-0.13036814, 0.8646701, -2.6658154],
+            [2.8560917, -2.8538284, -1.4275427]]
+        )
 
         derivatives = self.variant(lens_models.TNFW.derivatives)
 
         np.testing.assert_allclose(
-                jnp.asarray(derivatives(x, y, **tnfw_parameters)), expected, rtol=1e-5)
+            jnp.asarray(derivatives(x, y, **tnfw_parameters)), expected,
+            rtol=1e-5
+        )
 
     @chex.all_variants
     def test__tnfw_derivatives(self):
@@ -350,17 +372,19 @@ class TNFWTest(chex.TestCase, parameterized.TestCase):
         r = jnp.sqrt(x**2 + y**2)
         tnfw_parameters = _prepare_tnfw_parameters()
         rho_input = 2.0
-        expected = jnp.array([[0.3161475, 0.97571015, -1.7840269],
-                                                    [2.5893118, -2.3389282, -1.9868112]])
+        expected = jnp.array(
+            [[0.3161475, 0.97571015, -1.7840269],
+            [2.5893118, -2.3389282, -1.9868112]]
+        )
 
         tnfw_derivatives = self.variant(lens_models.TNFW._tnfw_derivatives)
 
         np.testing.assert_allclose(
-                jnp.asarray(
-                        tnfw_derivatives(r, tnfw_parameters['scale_radius'], rho_input,
-                                                         tnfw_parameters['trunc_radius'], x, y)),
-                expected,
-                rtol=1e-5)
+            jnp.asarray(
+                tnfw_derivatives(r, tnfw_parameters['scale_radius'], rho_input,
+                tnfw_parameters['trunc_radius'], x, y)
+            ), expected, rtol=1e-5
+        )
 
     @chex.all_variants
     def test__tnfw_integral(self):
@@ -382,7 +406,9 @@ class TNFWTest(chex.TestCase, parameterized.TestCase):
         tnfw_log = self.variant(lens_models.TNFW._tnfw_log)
 
         np.testing.assert_allclose(
-                tnfw_log(reduced_radius, truncated_reduced_radius), expected, rtol=1e-5)
+            tnfw_log(reduced_radius, truncated_reduced_radius), expected,
+            rtol=1e-5
+        )
 
     @chex.all_variants
     def test__nfw_function(self):
@@ -394,3 +420,45 @@ class TNFWTest(chex.TestCase, parameterized.TestCase):
         np.testing.assert_allclose(
                 nfw_function(reduced_radius), expected, rtol=1e-5)
 
+    def test_add_lookup_tables(self):
+        # Check that the lookup table adds the desired nfw_function lookup.
+        lookup_tables = {}
+        lookup_tables = lens_models.TNFW.add_lookup_tables(lookup_tables)
+
+        self.assertAlmostEqual(lookup_tables['tnfw_lookup_dr'], 0.001)
+        self.assertAlmostEqual(lookup_tables['tnfw_lookup_log_min_radius'], -3)
+        np.testing.assert_array_almost_equal(
+            lookup_tables['tnfw_lookup_nfw_func'],
+            lens_models.TNFW._nfw_function(jnp.logspace(-3, 1, 4001))
+        )
+
+    @chex.all_variants
+    def test_derivatives_lookup(self):
+        # Test that the derivatives return the same answer with and without
+        # the use of the lookup tables.
+        x, y = _prepare_x_y()
+        tnfw_parameters = _prepare_tnfw_parameters()
+
+        lookup_tables = lens_models.TNFW.add_lookup_tables({})
+        derivatives_lookup = self.variant(
+            functools.partial(
+                lens_models.TNFW.derivatives, lookup_tables=lookup_tables
+            )
+        )
+        np.testing.assert_allclose(
+            jnp.asarray(derivatives_lookup(x, y, **tnfw_parameters)),
+            jnp.asarray(lens_models.TNFW.derivatives(x, y, **tnfw_parameters)),
+            rtol=1e-5
+        )
+
+        # Test that the lookup tables are being used.
+        lookup_tables['tnfw_lookup_nfw_func'] = jnp.ones(5) * 10
+        derivatives_lookup = self.variant(
+            functools.partial(
+                lens_models.TNFW.derivatives, lookup_tables=lookup_tables
+            )
+        )
+        np.testing.assert_array_less(
+            jnp.abs(lens_models.TNFW.derivatives(x, y, **tnfw_parameters)[0]),
+            jnp.abs(derivatives_lookup(x, y, **tnfw_parameters)[0])
+        )

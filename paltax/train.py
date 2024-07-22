@@ -455,6 +455,10 @@ def train_and_evaluate(
     step_offset = int(state.step)
     state = jax_utils.replicate(state)
 
+    # Create the lookup tables used to speed up derivative and function
+    # calculations.
+    lookup_tables = input_pipeline.initialize_lookup_tables(input_config)
+
     p_train_step = jax.pmap(functools.partial(train_step,
         learning_rate_schedule=learning_rate_schedule),
         axis_name='batch')
@@ -467,7 +471,8 @@ def train_and_evaluate(
             kwargs_detector=input_config['kwargs_detector'],
             kwargs_psf=input_config['kwargs_psf'],
             truth_parameters=input_config['truth_parameters'],
-            normalize_config=normalize_config),
+            normalize_config=normalize_config,
+            lookup_tables=lookup_tables),
         in_axes=(None, None, None, None, 0, None))),
         in_axes=(None, None, None, None, 0, None)
     )
@@ -475,8 +480,9 @@ def train_and_evaluate(
         rng_cosmo = next(rng)
     else:
         rng, rng_cosmo = jax.random.split(rng)
-    cosmology_params = input_pipeline.initialize_cosmology_params(input_config,
-                                                                 rng_cosmo)
+    cosmology_params = input_pipeline.initialize_cosmology_params(
+        input_config, rng_cosmo
+    )
     grid_x, grid_y = input_pipeline.generate_grids(input_config)
 
     train_metrics = []

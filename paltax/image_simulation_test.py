@@ -286,10 +286,19 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         cosmology_params = _prepare_cosmology_params(
             COSMOLOGY_PARAMS_LENSTRONOMY, z_source, 0.1
         )
-        # Modify the cosmology_params as required by each model.
+        # Modify the cosmology_params as required by each model and add lookup
+        # tables.
+        lookup_tables = {}
         for model_group in all_models.values():
             for model in model_group:
-                cosmology_params = model.modify_cosmology_params(cosmology_params)
+                cosmology_params = model.modify_cosmology_params(
+                    cosmology_params
+                )
+                lookup_tables = model.add_lookup_tables(lookup_tables)
+
+        # Chunk subhalos non-trivially to make sure it doesn't cause any errors.
+        subhalos_n_chunks = 2
+
         # Need to evaluate on coordinate grid to match lenstronomy.
         grid_x, grid_y = utils.coordinates_evaluate(
             kwargs_detector['n_x'], kwargs_detector['n_y'],
@@ -303,14 +312,43 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
             functools.partial(
                 image_simulation.generate_image,
                 kwargs_detector=kwargs_detector,
-                all_models=all_models))
+                all_models=all_models, lookup_tables=lookup_tables,
+                subhalos_n_chunks=subhalos_n_chunks
+            )
+        )
 
         result = utils.downsample(
-        g_image(grid_x, grid_y, kwargs_lens_all, kwargs_source_slice,
+            g_image(
+                grid_x, grid_y, kwargs_lens_all, kwargs_source_slice,
                 kwargs_lens_light_slice, kwargs_psf, cosmology_params,
-                z_source),
-        kwargs_detector['supersampling_factor'])
+                z_source
+            ),
+            kwargs_detector['supersampling_factor']
+        )
         np.testing.assert_allclose(result, expected, rtol=1e-3)
+
+        # Repeat with corrupted lookup_tables to make sure they're being used.
+        lookup_tables['tnfw_lookup_nfw_func'] = jnp.ones(5) * 10
+        g_image = self.variant(
+            functools.partial(
+                image_simulation.generate_image,
+                kwargs_detector=kwargs_detector,
+                all_models=all_models, lookup_tables=lookup_tables,
+                subhalos_n_chunks=subhalos_n_chunks
+            )
+        )
+        new_result = utils.downsample(
+            g_image(
+                grid_x, grid_y, kwargs_lens_all, kwargs_source_slice,
+                kwargs_lens_light_slice, kwargs_psf, cosmology_params,
+                z_source
+            ),
+            kwargs_detector['supersampling_factor']
+        )
+        np.testing.assert_array_less(
+            jnp.ones_like(expected) * 1e-4,
+            jnp.abs(result - new_result)
+        )
 
     @chex.all_variants
     def test_psf_convolution(self):
@@ -520,12 +558,12 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
             image_simulation._ray_shooting_group,
             all_lens_models=all_lens_models))
 
-        new_state, new_state_copy = ray_shooting_group(
-            state, kwargs_lens_slice, cosmology_params, z_source, z_lens)
+        new_state = ray_shooting_group(
+            state, kwargs_lens_slice, cosmology_params, z_source, z_lens
+        )
 
-        for si in range(len(new_state)):
-            np.testing.assert_allclose(new_state[si], expected_state[si],
-                                       rtol=1e-5)
+        for si, ns in enumerate(new_state):
+            np.testing.assert_allclose(ns, expected_state[si], rtol=1e-5)
 
     @chex.all_variants
     @parameterized.named_parameters([
@@ -561,11 +599,8 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
             z_source,
         )
 
-        for si in range(len(new_state)):
-            np.testing.assert_allclose(new_state[si], expected[si],
-                                       rtol=1e-2)
-            np.testing.assert_allclose(new_state_copy[si], expected[si],
-                                       rtol=1e-2)
+        for si, ns in enumerate(new_state):
+            np.testing.assert_allclose(ns, expected[si], rtol=1e-2)
 
     @chex.all_variants
     def test__ray_step_add(self):
@@ -601,6 +636,10 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         kwargs_lens['model_index'] = 0
         kwargs_lens_slice['model_index'] = jnp.array([0] * 4)
 
+        # Chunk subhalos to make sure that doesn't break the computation.
+        n_vmap_chunks = 2
+
+
         cosmology_params = _prepare_cosmology_params(
             COSMOLOGY_PARAMS_LENSTRONOMY, z_source, z_lens
         )
@@ -614,8 +653,11 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
                     cosmology_params, z_lens, z_source, all_lens_models))
 
         add_deflection_group = self.variant(
-            functools.partial(image_simulation._add_deflection_group,
-            all_lens_models=all_lens_models))
+            functools.partial(
+                image_simulation._add_deflection_group,
+                all_lens_models=all_lens_models, n_vmap_chunks=n_vmap_chunks
+            )
+        )
 
         np.testing.assert_allclose(
             jnp.array(

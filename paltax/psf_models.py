@@ -53,6 +53,21 @@ class _PSFModelBase():
         """
         return cosmology_params
 
+    @staticmethod
+    def add_lookup_tables(
+        lookup_tables: Dict[str, Union[float, jnp.ndarray]]
+    ) ->  Dict[str, jnp.ndarray]:
+        """Add lookup tables used for psf calculations.
+
+        Args:
+            lookup_tables: Potentially empty dictionary of current lookup
+                tables. Will be modified.
+
+        Return:
+            Modified lookup tables.
+        """
+        return lookup_tables
+
 
 class Gaussian(_PSFModelBase):
     """Implementation of Gaussian point spread function."""

@@ -316,6 +316,10 @@ def train_and_evaluate_snpe(
         axis_name='batch', in_axes=(0, 0, None, None, None))
     p_get_outputs = jax.pmap(train.get_outputs, axis_name='batch')
 
+    # Create the lookup tables used to speed up derivative and function
+    # calculations.
+    lookup_tables = input_pipeline.initialize_lookup_tables(input_config)
+
     draw_image_and_truth_pmap = jax.pmap(jax.jit(jax.vmap(
         functools.partial(
             input_pipeline.draw_image_and_truth,
@@ -325,15 +329,17 @@ def train_and_evaluate_snpe(
             kwargs_detector=input_config['kwargs_detector'],
             kwargs_psf=input_config['kwargs_psf'],
             truth_parameters=input_config['truth_parameters'],
-            normalize_config=normalize_config),
+            normalize_config=normalize_config,
+            lookup_tables=lookup_tables),
         in_axes=(None, None, None, None, 0, None))),
         in_axes=(None, None, None, None, 0, None)
     )
 
     # Set the cosmology prameters and the simulation grid.
     rng, rng_cosmo = jax.random.split(rng)
-    cosmology_params = input_pipeline.initialize_cosmology_params(input_config,
-                                                                 rng_cosmo)
+    cosmology_params = input_pipeline.initialize_cosmology_params(
+        input_config, rng_cosmo
+    )
     grid_x, grid_y = input_pipeline.generate_grids(input_config)
 
     train_metrics = []
