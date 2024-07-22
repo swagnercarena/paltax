@@ -429,7 +429,7 @@ class TNFWTest(chex.TestCase, parameterized.TestCase):
         self.assertAlmostEqual(lookup_tables['tnfw_lookup_log_min_radius'], -3)
         np.testing.assert_array_almost_equal(
             lookup_tables['tnfw_lookup_nfw_func'],
-            lens_models.TNFW._nfw_function(jnp.logspace(-3, 3, 6001))
+            jnp.log(lens_models.TNFW._nfw_function(jnp.logspace(-3, 3, 6001)))
         )
 
     @chex.all_variants
@@ -448,7 +448,7 @@ class TNFWTest(chex.TestCase, parameterized.TestCase):
         np.testing.assert_allclose(
             jnp.asarray(derivatives_lookup(x, y, **tnfw_parameters)),
             jnp.asarray(lens_models.TNFW.derivatives(x, y, **tnfw_parameters)),
-            rtol=1e-3
+            rtol=4e-4
         )
 
         # Test that the lookup tables are being used.

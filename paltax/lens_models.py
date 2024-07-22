@@ -571,7 +571,7 @@ class TNFW(NFW):
             interpolated = (1 - frac_i) * lookup_values[lookup_i_lower]
             interpolated += (frac_i) * lookup_values[lookup_i_upper]
 
-            return interpolated
+            return jnp.exp(interpolated)
 
         # There are three regimes for the NFW function, which we will calculate
         # with masks to avoid indexing.
@@ -607,8 +607,10 @@ class TNFW(NFW):
         n_dr = 6001
         lookup_tables['tnfw_lookup_dr'] = (log_r_max - log_r_min) / (n_dr - 1)
         lookup_tables['tnfw_lookup_log_min_radius'] = log_r_min
-        lookup_tables['tnfw_lookup_nfw_func'] = TNFW._nfw_function(
-            jnp.logspace(log_r_min, log_r_max, n_dr)
+        lookup_tables['tnfw_lookup_nfw_func'] = jnp.log(
+            TNFW._nfw_function(
+                jnp.logspace(log_r_min, log_r_max, n_dr)
+            )
         )
 
         return lookup_tables
