@@ -603,8 +603,8 @@ class TNFW(NFW):
         """
         # Add the lookup table for the exact nfw integral calculation.
         log_r_min = -3
-        log_r_max = 1
-        n_dr = 4001
+        log_r_max = 3
+        n_dr = 6001
         lookup_tables['tnfw_lookup_dr'] = (log_r_max - log_r_min) / (n_dr - 1)
         lookup_tables['tnfw_lookup_log_min_radius'] = log_r_min
         lookup_tables['tnfw_lookup_nfw_func'] = TNFW._nfw_function(
