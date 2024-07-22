@@ -589,8 +589,6 @@ def _add_deflection_group(
             alpha_x_reduced_array + alpha_x_update,
             alpha_y_reduced_array + alpha_y_update
         )
-
-        # Return in the format desired by scan.
         return new_state, None
 
     (alpha_x_reduced_array, alpha_y_reduced_array), _ = jax.lax.scan(
