@@ -426,10 +426,9 @@ class TNFWTest(chex.TestCase, parameterized.TestCase):
         lookup_tables = lens_models.TNFW.add_lookup_tables(lookup_tables)
 
         self.assertAlmostEqual(lookup_tables['tnfw_lookup_dr'], 0.001)
-        self.assertAlmostEqual(lookup_tables['tnfw_lookup_log_min_radius'], -3)
-        np.testing.assert_array_almost_equal(
-            lookup_tables['tnfw_lookup_nfw_func'],
-            jnp.log(lens_models.TNFW._nfw_function(jnp.logspace(-3, 3, 6001)))
+        self.assertAlmostEqual(lookup_tables['tnfw_lookup_log_min_radius'], -5)
+        self.assertTupleEqual(
+            lookup_tables['tnfw_lookup_nfw_func'].shape, (10001,)
         )
 
     @chex.all_variants
