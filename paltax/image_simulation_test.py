@@ -558,12 +558,12 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
             image_simulation._ray_shooting_group,
             all_lens_models=all_lens_models))
 
-        new_state, new_state_copy = ray_shooting_group(
-            state, kwargs_lens_slice, cosmology_params, z_source, z_lens)
+        new_state = ray_shooting_group(
+            state, kwargs_lens_slice, cosmology_params, z_source, z_lens
+        )
 
-        for si in range(len(new_state)):
-            np.testing.assert_allclose(new_state[si], expected_state[si],
-                                       rtol=1e-5)
+        for si, ns in enumerate(new_state):
+            np.testing.assert_allclose(ns, expected_state[si], rtol=1e-5)
 
     @chex.all_variants
     @parameterized.named_parameters([
@@ -599,11 +599,8 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
             z_source,
         )
 
-        for si in range(len(new_state)):
-            np.testing.assert_allclose(new_state[si], expected[si],
-                                       rtol=1e-2)
-            np.testing.assert_allclose(new_state_copy[si], expected[si],
-                                       rtol=1e-2)
+        for si, ns in enumerate(new_state):
+            np.testing.assert_allclose(ns, expected[si], rtol=1e-2)
 
     @chex.all_variants
     def test__ray_step_add(self):

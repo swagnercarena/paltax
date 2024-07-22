@@ -370,12 +370,12 @@ def _ray_shooting(
     # We can do all the subhalos at once, which is a lot faster for large
     # number of subhalos.
     # Use max instead of mean here, in case things are padded with zeros
-    state, _ = _ray_shooting_group(
+    state = _ray_shooting_group(
         state, kwargs_lens_all['kwargs_subhalos'], cosmology_params, z_source,
         jnp.max(kwargs_lens_all['z_array_subhalos']),
         all_models['all_subhalo_models'], lookup_tables, subhalos_n_chunks
     )
-    state, _ = _ray_shooting_group(
+    state = _ray_shooting_group(
         state, kwargs_lens_all['kwargs_main_deflector'], cosmology_params,
         z_source, jnp.max(kwargs_lens_all['z_array_main_deflector']),
         all_models['all_main_deflector_models'], lookup_tables
@@ -446,8 +446,7 @@ def _ray_shooting_group(
 
     new_state = (comv_x, comv_y, alpha_x, alpha_y, z_lens)
 
-    # Second return is required by scan, but will be ignored by the compiler.
-    return new_state, new_state
+    return new_state
 
 def _ray_shooting_step(
     state: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, float],
@@ -497,7 +496,7 @@ def _ray_shooting_step(
     new_state = (comv_x, comv_y, alpha_x, alpha_y, kwargs_z_lens['z_lens'])
 
     # Second return is required by scan, but will be ignored by the compiler.
-    return new_state, new_state
+    return new_state, None
 
 
 def _ray_step_add(
@@ -569,16 +568,37 @@ def _add_deflection_group(
 
     # Because there are so many lens models, the memory overhead of vmap may be
     # too large. Therefore we break the computation into chunks.
+    vmap_dim = kwargs_lens_slice['model_index'].shape[0] // n_vmap_chunks
     kwargs_lens_slice_map = jax.tree_util.tree_map(
         lambda x: jnp.reshape(
-            x, (n_vmap_chunks, x.shape[0] // n_vmap_chunks) + x.shape[1:]
+            x, (n_vmap_chunks, vmap_dim) + x.shape[1:]
         ), kwargs_lens_slice
     )
-    alpha_x_reduced_array, alpha_y_reduced_array = jax.lax.map(
-        jax.vmap(calculate_derivatives, in_axes=0), kwargs_lens_slice_map
+    alpha_x_reduced_array = jnp.zeros((vmap_dim,) + theta_x.shape)
+    alpha_y_reduced_array = jnp.zeros((vmap_dim,) + theta_y.shape)
+
+    # Scan needs to return a second value, but it will be dropped at compile
+    # time.
+    def scan_wrapper(alpha_state, kwargs_lens_slice):
+        # Unpack the state and calculate the updates.
+        alpha_x_reduced_array, alpha_y_reduced_array = alpha_state
+        alpha_x_update, alpha_y_update = jax.vmap(
+            calculate_derivatives, in_axes=0
+        )(kwargs_lens_slice)
+        new_state = (
+            alpha_x_reduced_array + alpha_x_update,
+            alpha_y_reduced_array + alpha_y_update
+        )
+
+        # Return in the format desired by scan.
+        return new_state, None
+
+    (alpha_x_reduced_array, alpha_y_reduced_array), _ = jax.lax.scan(
+        scan_wrapper, (alpha_x_reduced_array, alpha_y_reduced_array),
+        kwargs_lens_slice_map
     )
-    alpha_x_reduced = jnp.sum(jnp.sum(alpha_x_reduced_array, axis=0), axis=0)
-    alpha_y_reduced = jnp.sum(jnp.sum(alpha_y_reduced_array, axis=0), axis=0)
+    alpha_x_reduced = jnp.sum(alpha_x_reduced_array, axis=0)
+    alpha_y_reduced = jnp.sum(alpha_y_reduced_array, axis=0)
 
     alpha_x_update = cosmology_utils.reduced_to_physical(
         alpha_x_reduced, cosmology_params, z_lens, z_source
