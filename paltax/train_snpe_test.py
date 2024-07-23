@@ -255,6 +255,18 @@ class TrainSNPETests(chex.TestCase, parameterized.TestCase):
             np.testing.assert_array_almost_equal(weights[0], weights[1])
             self.assertAlmostEqual(jnp.sum(weights[2:]), 0.0)
 
+        # Check that the input config is also using averaging.
+        lensing_config = input_config['lensing_config']
+        for i in range(len(input_config['truth_parameters'][0])):
+            lensing_object = input_config['truth_parameters'][0][i]
+            lensing_key = input_config['truth_parameters'][1][i]
+            object_distribution = lensing_config[lensing_object][lensing_key]
+            object_prop_encoding = new_prop_encoding[i]
+            np.testing.assert_array_almost_equal(
+                input_pipeline._get_normal_weights(object_prop_encoding),
+                input_pipeline._get_normal_weights(object_distribution)
+            )
+
     def test__get_refinement_step_list(self):
         # Test that the refinement list is correctly produced.
         config = _create_test_config()
