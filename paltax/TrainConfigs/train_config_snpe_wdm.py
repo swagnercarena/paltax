@@ -45,7 +45,7 @@ def get_config():
     # Parameters of the learning rate schedule
     config.learning_rate = 0.01
     config.warmup_steps = 10 * config.get_ref('steps_per_epoch')
-    config.refinement_base_value_multiplier = 1e-1
+    config.refinement_base_value_multiplier = 1e0
 
     # Sequential prior and initial proposal
     config.mu_prior = jnp.zeros(11)
@@ -54,7 +54,7 @@ def get_config():
     config.prec_prop_init = jnp.diag(jnp.ones(config.mu_prop_init.shape))
 
     # Decay factor that controls how the sequential proposals are built.
-    config.prop_decay_factor = 0.0
+    config.prop_decay_factor = 0.2
 
     # The std deviation and mean normalization imposed by the input config.
     # This is currently hard coded into the trianing config, but should
