@@ -14,7 +14,7 @@
 """Configuration file for generating paltax image outputs.
 """
 import pathlib
-
+import h5py
 import jax.numpy as jnp
 
 from paltax.input_pipeline import encode_normal, encode_uniform
@@ -22,7 +22,6 @@ from paltax.input_pipeline import encode_constant
 from paltax import lens_models
 from paltax import psf_models
 from paltax import source_models
-import h5py
 
 
 def get_config():

@@ -14,7 +14,7 @@
 """Configuration file for generating paltax image outputs.
 """
 import pathlib
-
+import h5py
 import jax.numpy as jnp
 
 from paltax.input_pipeline import encode_normal, encode_uniform
@@ -101,14 +101,24 @@ def get_config():
         'exposure_time': 1024, 'num_exposures': 2.0, 'sky_brightness': 22,
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
-    cosmos_path = str(pathlib.Path(__file__).parent.parent.parent)
-    cosmos_path += '/datasets/cosmos/cosmos_galaxies_train.npz'
+
+    root_path = str(pathlib.Path(__file__).parent.parent.parent)
+    cosmos_path = root_path + '/datasets/weighted_catalog.h5'
+
+    hdf5_file = h5py.File(cosmos_path, 'r')
+    # These are the weights associated with a cerain parameter
+    # Options are ASYMMETRY, Axial_Ratio, CONCPETRO, GINI, IDENT, M20, RHALFreal, RPETROreal
+    parameter = 'GINI'
+    catalog_weights = hdf5_file['parameters_and_weights'][parameter+'_weights'][:]
+    hdf5_file.close()
+
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),
         'all_main_deflector_models': (lens_models.EPLEllip(),
                                       lens_models.ShearCart()),
-        'all_source_models': (source_models.CosmosCatalog(cosmos_path),),
+        'all_source_models': (source_models.CosmosCatalog(cosmos_path),
+                              source_models.WeightedCatalog(cosmos_path, jnp.asarray(catalog_weights))),
         'all_lens_light_models': (source_models.SersicElliptic(),),
         'all_psf_models': (psf_models.Gaussian(),)
     }
