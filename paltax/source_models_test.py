@@ -36,7 +36,7 @@ from paltax import utils
 
 COSMOS_TEST_PATH = (
     str(pathlib.Path(__file__).parent) +
-    '/test_files/cosmos_galaxies_testing.npz'
+    '/test_files/weighted_catalog_test.h5'
 )
 
 

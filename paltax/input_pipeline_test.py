@@ -615,7 +615,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         }
         config['all_models'] = {
             'all_source_models': (source_models.CosmosCatalog(
-                'test_files/cosmos_galaxies_testing.npz'
+                'test_files/weighted_catalog_test.h5'
                 ),)
         }
         rng = jax.random.PRNGKey(0)
@@ -741,7 +741,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         all_source_models = (
             source_models.SersicElliptic(),
             source_models.CosmosCatalog(
-                'test_files/cosmos_galaxies_testing.npz'
+                'test_files/weighted_catalog_test.h5'
             )
         )
         config['all_models'] = {
@@ -882,12 +882,12 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
                                           lens_models.EPLEllip()),
             'all_source_models': (source_models.SersicElliptic(),
                                   source_models.CosmosCatalog(
-                                     'test_files/cosmos_galaxies_testing.npz'
+                                     'test_files/weighted_catalog_test.h5'
                                   )),
             'all_lens_light_models': (
                 source_models.SersicElliptic(),
                 source_models.CosmosCatalog(
-                    'test_files/cosmos_galaxies_testing.npz'
+                    'test_files/weighted_catalog_test.h5'
                 )
             ),
             'all_psf_models': (psf_models.Gaussian(),)

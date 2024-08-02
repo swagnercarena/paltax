@@ -138,7 +138,7 @@ def _prepare_all_lens_models(model_group):
 def _prepare_all_source_models():
     all_source_models = []
     cosmos_path = str(pathlib.Path(__file__).parent)
-    cosmos_path += '/test_files/cosmos_galaxies_testing.npz'
+    cosmos_path += '/test_files/weighted_catalog_test.h5'
     catalog_weights = jnp.array([2.0, 5.0])
     for model in source_models.__all__:
         # CosmosCatalog model required initialization parameters.
