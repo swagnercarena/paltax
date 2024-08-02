@@ -23,6 +23,7 @@ import dm_pix
 import jax
 import jax.numpy as jnp
 import numpy as np
+import h5py
 
 from paltax import cosmology_utils
 from paltax import utils
@@ -293,16 +294,20 @@ class CosmosCatalog(Interpol):
         Returns:
             Modified cosmology parameters.
         """
-        npz_file = np.load(self.cosmos_path)
-        images = npz_file['images']
+
+        hdf5_file = h5py.File(self.cosmos_path, 'r')
+        images = hdf5_file['galaxy_images'][:][:][:]
         cosmology_params['cosmos_n_images'] = len(images)
-        redshifts = npz_file['redshifts']
-        pixel_sizes = npz_file['pixel_sizes']
+        redshifts = hdf5_file['redshifts'][:]
+        pixel_sizes = hdf5_file['pixel_sizes'][:]
+
 
         # Convert attributes we need later to jax arrays
-        cosmology_params['cosmos_pixel_sizes'] = jnp.asarray(pixel_sizes)
-        cosmology_params['cosmos_redshifts'] = jnp.asarray(redshifts)
-        cosmology_params['cosmos_images'] = jnp.asarray(images)
+        cosmology_params['cosmos_pixel_sizes'] = jnp.array(pixel_sizes)
+        cosmology_params['cosmos_redshifts'] = jnp.array(redshifts)
+        cosmology_params['cosmos_images'] = jnp.array(images)
+
+        hdf5_file.close()
 
         return cosmology_params
 
