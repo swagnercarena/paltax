@@ -104,7 +104,7 @@ def get_config():
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
     cosmos_path = str(pathlib.Path(__file__).parent.parent)
-    cosmos_path += '/test_files/cosmos_catalog.h5'
+    cosmos_path += '/test_files/cosmos_catalog_test.h5'
 
     # Options for parameter are asymmetry, axial_ratio, concpetro, gini, m20, rhalfreal, rpetroreal
     # This parameter's corresponding weights will be used in the WeightedCatalog class

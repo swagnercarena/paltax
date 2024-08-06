@@ -281,6 +281,8 @@ class CosmosCatalog(Interpol):
         """
         # Save the cosmos image path.
         self.cosmos_path = cosmos_path
+
+        # Opens the hdf5 file and extract the total number of images
         self.hdf5_file = h5py.File(self.cosmos_path, 'r')
         self.total_num_galaxies = len(self.hdf5_file['images'])
 
@@ -288,6 +290,7 @@ class CosmosCatalog(Interpol):
         self.images_per_chunk = images_per_chunk
         self.chunk_number = 0
 
+        # Close the hdf5 file whenever all code is finished executing
         atexit.register(self.cleanup)
 
 
@@ -445,6 +448,7 @@ class CosmosCatalog(Interpol):
         return 10 ** (-mag_k_correction / 2.5)
     
     def cleanup(self) -> None:
+        """Closes the hdf5 file"""
         self.hdf5_file.close()
 
 
