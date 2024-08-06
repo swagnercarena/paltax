@@ -14,7 +14,6 @@
 """Configuration file for generating paltax image outputs.
 """
 import pathlib
-
 import jax.numpy as jnp
 
 from paltax.input_pipeline import encode_normal, encode_uniform
@@ -101,18 +100,21 @@ def get_config():
         'exposure_time': 1024, 'num_exposures': 2.0, 'sky_brightness': 22,
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
-    root_path = str(pathlib.Path(__file__).parent.parent.parent)
-    cosmos_path = root_path + '/datasets/cosmos/cosmos_galaxies_train.npz'
-    kernel_path = root_path + '/datasets/hst_psf/emp_psf_f814w_2x.npy'
+
+    cosmos_path = str(pathlib.Path(__file__).parent.parent.parent)
+    cosmos_path += '/datasets/cosmos/cosmos_catalog.h5'
+    # Options for parameter are asymmetry, axial_ratio, concpetro, gini, m20, rhalfreal, rpetroreal
+    # This parameter's corresponding weights will be used in the WeightedCatalog class
+    parameter = 'gini'
 
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),
         'all_main_deflector_models': (lens_models.EPLEllip(),
                                       lens_models.ShearCart()),
-        'all_source_models': (source_models.CosmosCatalog(cosmos_path),),
+        'all_source_models': (source_models.WeightedCatalog(cosmos_path, parameter),),
         'all_lens_light_models': (source_models.SersicElliptic(),),
-        'all_psf_models': (psf_models.PixelCatalog(kernel_path),)
+        'all_psf_models': (psf_models.Gaussian(),)
     }
     # Some objects (subhalos for example) want to know the properties of another
     # object (main deflector). There can be multiple objects belonging to
@@ -142,9 +144,9 @@ def get_config():
         'sampling_pad_length': 200000,
     }
 
-    # Sample a few probable psfs.
     config['kwargs_psf'] = {
-        'kernel_index': encode_uniform(16/56, 19/56)
+        'fwhm': encode_constant(0.04),
+        'pixel_width': encode_constant(0.02)
     }
 
     config['truth_parameters'] = (
