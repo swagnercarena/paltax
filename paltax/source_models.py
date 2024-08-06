@@ -283,6 +283,8 @@ class CosmosCatalog(Interpol):
         self.cosmos_path = cosmos_path
         self.hdf5_file = h5py.File(self.cosmos_path, 'r')
         self.total_num_galaxies = self.hdf5_file['redshifts'][:].size
+
+        # Only load one batch of the hdf5 file into memory at a time
         self.batch_size = batch_size
         self.batch_number = 0
 
