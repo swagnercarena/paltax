@@ -464,15 +464,7 @@ class WeightedCatalog(CosmosCatalog):
 
         # Saves the cosmos path, chunk size, and opens the hdf5 file
         super().__init__(cosmos_path=cosmos_path, images_per_chunk=images_per_chunk)
-
-        # Loads the catalog weights corresponding to the input parameter
-        catalog_weights = self.hdf5_file[parameter + '_weights']
-
-        # Turns the catalog_weights pdf into a normalized cdf
-        catalog_weights_cdf = (
-            jnp.cumsum(catalog_weights) / jnp.sum(catalog_weights)
-        )
-        self.catalog_weights_cdf = catalog_weights_cdf
+        self.parameter = parameter
 
     def modify_cosmology_params(
             self,
@@ -492,7 +484,10 @@ class WeightedCatalog(CosmosCatalog):
         start_val = self.chunk_number * self.images_per_chunk
         end_val = start_val + self.images_per_chunk
 
-        cosmology_params['catalog_weights_cdf'] = self.catalog_weights_cdf[start_val:end_val]
+        catalog_weights = self.hdf5_file[self.parameter + '_weights'][start_val:end_val]
+        catalog_weights_cdf = jnp.cumsum(catalog_weights)/jnp.sum(catalog_weights)
+
+        cosmology_params['catalog_weights_cdf'] = catalog_weights_cdf
 
         cosmology_params = super().modify_cosmology_params(
             cosmology_params=cosmology_params
