@@ -14,7 +14,6 @@
 """Configuration file for generating paltax image outputs.
 """
 import pathlib
-import h5py
 import jax.numpy as jnp
 
 from paltax.input_pipeline import encode_normal, encode_uniform
@@ -101,7 +100,7 @@ def get_config():
         'exposure_time': 1024, 'num_exposures': 2.0, 'sky_brightness': 22,
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
-    
+
     root_path = str(pathlib.Path(__file__).parent.parent.parent)
     cosmos_path = root_path + '/datasets/cosmos/cosmos_galaxies_train.npz'
     kernel_path = root_path + '/datasets/hst_psf/emp_psf_f814w_2x.npy'
