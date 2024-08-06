@@ -19,11 +19,12 @@ in lenstronomy: https://github.com/lenstronomy/lenstronomy.
 
 from typing import Dict, Mapping, Tuple, Union
 
+import atexit
 import dm_pix
+import h5py
 import jax
 import jax.numpy as jnp
 import numpy as np
-import h5py
 
 from paltax import cosmology_utils
 from paltax import utils
@@ -271,7 +272,7 @@ class CosmosCatalog(Interpol):
     )
     parameters = ('image', 'amp', 'center_x', 'center_y', 'angle', 'scale')
 
-    def __init__(self, cosmos_path: str):
+    def __init__(self, cosmos_path: str, batch_size: int =2048):
         """Initialize the path to the COSMOS galaxies.
 
         Args:
@@ -280,10 +281,17 @@ class CosmosCatalog(Interpol):
         """
         # Save the cosmos image path.
         self.cosmos_path = cosmos_path
+        self.hdf5_file = h5py.File(self.cosmos_path, 'r')
+        self.total_num_galaxies = self.hdf5_file['redshifts'][:].size
+        self.batch_size = batch_size
+        self.batch_number = 0
+
+        atexit.register(self.hdf5_file.close())
+
 
     def modify_cosmology_params(
             self,
-            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
         ) -> Dict[str, Union[float, int, jnp.ndarray]]:
         """Modify cosmology params to include information required by model.
 
@@ -295,11 +303,16 @@ class CosmosCatalog(Interpol):
             Modified cosmology parameters.
         """
 
-        hdf5_file = h5py.File(self.cosmos_path, 'r')
-        images = hdf5_file['galaxy_images'][:][:][:]
+        # Sets up the batch of images to be loaded
+        start_val = self.batch_number * self.batch_size
+        end_val = start_val + self.batch_size
+
+        # Load the batch of images. Indexing out of range with end_val is not an issue
+        # when loading from hdf5 dataset
+        pixel_sizes = self.hdf5_file['pixel_sizes'][start_val:end_val]
+        redshifts = self.hdf5_file['redshifts'][start_val:end_val]
+        images = self.hdf5_file['galaxy_images'][start_val:end_val][:][:]
         cosmology_params['cosmos_n_images'] = len(images)
-        redshifts = hdf5_file['redshifts'][:]
-        pixel_sizes = hdf5_file['pixel_sizes'][:]
 
 
         # Convert attributes we need later to jax arrays
@@ -307,7 +320,10 @@ class CosmosCatalog(Interpol):
         cosmology_params['cosmos_redshifts'] = jnp.array(redshifts)
         cosmology_params['cosmos_images'] = jnp.array(images)
 
-        hdf5_file.close()
+        # Increment the batch counter; reset to 0 once we've loaded all batches
+        self.batch_number += 1
+        if self.batch_number * self.batch_size >= self.total_num_galaxies:
+            self.batch_number = 0
 
         return cosmology_params
 
@@ -433,7 +449,7 @@ class WeightedCatalog(CosmosCatalog):
     """Light profiles from catalog with custom weights
     """
 
-    def __init__(self, cosmos_path: str, catalog_weights: jnp.ndarray):
+    def __init__(self, cosmos_path: str, parameter: str, batch_size: int =2048):
         """Initialize the path to the catalog galaxies and catalog weights.
 
         Args:
@@ -442,8 +458,12 @@ class WeightedCatalog(CosmosCatalog):
             catalog_weights: Weights for the sources in the catalog. Do not
                 need to be normalized.
         """
-        # Save the cosmos image path.
-        super().__init__(cosmos_path=cosmos_path)
+
+        # Saves the cosmos path, batch size, and opens the hdf5 file
+        super().__init__(cosmos_path=cosmos_path, batch_size=batch_size)
+
+        # Loads the catalog weights corresponding to the input parameter
+        catalog_weights = self.hdf5_file[parameter + '_weights'][:]
 
         # Turns the catalog_weights pdf into a normalized cdf
         catalog_weights_cdf = (
@@ -464,10 +484,16 @@ class WeightedCatalog(CosmosCatalog):
         Returns:
             Modified cosmology parameters.
         """
+
+        # Sets up the batch of images to be loaded
+        start_val = self.batch_number * self.batch_size
+        end_val = start_val + self.batch_size
+
+        cosmology_params['catalog_weights_cdf'] = self.catalog_weights_cdf[start_val:end_val]
+
         cosmology_params = super().modify_cosmology_params(
             cosmology_params=cosmology_params
         )
-        cosmology_params['catalog_weights_cdf'] = self.catalog_weights_cdf
 
         n_weights = len(cosmology_params['catalog_weights_cdf'])
         if cosmology_params['cosmos_n_images'] != n_weights:
