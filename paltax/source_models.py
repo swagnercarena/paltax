@@ -322,10 +322,8 @@ class CosmosCatalog(Interpol):
         cosmology_params['cosmos_redshifts'] = jnp.array(redshifts)
         cosmology_params['cosmos_images'] = jnp.array(images)
 
-        # Increment the batch counter; reset to 0 once we've loaded all batches
-        self.batch_number += 1
-        if self.batch_number * self.batch_size >= self.total_num_galaxies:
-            self.batch_number = 0
+        # Increment the batch counter; reset to 0 if we've already loaded all batches
+        self.batch_number = jnp.where(end_val >= self.total_num_galaxies, 0, self.batch_number + 1)
 
         return cosmology_params
 
