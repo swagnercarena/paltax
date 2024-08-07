@@ -490,10 +490,6 @@ class WeightedCatalogTest(chex.TestCase):
         
 
     def test_modify_cosmology_params(self):
-        # Test that the correct number of images are being loaded in a chunk
-        self.assertEqual(cosmology_params['cosmos_n_images'], self.images_per_chunk)
-
-
         # Test that the weights cdf are correctly calculated chunk-wise,
         # saved to the cosmology params, and that chunk number is incremented.
         cosmology_params = {}
@@ -505,6 +501,9 @@ class WeightedCatalogTest(chex.TestCase):
             cosmology_params['catalog_weights_cdf'], catalog_weights_cdf
         )
         assert self.weighted_catalog.chunk_number == 1
+
+        # Test that the correct number of images are being loaded in a chunk
+        self.assertEqual(cosmology_params['cosmos_n_images'], 2)
 
         # Test that the weights cdf for the second chunk are correctly
         # calculated, saved, and that chunk number is incremented
