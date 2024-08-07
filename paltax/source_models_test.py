@@ -305,16 +305,27 @@ class SersicEllipticTest(chex.TestCase, parameterized.TestCase):
 
 class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
     """Runs tests of CosmosCatalog functions."""
+    def tests_setup(self):
+        # Creates an instance of cosmos catalog with chunk size 2
+        self.images_per_chunk = 2
+        self.cosmos_catalog = source_models.CosmosCatalog(
+            COSMOS_TEST_PATH, self.images_per_chunk
+        )
 
     def test__init__(self):
-        # Test that the intialization saves the path.
-        cosmos_catalog = source_models.CosmosCatalog(COSMOS_TEST_PATH)
-        self.assertEqual(cosmos_catalog.cosmos_path, COSMOS_TEST_PATH)
+        # Test that the intialization saves the hdf5 file and the correct file is opened
+        self.assertEqual(self.cosmos_catalog.hdf5_file.filename, COSMOS_TEST_PATH)
+
+        # Test that the correct total number of galaxies is being stored (should be 5)
+        assert self.cosmos_catalog.total_num_galaxies == 5
+
+        # Test that the WeightedCatalog stores the images per chunk and starts at chunk 0
+        assert self.cosmos_catalog.images_per_chunk == self.images_per_chunk
+        assert self.cosmos_catalog.chunk_number == 0
 
     def test_modify_cosmology_params(self):
-        cosmos_catalog = source_models.CosmosCatalog(COSMOS_TEST_PATH)
         cosmology_params = {}
-        cosmology_params = cosmos_catalog.modify_cosmology_params(
+        cosmology_params = self.cosmos_catalog.modify_cosmology_params(
             cosmology_params
         )
 
@@ -324,6 +335,7 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
         self.assertTupleEqual(cosmology_params['cosmos_pixel_sizes'].shape,
                               (2,))
         self.assertEqual(cosmology_params['cosmos_n_images'], 2)
+        assert self.cosmos_catalog.chunk_number == 1
 
     @chex.all_variants
     def test_convert_to_angular(self):
@@ -469,6 +481,7 @@ class WeightedCatalogTest(chex.TestCase):
     """Runs tests of WeightedCatalog functions."""
 
     def tests_setup(self):
+        # Creates an instance of weighted catalog using chunk size 2 and gini parameter
         self.parameter = 'gini'
         self.images_per_chunk = 2
         self.weighted_catalog = source_models.WeightedCatalog(
