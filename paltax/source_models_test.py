@@ -570,7 +570,7 @@ class WeightedCatalogTest(chex.TestCase):
             cosmology_params
         )
         all_kwargs = {
-            'galaxy_index': 0.87,
+            'galaxy_index': 0.47,
             'amp': 1.0,
             'z_source': cosmology_params['cosmos_redshifts'][0],
             'output_ab_zeropoint': 23.5,
@@ -579,7 +579,7 @@ class WeightedCatalogTest(chex.TestCase):
         convert_to_angular = self.variant(weighted_catalog.convert_to_angular)
 
         # Makes sure that the first image in the chunk is returned when the
-        # galaxy index is <= 0.87 (in this example it is the second chunk)
+        # galaxy index is <= 0.47 (in this example it is the first chunk)
         angular_kwargs = convert_to_angular(all_kwargs, cosmology_params)
         np.testing.assert_array_almost_equal(
             angular_kwargs['image'],
@@ -588,8 +588,8 @@ class WeightedCatalogTest(chex.TestCase):
             decimal=4)
 
         # Makes sure that the second image is returned when the galaxy index
-        # is >= 0.88
-        all_kwargs['galaxy_index'] = 0.88
+        # is >= 0.48
+        all_kwargs['galaxy_index'] = 0.48
         angular_kwargs = convert_to_angular(all_kwargs, cosmology_params)
         np.testing.assert_array_almost_equal(
             angular_kwargs['image'],
