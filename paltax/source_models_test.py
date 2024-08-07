@@ -58,7 +58,7 @@ COSMOLOGY_PARAMS_INIT = immutabledict({
 def catalog_weights_from_hdf5(parameter):
     # Extract catalog weights from hdf5 file corresponding to parameter
     with h5py.File(COSMOS_TEST_PATH, "r") as hdf5_file:
-        catalog_weights = hdf5_file[parameter + '_weights']
+        catalog_weights = jnp.array(hdf5_file[parameter + '_weights'])
     return catalog_weights
 
 def compute_catalog_weights_cdf(catalog_weights, start_val, images_per_chunk):
