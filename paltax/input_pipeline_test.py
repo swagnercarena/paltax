@@ -636,7 +636,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
 
         # Test that the cosmos images are present
         self.assertTupleEqual(cosmology_params['cosmos_images'].shape,
-                              (2, 256, 256))
+                              (5, 256, 256))
 
     @chex.all_variants(without_device=False)
     def test_draw_sample(self):
@@ -761,8 +761,8 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         for image in sampled_configuration['image']:
             np.testing.assert_array_almost_equal(
                 image,
-                (cosmology_params['cosmos_images'][1] /
-                 cosmology_params['cosmos_pixel_sizes'][1] ** 2)
+                (cosmology_params['cosmos_images'][3] /
+                 cosmology_params['cosmos_pixel_sizes'][3] ** 2)
             )
         for amp in sampled_configuration['amp']:
             self.assertNotAlmostEqual(amp, 1e3)
