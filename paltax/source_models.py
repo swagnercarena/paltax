@@ -279,11 +279,9 @@ class CosmosCatalog(Interpol):
             cosmos_path: Path to the npz file containing the cosmos images,
                 redshift array, and pixel sizes.
         """
-        # Save the cosmos image path.
-        self.cosmos_path = cosmos_path
 
         # Opens the hdf5 file and extract the total number of images
-        self.hdf5_file = h5py.File(self.cosmos_path, 'r')
+        self.hdf5_file = h5py.File(cosmos_path, 'r')
         self.total_num_galaxies = len(self.hdf5_file['images'])
 
         # Only load one chunk of the hdf5 file into memory at a time
@@ -496,13 +494,6 @@ class WeightedCatalog(CosmosCatalog):
         cosmology_params = super().modify_cosmology_params(
             cosmology_params=cosmology_params
         )
-
-        n_weights = len(cosmology_params['catalog_weights_cdf'])
-        if cosmology_params['cosmos_n_images'] != n_weights:
-            raise ValueError(
-                f'Number of weights {n_weights} should be equal to the ' +
-                f'number of sources {cosmology_params["cosmos_n_images"]}'
-            )
 
         return cosmology_params
 

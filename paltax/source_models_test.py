@@ -25,6 +25,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 import chex
 from immutabledict import immutabledict
+import h5py
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -33,10 +34,12 @@ from paltax import cosmology_utils
 from paltax import source_models
 from paltax import utils
 
+# NOTE: The tests are done assuming that the test
+#       file contains 5 images
 
 COSMOS_TEST_PATH = (
     str(pathlib.Path(__file__).parent) +
-    '/test_files/weighted_catalog_test.h5'
+    '/test_files/cosmos_catalog_test.h5'
 )
 
 
@@ -52,12 +55,18 @@ COSMOLOGY_PARAMS_INIT = immutabledict({
 })
 
 
-def _prepare_catalog_weights():
-    # Generate a fixed set of catalog weights.
-    catalog_weights = jnp.array([0.2, 10.0])
-    catalog_weights_cdf = jnp.cumsum(catalog_weights) / jnp.sum(catalog_weights)
-    return catalog_weights, catalog_weights_cdf
+def catalog_weights_from_hdf5(parameter):
+    # Extract catalog weights from hdf5 file corresponding to parameter
+    with h5py.File(COSMOS_TEST_PATH, "r") as hdf5_file:
+        catalog_weights = hdf5_file[parameter + '_weights']
+        total_num_galaxies = len(hdf5_file['images'])
+    return catalog_weights, total_num_galaxies
 
+def compute_catalog_weights_cdf(catalog_weights, start_val, images_per_chunk):
+    return (jnp.cumsum(
+        catalog_weights[start_val:start_val + images_per_chunk]) / 
+        jnp.sum(catalog_weights[start_val:start_val + images_per_chunk])
+    )
 
 def _prepare_cosmology_params(
         cosmology_params_init, z_lookup_max, dz, r_min=1e-4, r_max=1e3,
@@ -459,68 +468,97 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
 class WeightedCatalogTest(chex.TestCase):
     """Runs tests of WeightedCatalog functions."""
 
+    def tests_setup(self):
+        self.parameter = 'asymmetry'
+        self.images_per_chunk = 2
+        self.weighted_catalog = source_models.WeightedCatalog(
+            COSMOS_TEST_PATH, self.parameter, self.images_per_chunk
+        )
+        self.catalog_weights, self.total_num_galaxies = catalog_weights_from_hdf5(self.parameter)
+
     def test__init__(self):
-        # Test that the intialization saves the path and weights.
-        catalog_weights, catalog_weights_cdf = _prepare_catalog_weights()
-        weighted_catalog = source_models.WeightedCatalog(
-            COSMOS_TEST_PATH, catalog_weights
-        )
-        self.assertEqual(weighted_catalog.cosmos_path, COSMOS_TEST_PATH)
-        np.testing.assert_array_almost_equal(
-            catalog_weights_cdf, weighted_catalog.catalog_weights_cdf
-        )
+        # Test that the intialization saves the hdf5 file and the correct file is opened
+        self.assertEqual(self.weighted_catalog.hdf5_file.filename, COSMOS_TEST_PATH)
+
+        # Test that the correct total number of galaxies is being stored (should be 5)
+        assert self.weighted_catalog.total_num_galaxies == self.total_num_galaxies
+        assert self.weighted_catalog.total_num_galaxies == 5
+
+        # Test that the WeightedCatalog stores the images per chunk and starts at chunk 0
+        assert self.weighted_catalog.images_per_chunk == self.images_per_chunk
+        assert self.weighted_catalog.chunk_number == 0
+        
 
     def test_modify_cosmology_params(self):
-        # Test that the weights are saved to the cosmology params.
-        catalog_weights, catalog_weights_cdf = _prepare_catalog_weights()
-        weighted_catalog = source_models.WeightedCatalog(
-            COSMOS_TEST_PATH, catalog_weights
-        )
+        # Test that the correct number of images are being loaded in a chunk
+        self.assertEqual(cosmology_params['cosmos_n_images'], self.images_per_chunk)
+
+
+        # Test that the weights cdf are correctly calculated chunk-wise,
+        # saved to the cosmology params, and that chunk number is incremented.
         cosmology_params = {}
-        cosmology_params = weighted_catalog.modify_cosmology_params(
+        cosmology_params = self.weighted_catalog.modify_cosmology_params(
             cosmology_params
         )
-
-        self.assertEqual(cosmology_params['cosmos_n_images'], 2)
+        catalog_weights_cdf = compute_catalog_weights_cdf(self.catalog_weights, 0, 2)
         np.testing.assert_array_almost_equal(
             cosmology_params['catalog_weights_cdf'], catalog_weights_cdf
         )
+        assert self.weighted_catalog.chunk_number == 1
 
-        # Makes sure that when the number of weights don't match the
-        # number of sources, an error is raised
-        weighted_catalog = source_models.WeightedCatalog(
-            COSMOS_TEST_PATH, catalog_weights[1:]
+        # Test that the weights cdf for the second chunk are correctly
+        # calculated, saved, and that chunk number is incremented
+        catalog_weights_cdf = compute_catalog_weights_cdf(self.catalog_weights, 2, 2)
+        cosmology_params = self.weighted_catalog.modify_cosmology_params(
+            cosmology_params
         )
-        with self.assertRaises(ValueError):
-            cosmology_params = weighted_catalog.modify_cosmology_params(
-                cosmology_params
-            )
+        assert self.weighted_catalog.chunk_number == 2
 
+        # Test that the weights cdf for the third chunk are correctly
+        # calculated and saved
+        catalog_weights_cdf = compute_catalog_weights_cdf(self.catalog_weights, 4, 2)
+        cosmology_params = self.weighted_catalog.modify_cosmology_params(
+            cosmology_params
+        )
+        np.testing.assert_array_almost_equal(
+            cosmology_params['catalog_weights_cdf'], catalog_weights_cdf
+        )
+        # Since the third chunk is just one number, the cumsum should just be 1
+        assert cosmology_params['catalog_weights_cdf'].size == 1
+        assert cosmology_params['catalog_weights_cdf'][0] == 1
+
+        # Test that when modify cosmology params is called a fourth time
+        # it returns to the first chunk
+        assert self.weighted_catalog.chunk_number == 0
+        cosmology_params = self.weighted_catalog.modify_cosmology_params(
+            cosmology_params
+        )
+        catalog_weights_cdf = compute_catalog_weights_cdf(self.catalog_weights, 0, 2)
+        np.testing.assert_array_almost_equal(
+            cosmology_params['catalog_weights_cdf'], catalog_weights_cdf
+        )
+        assert self.weighted_catalog.chunk_number == 1
 
     @chex.all_variants
     def test_convert_to_angular(self):
         # Test that we sample accoding to the weights
-        catalog_weights, _ = _prepare_catalog_weights()
-        weighted_catalog = source_models.WeightedCatalog(
-            COSMOS_TEST_PATH, catalog_weights
-        )
         cosmology_params = _prepare_cosmology_params(
             COSMOLOGY_PARAMS_INIT, 1.0, 0.01
         )
-        cosmology_params = weighted_catalog.modify_cosmology_params(
+        cosmology_params = self.weighted_catalog.modify_cosmology_params(
             cosmology_params
         )
         all_kwargs = {
-            'galaxy_index': 0.01,
+            'galaxy_index': 0.87,
             'amp': 1.0,
             'z_source': cosmology_params['cosmos_redshifts'][0],
             'output_ab_zeropoint': 23.5,
             'catalog_ab_zeropoint': 23.5
         }
-        convert_to_angular = self.variant(weighted_catalog.convert_to_angular)
+        convert_to_angular = self.variant(self.weighted_catalog.convert_to_angular)
 
-        # Makes sure that the first image is returned when the galaxy index
-        # is below 0.02
+        # Makes sure that the first image in the chunk is returned when the
+        # galaxy index is <= 0.87 (in this example it is the second chunk)
         angular_kwargs = convert_to_angular(all_kwargs, cosmology_params)
         np.testing.assert_array_almost_equal(
             angular_kwargs['image'],
@@ -529,8 +567,8 @@ class WeightedCatalogTest(chex.TestCase):
             decimal=4)
 
         # Makes sure that the second image is returned when the galaxy index
-        # is above 0.02
-        all_kwargs['galaxy_index'] = 0.1
+        # is >= 0.88
+        all_kwargs['galaxy_index'] = 0.88
         angular_kwargs = convert_to_angular(all_kwargs, cosmology_params)
         np.testing.assert_array_almost_equal(
             angular_kwargs['image'],
