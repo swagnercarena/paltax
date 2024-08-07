@@ -314,11 +314,11 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
         self.assertEqual(cosmos_catalog.hdf5_file.filename, COSMOS_TEST_PATH)
 
         # Test that the correct total number of galaxies is being stored (should be 5)
-        self.assertEqual(cosmos_catalog.total_num_galaxies == 5)
+        self.assertEqual(cosmos_catalog.total_num_galaxies, 5)
 
         # Test that the CosmosCatalog stores the images per chunk and starts at chunk 0
-        self.assertEqual(cosmos_catalog.images_per_chunk == 3)
-        self.assertEqual(cosmos_catalog.chunk_number == 0)
+        self.assertEqual(cosmos_catalog.images_per_chunk, 3)
+        self.assertEqual(cosmos_catalog.chunk_number, 0)
 
     def test_modify_cosmology_params(self):
         cosmos_catalog = source_models.CosmosCatalog(
@@ -335,7 +335,7 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
         self.assertTupleEqual(cosmology_params['cosmos_pixel_sizes'].shape,
                               (3,))
         self.assertEqual(cosmology_params['cosmos_n_images'], 3)
-        self.assertEqual(cosmos_catalog.chunk_number == 1)
+        self.assertEqual(cosmos_catalog.chunk_number, 1)
 
     @chex.all_variants
     def test_convert_to_angular(self):
@@ -498,14 +498,14 @@ class WeightedCatalogTest(chex.TestCase):
         self.assertEqual(weighted_catalog.hdf5_file.filename, COSMOS_TEST_PATH)
 
         # Test that the correct total number of galaxies is being stored (should be 5)
-        self.assertEqual(weighted_catalog.total_num_galaxies == 5)
+        self.assertEqual(weighted_catalog.total_num_galaxies, 5)
 
         # Test that the WeightedCatalog stores the images per chunk and starts at chunk 0
-        self.assertEqual(weighted_catalog.images_per_chunk == 2)
-        self.assertEqual(weighted_catalog.chunk_number == 0)
+        self.assertEqual(weighted_catalog.images_per_chunk, 2)
+        self.assertEqual(weighted_catalog.chunk_number, 0)
 
         # Test that the parameter is being stored
-        self.assertEqual(weighted_catalog.parameter == 'gini')
+        self.assertEqual(weighted_catalog.parameter, 'gini')
         
 
     def test_modify_cosmology_params(self):
@@ -524,7 +524,7 @@ class WeightedCatalogTest(chex.TestCase):
         np.testing.assert_array_almost_equal(
             cosmology_params['catalog_weights_cdf'], catalog_weights_cdf
         )
-        self.assertEqual(weighted_catalog.chunk_number == 1)
+        self.assertEqual(weighted_catalog.chunk_number, 1)
 
         # Test that the correct number of images are being loaded in a chunk
         self.assertEqual(cosmology_params['cosmos_n_images'], 2)
@@ -538,7 +538,7 @@ class WeightedCatalogTest(chex.TestCase):
         np.testing.assert_array_almost_equal(
             cosmology_params['catalog_weights_cdf'], catalog_weights_cdf
         )
-        self.assertEqual(weighted_catalog.chunk_number == 2)
+        self.assertEqual(weighted_catalog.chunk_number, 2)
 
         # Test that the weights cdf for the third chunk are correctly
         # calculated and saved
@@ -550,12 +550,12 @@ class WeightedCatalogTest(chex.TestCase):
             cosmology_params['catalog_weights_cdf'], catalog_weights_cdf
         )
         # Since the third chunk is just one number, the cumsum should just be 1
-        self.assertEqual(cosmology_params['catalog_weights_cdf'].size == 1)
-        self.assertEqual(cosmology_params['catalog_weights_cdf'][0] == 1)
+        self.assertEqual(cosmology_params['catalog_weights_cdf'].size, 1)
+        self.assertEqual(cosmology_params['catalog_weights_cdf'][0], 1)
 
         # Test that when modify cosmology params is called a fourth time
         # it returns to the first chunk
-        self.assertEqual(weighted_catalog.chunk_number == 0)
+        self.assertEqual(weighted_catalog.chunk_number, 0)
         cosmology_params = weighted_catalog.modify_cosmology_params(
             cosmology_params
         )
@@ -563,7 +563,7 @@ class WeightedCatalogTest(chex.TestCase):
         np.testing.assert_array_almost_equal(
             cosmology_params['catalog_weights_cdf'], catalog_weights_cdf
         )
-        self.assertEqual(weighted_catalog.chunk_number == 1)
+        self.assertEqual(weighted_catalog.chunk_number, 1)
 
     @chex.all_variants
     def test_convert_to_angular(self):
