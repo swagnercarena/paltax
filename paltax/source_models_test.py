@@ -469,7 +469,7 @@ class WeightedCatalogTest(chex.TestCase):
     """Runs tests of WeightedCatalog functions."""
 
     def tests_setup(self):
-        self.parameter = 'asymmetry'
+        self.parameter = 'gini'
         self.images_per_chunk = 2
         self.weighted_catalog = source_models.WeightedCatalog(
             COSMOS_TEST_PATH, self.parameter, self.images_per_chunk
