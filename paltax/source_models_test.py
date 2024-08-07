@@ -512,6 +512,9 @@ class WeightedCatalogTest(chex.TestCase):
         cosmology_params = self.weighted_catalog.modify_cosmology_params(
             cosmology_params
         )
+        np.testing.assert_array_almost_equal(
+            cosmology_params['catalog_weights_cdf'], catalog_weights_cdf
+        )
         assert self.weighted_catalog.chunk_number == 2
 
         # Test that the weights cdf for the third chunk are correctly
