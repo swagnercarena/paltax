@@ -476,7 +476,7 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
             expected, k_correct_image(z_old, z_new), places=6
         )
 
-    def test_cleanup():
+    def test_cleanup(self):
         # Test to see if cleanup correctly closes the hdf5 file
         cosmos_catalog = source_models.CosmosCatalog(COSMOS_TEST_PATH)
         cosmos_catalog.cleanup()
