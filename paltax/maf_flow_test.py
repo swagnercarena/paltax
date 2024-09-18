@@ -22,7 +22,9 @@ import flax.linen as nn
 import jax
 import jax.numpy as jnp
 import numpy as np
+
 from paltax import maf_flow
+from paltax import models
 
 
 class UtilTest(chex.TestCase):
@@ -504,7 +506,7 @@ class TransformedConditionalTest(chex.TestCase):
 
 
 class MAFTest(chex.TestCase):
-    """Run tests on the MaskedAutoregressiveFlow module."""
+    """Run tests on the MAF module."""
 
     @chex.all_variants
     def test_apply(self):
@@ -540,6 +542,58 @@ class MAFTest(chex.TestCase):
         samples, log_prob = apply_fn(
             params, rng, context[0], sample_shape=sample_shape,
             method='sample_and_log_prob'
+        )
+        self.assertTupleEqual(samples.shape, sample_shape + (n_dim,))
+        self.assertTupleEqual(log_prob.shape, sample_shape)
+
+
+class EmbeddedMAFTest(chex.TestCase):
+    """Run tests on the EmbeddedMAF module."""
+
+    @chex.all_variants
+    def test_apply(self):
+        # Test the the MAF module initializes and returns transformed
+        # variables.
+        n_dim = 8
+        embedding_dim = 4
+        image_size = 64
+        n_maf_layers = 3
+        hidden_dims = [16]
+        activation = 'gelu'
+        embedding_module = models.ResNet18VerySmall
+        maf = maf_flow.EmbeddedMAF(
+            n_dim, n_maf_layers, hidden_dims, activation, embedding_module,
+            embedding_dim
+        )
+
+        rng = jax.random.PRNGKey(0)
+        params = maf.init(
+            rng, jnp.ones((1, n_dim)), jnp.ones((1, image_size, image_size, 1))
+        )
+        apply_fn = self.variant(
+            maf.apply, static_argnames=['method', 'sample_shape', 'mutable']
+        )
+
+        batch_size = 4
+        y = jax.random.normal(rng, (batch_size, n_dim))
+        context = jax.random.normal(
+            rng, (batch_size, image_size, image_size, 1)
+        )
+
+        # Test call function.
+        log_prob, _ = apply_fn(params, y, context, mutable=('batch_stats',))
+        self.assertTupleEqual(log_prob.shape, (batch_size,))
+
+        # Test sampling functions.
+        sample_shape = (2, 2)
+        samples, _ = apply_fn(
+            params, rng, context[0], sample_shape=sample_shape, method='sample',
+            mutable=('batch_stats',)
+        )
+        self.assertTupleEqual(samples.shape, sample_shape + (n_dim,))
+        (samples, log_prob), _ = apply_fn(
+            params, rng, context[0], sample_shape=sample_shape,
+            method='sample_and_log_prob', mutable=('batch_stats',)
         )
         self.assertTupleEqual(samples.shape, sample_shape + (n_dim,))
         self.assertTupleEqual(log_prob.shape, sample_shape)

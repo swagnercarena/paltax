@@ -30,6 +30,8 @@ import flax.linen as nn
 from flax.linen.dtypes import promote_dtype
 from flax.linen.module import compact
 
+from paltax.models import ModuleDef
+
 
 def _made_degrees(
     input_size: int, hidden_dims: Union[List[int], None]
@@ -704,3 +706,88 @@ class MAF(nn.Module):
             draw many samples. If that is not the case, you will need to vmap.
         """
         return self.flow.sample_and_log_prob(rng, context, sample_shape)
+
+
+class EmbeddedMAF(MAF):
+    """MAF with a specific model for embeddings.
+
+    Args:
+        embedding_module: Module used to map from conditional data to embedding.
+        embedding_dim:
+    """
+    embedding_module: ModuleDef
+    embedding_dim: int
+
+    def setup(self):
+        """Setup the MaskedAutoregressiveFlow and Embedding module."""
+        # Start with the MAF module.
+        super().setup()
+
+        self.embedding_model = self.embedding_module(
+            num_outputs = self.embedding_dim
+        )
+
+
+    def __call__(
+        self, y: jnp.ndarray, unembedded_context: Union[jnp.ndarray, None]
+    ) -> jnp.ndarray:
+        """Return log probability of transformed random variables.
+
+        Args:
+            y: Transformed random variables.
+            unembedded_context: Context for flow transformation before
+                embedding. This should be the raw data.
+
+        Returns:
+            Log probability of transformed random variables.
+        """
+        context = self.embedding_model(unembedded_context)
+        return super().__call__(y, context)
+
+    def sample(
+        self, rng: List[int], unembedded_context: jnp.ndarray,
+        sample_shape: List[int]
+    ) -> jnp.ndarray:
+        """Draw samples from transformed distribution.
+
+        Args:
+            rng: Jax PRNG key.
+            unembedded_context: Context for flow transformation before
+                embedding. This should be the raw data.
+            sample_shape: Desired output shape of samples.
+
+        Returns:
+            Samples of transformed variables.
+
+        Notes:
+            Assumes you are only providing one context for which you want to
+            draw many samples. If that is not the case, you will need to vmap.
+        """
+        context = self.embedding_model(
+            jnp.expand_dims(unembedded_context, axis=0)
+        )[0]
+        return super().sample(rng, context, sample_shape)
+
+    def sample_and_log_prob(
+        self, rng: List[int], unembedded_context: jnp.ndarray,
+        sample_shape: List[int]
+    ) -> jnp.ndarray:
+        """Draw samples and corresponding log probability of the sample.
+
+        Args:
+            rng: Jax PRNG key.
+            unembedded_context: Context for flow transformation before
+                embedding. This should be the raw data.
+            sample_shape: Desired output shape of samples.
+
+        Returns:
+            Samples of transformed variables and log probability.
+
+        Notes:
+            Assumes you are only providing one context for which you want to
+            draw many samples. If that is not the case, you will need to vmap.
+        """
+        context = self.embedding_model(
+            jnp.expand_dims(unembedded_context, axis=0)
+        )[0]
+        return super().sample_and_log_prob(rng, context, sample_shape)
