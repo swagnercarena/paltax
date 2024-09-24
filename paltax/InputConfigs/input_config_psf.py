@@ -102,7 +102,7 @@ def get_config():
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
     root_path = str(pathlib.Path(__file__).parent.parent.parent)
-    cosmos_path = root_path + '/datasets/cosmos/cosmos_galaxies_train.npz'
+    cosmos_path = root_path + '/datasets/cosmos/weighted_catalog_training.h5'
     kernel_path = root_path + '/datasets/hst_psf/emp_psf_f814w_2x.npy'
 
     config['all_models'] = {

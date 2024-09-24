@@ -109,7 +109,7 @@ def get_config():
     # Options for parameter are asymmetry, axial_ratio, concpetro, gini, m20, rhalfreal, rpetroreal
     # This parameter's corresponding weights will be used in the WeightedCatalog class
     parameter = 'gini'
-    
+
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),

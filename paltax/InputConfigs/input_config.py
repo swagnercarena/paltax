@@ -104,7 +104,7 @@ def get_config():
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
     cosmos_path = str(pathlib.Path(__file__).parent.parent.parent)
-    cosmos_path += '/datasets/cosmos/cosmos_galaxies_train.npz'
+    cosmos_path += '/datasets/cosmos/weighted_catalog_training.h5'
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),
