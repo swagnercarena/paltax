@@ -708,13 +708,22 @@ class MAF(nn.Module):
         return self.flow.sample_and_log_prob(rng, context, sample_shape)
 
 
-class EmbeddedMAF(MAF):
+class EmbeddedMAF(nn.Module):
     """MAF with a specific model for embeddings.
 
     Args:
+        n_dim: Dimensionality of random variables.
+        n_maf_layers: Number of MAF layers to construct.
+        hidden_dims: Hidden dimensions of each MADE layer underlying each MAF
+            layer.
+        activation: Activation function to use in MADE layers.
         embedding_module: Module used to map from conditional data to embedding.
         embedding_dim:
     """
+    n_dim: int
+    n_maf_layers: int
+    hidden_dims: List[int]
+    activation: str
     embedding_module: ModuleDef
     embedding_dim: int
 
@@ -726,10 +735,12 @@ class EmbeddedMAF(MAF):
         self.embedding_model = self.embedding_module(
             num_outputs = self.embedding_dim
         )
-
+        self.maf_model = MAF(
+            self.n_dim, self.n_maf_layers, self.hidden_dims, self.activation
+        )
 
     def __call__(
-        self, y: jnp.ndarray, unembedded_context: Union[jnp.ndarray, None]
+        self, y: jnp.ndarray, unembedded_context: jnp.ndarray
     ) -> jnp.ndarray:
         """Return log probability of transformed random variables.
 
@@ -741,8 +752,20 @@ class EmbeddedMAF(MAF):
         Returns:
             Log probability of transformed random variables.
         """
-        context = self.embedding_model(unembedded_context)
-        return super().__call__(y, context)
+        context = self.embed_context(unembedded_context)
+        return self.maf_model(y, context)
+
+    def embed_context(self, unembedded_context: jnp.ndarray) -> jnp.ndarray:
+        """Embed context using embedding network.
+
+        Args:
+            unembedded_context: Context for flow transformation before
+                embedding. This should be the raw data.
+
+        Returns:
+            Context after embedding.
+        """
+        return self.embedding_model(unembedded_context)
 
     def sample(
         self, rng: List[int], unembedded_context: jnp.ndarray,
@@ -760,13 +783,15 @@ class EmbeddedMAF(MAF):
             Samples of transformed variables.
 
         Notes:
-            Assumes you are only providing one context for which you want to
-            draw many samples. If that is not the case, you will need to vmap.
+            The embedding model may have a batch-size dependent transformation
+            in it (i.e. batch norm). Passing in only one point of context may
+            may lead to unexpected behavior.
         """
-        context = self.embedding_model(
-            jnp.expand_dims(unembedded_context, axis=0)
-        )[0]
-        return super().sample(rng, context, sample_shape)
+        context = self.embed_context(unembedded_context)
+        rng_sample = jax.random.split(rng, len(context))
+        return jax.vmap(self.maf_model.sample, in_axes=[0, 0, None])(
+            rng_sample, context, sample_shape
+        )
 
     def sample_and_log_prob(
         self, rng: List[int], unembedded_context: jnp.ndarray,
@@ -784,10 +809,12 @@ class EmbeddedMAF(MAF):
             Samples of transformed variables and log probability.
 
         Notes:
-            Assumes you are only providing one context for which you want to
-            draw many samples. If that is not the case, you will need to vmap.
+            The embedding model may have a batch-size dependent transformation
+            in it (i.e. batch norm). Passing in only one point of context may
+            may lead to unexpected behavior.
         """
-        context = self.embedding_model(
-            jnp.expand_dims(unembedded_context, axis=0)
-        )[0]
-        return super().sample_and_log_prob(rng, context, sample_shape)
+        context = self.embed_context(unembedded_context)
+        rng_sample = jax.random.split(rng, len(context))
+        return jax.vmap(
+            self.maf_model.sample_and_log_prob, in_axes=[0, 0, None]
+        )(rng_sample, context, sample_shape)

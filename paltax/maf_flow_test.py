@@ -584,19 +584,40 @@ class EmbeddedMAFTest(chex.TestCase):
         log_prob, _ = apply_fn(params, y, context, mutable=('batch_stats',))
         self.assertTupleEqual(log_prob.shape, (batch_size,))
 
+        # Test embed_context function.
+        embed_context, _ = apply_fn(
+            params, context, method='embed_context', mutable=('batch_stats',)
+        )
+
         # Test sampling functions.
         sample_shape = (2, 2)
         samples, _ = apply_fn(
-            params, rng, context[0], sample_shape=sample_shape, method='sample',
+            params, rng, context, sample_shape=sample_shape, method='sample',
             mutable=('batch_stats',)
         )
-        self.assertTupleEqual(samples.shape, sample_shape + (n_dim,))
+        self.assertTupleEqual(
+            samples.shape, (batch_size,) + sample_shape + (n_dim,)
+        )
         (samples, log_prob), _ = apply_fn(
-            params, rng, context[0], sample_shape=sample_shape,
+            params, rng, context, sample_shape=sample_shape,
             method='sample_and_log_prob', mutable=('batch_stats',)
         )
-        self.assertTupleEqual(samples.shape, sample_shape + (n_dim,))
-        self.assertTupleEqual(log_prob.shape, sample_shape)
+        self.assertTupleEqual(
+            samples.shape, (batch_size,) + sample_shape + (n_dim,)
+        )
+        self.assertTupleEqual(log_prob.shape, (batch_size,) + sample_shape)
+
+        # Test that using the output of embed_context returns the same samples.
+        maf_model = maf_flow.MAF(n_dim, n_maf_layers, hidden_dims, activation)
+        maf_apply_fn = self.variant(
+            maf_model.apply, static_argnames=['method', 'sample_shape']
+        )
+        rng_sample = jax.random.split(rng, len(context))
+        maf_samples = maf_apply_fn(
+            {'params': params['params']['maf_model']}, rng_sample[0],
+            embed_context[0], sample_shape=sample_shape, method='sample'
+        )
+        np.testing.assert_array_almost_equal(samples[0], maf_samples)
 
 
 if __name__ == '__main__':
