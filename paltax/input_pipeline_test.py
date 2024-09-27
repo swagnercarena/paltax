@@ -1049,7 +1049,7 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             truth[4], -truth_rot[4]
         )
 
-    # @chex.all_variants(without_device=False)
+    @chex.all_variants(without_device=False)
     def test_draw_image(self):
         # Test that the images have reasonable shape and that the truth values
         # are drawn correctly.
