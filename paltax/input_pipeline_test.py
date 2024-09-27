@@ -121,6 +121,7 @@ def _prepare_cosmology_params():
         'sigma_eight': encode_constant(0.8159),
     }
 
+
 class InputPipelineTests(chex.TestCase, parameterized.TestCase):
     """Runs tests of input pipeline functions."""
 
@@ -885,6 +886,53 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
             )
 
     @chex.all_variants(without_device=False)
+    @parameterized.named_parameters(
+            [(f'normalize_{normalize}',normalize) for normalize in
+             [True, False]])
+    def test_replace_truth_values(self, normalize):
+        # Test that the extracted parameters match the values fed into the
+        # dictionary.
+        all_params = {
+            'a': {'a': jnp.array([0.0, 0.0]), 'b': jnp.array([0.5, 0.5]),
+                  'c': jnp.array([12.2, 0.0]), 'angle': jnp.array([2.0, 0.0])},
+            'b': {'a': jnp.array([1.0, 0.0]), 'b': jnp.array([0.7, 0.0]),
+                  'c': jnp.array([10.2, 0.0])}}
+        constant = 1.0
+        mean = 2.0
+        std = 1.0
+        minimum = -1.0
+        maximum = 12.0
+        rotation_angle = jnp.pi / 4
+        lensing_config = {
+            'a': {'a': input_pipeline.encode_constant(constant),
+                  'b': input_pipeline.encode_normal(mean, std),
+                  'c': input_pipeline.encode_uniform(minimum, maximum),
+                  'angle': input_pipeline.encode_uniform(0.0, 1.0)},
+            'b': {'a': input_pipeline.encode_constant(constant),
+                  'b': input_pipeline.encode_normal(mean, std),
+                  'c': input_pipeline.encode_uniform(minimum, maximum)}}
+        extract_objects = ['a', 'a',]
+        extract_keys = ['a', 'b']
+        extract_indices = [0, 0]
+        truth_parameters = (extract_objects, extract_keys, extract_indices)
+        truth = jnp.array([0.0, 0.0])
+        replace_truth_values = self.variant(functools.partial(
+            input_pipeline.replace_truth_values,
+            truth_parameters=truth_parameters,
+            normalize_truths=normalize)
+        )
+
+        all_params = replace_truth_values(
+            truth, all_params, lensing_config
+        )
+        if normalize:
+            self.assertAlmostEqual(all_params['a']['a'][0], constant)
+            self.assertAlmostEqual(all_params['a']['b'][0], mean)
+        else:
+            self.assertAlmostEqual(all_params['a']['a'][0], 0.0)
+            self.assertAlmostEqual(all_params['a']['b'][0], 0.0)
+
+    @chex.all_variants(without_device=False)
     def test_draw_image_and_truth(self):
         # Test that the images have reasonable shape and that the truth values
         # are drawn correctly.
@@ -999,4 +1047,115 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
         )
         np.testing.assert_array_almost_equal(
             truth[4], -truth_rot[4]
+        )
+
+    # @chex.all_variants(without_device=False)
+    def test_draw_image(self):
+        # Test that the images have reasonable shape and that the truth values
+        # are drawn correctly.
+        config = {}
+        config['cosmology_params'] = _prepare_cosmology_params()
+        config['lensing_config'] = _prepare_lensing_config()
+        all_models = {
+            'all_los_models': (lens_models.NFW(),),
+            'all_subhalo_models': (lens_models.TNFW(),),
+            'all_main_deflector_models': (lens_models.ShearCart(),
+                                          lens_models.EPLEllip()),
+            'all_source_models': (source_models.SersicElliptic(),
+                                  source_models.CosmosCatalog(
+                                     'test_files/cosmos_galaxies_testing.npz'
+                                  )),
+            'all_lens_light_models': (
+                source_models.SersicElliptic(),
+                source_models.CosmosCatalog(
+                    'test_files/cosmos_galaxies_testing.npz'
+                )
+            ),
+            'all_psf_models': (psf_models.Gaussian(),)
+        }
+        principal_model_indices = {
+            'los_params': 0,
+            'subhalo_params': 0,
+            'main_deflector_params': 0,
+            'source_params': 0,
+            'lens_light_params': 0,
+            'psf_params': 0
+        }
+        config['all_models'] = all_models
+        rng = jax.random.PRNGKey(0)
+
+        # Generate a normalizing config that is different in one of the truth
+        # parameters
+        normalize_config = _prepare_lensing_config()
+        normalize_config['main_deflector_params']['theta_e'] = (
+            input_pipeline.encode_uniform(minimum=1.0, maximum=1.2))
+
+        cosmology_params = input_pipeline.initialize_cosmology_params(
+            config, rng
+        )
+        lookup_tables = input_pipeline.initialize_lookup_tables(config)
+        n_x = 4
+        n_y = 4
+        config['kwargs_detector'] = {
+            'n_x': n_x, 'n_y': n_y, 'pixel_width': 0.4,
+            'supersampling_factor': 1, 'exposure_time': 1e8,
+            'num_exposures': 1.0, 'sky_brightness': 220,
+            'magnitude_zero_point': 25, 'read_noise': 1e-8
+        }
+        grid_x, grid_y = input_pipeline.generate_grids(config)
+        kwargs_simulation = {
+            'num_z_bins': 10,
+            'los_pad_length': 10,
+            'subhalos_pad_length': 10,
+            'subhalos_n_chunks': 2,
+            'sampling_pad_length': 100,
+        }
+        kwargs_psf = {
+            'fwhm': input_pipeline.encode_constant(0.04),
+            'pixel_width': input_pipeline.encode_constant(0.02)
+        }
+        truth_parameters = (
+            [
+                'main_deflector_params', 'subhalo_params',
+                'main_deflector_params', 'main_deflector_params'
+            ],
+            ['theta_e', 'sigma_sub', 'gamma_one', 'gamma_two'],
+            [0, 0, 0, 0]
+        )
+
+        draw_image = self.variant(functools.partial(
+            input_pipeline.draw_image, all_models=all_models,
+            principal_model_indices=principal_model_indices,
+            kwargs_simulation=kwargs_simulation,
+            kwargs_detector=config['kwargs_detector'],
+            kwargs_psf=kwargs_psf, truth_parameters=truth_parameters,
+            normalize_config=normalize_config,
+            lookup_tables=lookup_tables))
+        draw_image_and_truth = self.variant(functools.partial(
+            input_pipeline.draw_image_and_truth, all_models=all_models,
+            principal_model_indices=principal_model_indices,
+            kwargs_simulation=kwargs_simulation,
+            kwargs_detector=config['kwargs_detector'],
+            kwargs_psf=kwargs_psf, truth_parameters=truth_parameters,
+            normalize_config=normalize_config,
+            lookup_tables=lookup_tables))
+        image, truth = draw_image_and_truth(
+            config['lensing_config'], cosmology_params, grid_x, grid_y, rng, 0.0
+        )
+        image_t = draw_image(
+            config['lensing_config'], truth, cosmology_params, grid_x, grid_y,
+            rng
+        )
+
+        # Test that when inputting the truth, you get the same image.
+        np.testing.assert_array_almost_equal(image_t, image)
+
+        # Test that when modifying the truth the image is modified.
+        truth = jnp.array([0.0, 0.0, 0.0, 0.0])
+        image_t = draw_image(
+            config['lensing_config'], truth, cosmology_params, grid_x, grid_y,
+            rng
+        )
+        np.testing.assert_array_less(
+            jnp.zeros_like(image_t), jnp.abs(image_t - image)
         )
