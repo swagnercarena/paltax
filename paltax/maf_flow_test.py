@@ -547,8 +547,8 @@ class MAFTest(chex.TestCase):
         self.assertTupleEqual(log_prob.shape, sample_shape)
 
 
-class EmbeddedMAFTest(chex.TestCase):
-    """Run tests on the EmbeddedMAF module."""
+class EmbeddedFlowTest(chex.TestCase):
+    """Run tests on the EmbeddedFlow module."""
 
     @chex.all_variants
     def test_apply(self):
@@ -560,11 +560,9 @@ class EmbeddedMAFTest(chex.TestCase):
         n_maf_layers = 3
         hidden_dims = [16]
         activation = 'gelu'
-        embedding_module = models.ResNet18VerySmall
-        maf = maf_flow.EmbeddedMAF(
-            n_dim, n_maf_layers, hidden_dims, activation, embedding_module,
-            embedding_dim
-        )
+        embedding_module = models.ResNet18VerySmall(num_outputs=embedding_dim)
+        maf_model = maf_flow.MAF(n_dim, n_maf_layers, hidden_dims, activation)
+        maf = maf_flow.EmbeddedFlow(embedding_module, maf_model)
 
         rng = jax.random.PRNGKey(0)
         params = maf.init(
@@ -608,13 +606,12 @@ class EmbeddedMAFTest(chex.TestCase):
         self.assertTupleEqual(log_prob.shape, (batch_size,) + sample_shape)
 
         # Test that using the output of embed_context returns the same samples.
-        maf_model = maf_flow.MAF(n_dim, n_maf_layers, hidden_dims, activation)
         maf_apply_fn = self.variant(
             maf_model.apply, static_argnames=['method', 'sample_shape']
         )
         rng_sample = jax.random.split(rng, len(context))
         maf_samples = maf_apply_fn(
-            {'params': params['params']['maf_model']}, rng_sample[0],
+            {'params': params['params']['flow_module']}, rng_sample[0],
             embed_context[0], sample_shape=sample_shape, method='sample'
         )
         np.testing.assert_array_almost_equal(samples[0], maf_samples)

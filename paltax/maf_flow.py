@@ -708,36 +708,15 @@ class MAF(nn.Module):
         return self.flow.sample_and_log_prob(rng, context, sample_shape)
 
 
-class EmbeddedMAF(nn.Module):
-    """MAF with a specific model for embeddings.
+class EmbeddedFlow(nn.Module):
+    """Flow with a specific model for embeddings.
 
     Args:
-        n_dim: Dimensionality of random variables.
-        n_maf_layers: Number of MAF layers to construct.
-        hidden_dims: Hidden dimensions of each MADE layer underlying each MAF
-            layer.
-        activation: Activation function to use in MADE layers.
         embedding_module: Module used to map from conditional data to embedding.
-        embedding_dim:
+        flow_module: Module that will ingest context and define flow.
     """
-    n_dim: int
-    n_maf_layers: int
-    hidden_dims: List[int]
-    activation: str
     embedding_module: ModuleDef
-    embedding_dim: int
-
-    def setup(self):
-        """Setup the MaskedAutoregressiveFlow and Embedding module."""
-        # Start with the MAF module.
-        super().setup()
-
-        self.embedding_model = self.embedding_module(
-            num_outputs = self.embedding_dim
-        )
-        self.maf_model = MAF(
-            self.n_dim, self.n_maf_layers, self.hidden_dims, self.activation
-        )
+    flow_module: ModuleDef
 
     def __call__(
         self, y: jnp.ndarray, unembedded_context: jnp.ndarray
@@ -753,7 +732,7 @@ class EmbeddedMAF(nn.Module):
             Log probability of transformed random variables.
         """
         context = self.embed_context(unembedded_context)
-        return self.maf_model(y, context)
+        return self.flow_module(y, context)
 
     def embed_context(self, unembedded_context: jnp.ndarray) -> jnp.ndarray:
         """Embed context using embedding network.
@@ -765,7 +744,7 @@ class EmbeddedMAF(nn.Module):
         Returns:
             Context after embedding.
         """
-        return self.embedding_model(unembedded_context)
+        return self.embedding_module(unembedded_context)
 
     def sample(
         self, rng: List[int], unembedded_context: jnp.ndarray,
@@ -789,7 +768,7 @@ class EmbeddedMAF(nn.Module):
         """
         context = self.embed_context(unembedded_context)
         rng_sample = jax.random.split(rng, len(context))
-        return jax.vmap(self.maf_model.sample, in_axes=[0, 0, None])(
+        return jax.vmap(self.flow_module.sample, in_axes=[0, 0, None])(
             rng_sample, context, sample_shape
         )
 
@@ -816,5 +795,5 @@ class EmbeddedMAF(nn.Module):
         context = self.embed_context(unembedded_context)
         rng_sample = jax.random.split(rng, len(context))
         return jax.vmap(
-            self.maf_model.sample_and_log_prob, in_axes=[0, 0, None]
+            self.flow_module.sample_and_log_prob, in_axes=[0, 0, None]
         )(rng_sample, context, sample_shape)
