@@ -22,7 +22,7 @@ import jax.numpy as jnp
 from ml_collections import config_flags
 
 from paltax import utils
-from paltax import train, train_snpe
+from paltax import train, train_snpe, train_nf
 
 
 FLAGS = flags.FLAGS
@@ -54,10 +54,19 @@ def main(_: Any):
 
     if config.train_type == 'NPE':
         train.train_and_evaluate(config, input_config, FLAGS.workdir, rng)
-    else:
+    elif config.train_type == 'SNPE':
         target_image = jnp.load(FLAGS.target_image_path)
         train_snpe.train_and_evaluate_snpe(
             config, input_config, FLAGS.workdir, rng, target_image
+        )
+    elif config.train_type == 'NF':
+        target_image = jnp.load(FLAGS.target_image_path)
+        train_nf.train_and_evaluate_nf(
+            config, input_config, FLAGS.workdir, rng, target_image
+        )
+    else:
+        raise ValueError(
+            f'train_type {config.train_type} not a valid training configuration'
         )
 
 

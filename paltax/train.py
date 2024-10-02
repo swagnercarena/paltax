@@ -341,6 +341,32 @@ def sync_batch_stats(state: TrainState) -> TrainState:
     return state.replace(batch_stats=cross_replica_mean(state.batch_stats))
 
 
+def get_optimizer(
+    optimizer: str,
+    learning_rate_schedule: Callable[[Union[int, jnp.ndarray]], float]
+) -> Any:
+    """Create the optax optimizer instance.
+
+    Args:
+        optimizer: Optimizer to use.
+        learning_rate_schedule: Learning rate schedule.
+
+    Returns:
+        Optimizer instance.
+    """
+    if optimizer == 'adam':
+        tx = optax.adam(
+            learning_rate=learning_rate_schedule
+        )
+    elif optimizer == 'sgd':
+        tx = optax.sgd(
+            learning_rate=learning_rate_schedule
+        )
+    else:
+        raise ValueError(f'Optimizer {optimizer} is not an option.')
+    return tx
+
+
 def create_train_state(
     rng: Sequence[int], config: ml_collections.ConfigDict,
     model: Any, image_size: int,
@@ -360,16 +386,7 @@ def create_train_state(
     """
     params, batch_stats = initialized(rng, image_size, model)
     optimizer = config.get('optimizer', 'adam')
-    if optimizer == 'adam':
-        tx = optax.adam(
-            learning_rate=learning_rate_schedule
-        )
-    elif optimizer == 'sgd':
-        tx = optax.sgd(
-            learning_rate=learning_rate_schedule
-        )
-    else:
-        raise ValueError(f'Optimizer {optimizer} is not an option.')
+    tx = get_optimizer(optimizer, learning_rate_schedule)
     state = TrainState.create(
         apply_fn=model.apply,
         params=params,

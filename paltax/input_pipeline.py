@@ -1031,6 +1031,60 @@ def draw_image_and_truth(
     return image, truth
 
 
+def draw_truth(
+    lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
+    rng: Sequence[int],
+    rotation_angle: float,
+    all_models: Mapping[str, Sequence[Any]],
+    kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
+    truth_parameters: Tuple[Sequence[str], Sequence[str], Sequence[int]],
+    normalize_truths: Optional[bool] = True,
+    normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
+) -> jnp.ndarray:
+    """Draw truth values for a realization of the lensing config.
+
+    Args:
+        lensing_config: Distribution encodings for each of the objects in the
+            lensing system.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        rng: jax PRNG key.
+        rotation_angle: Counterclockwise angle by which to rotate images and
+            truths.
+        all_models: Tuple of model classes to consider for each component.
+        kwargs_psf: Keyword arguments defining the point spread function. The
+            psf is applied in the supersampled space, so the size of pixels
+            should be defined with respect to the supersampled space.
+        truth_parameters: List of the lensing objects, corresponding
+            parameters to extract, and main object index for each parameter.
+        normalize_truths: If true, normalize parameters according to the
+            encoded distribtion.
+        normalize_config: The lensing config to use for normalization. If None
+            will default to the lensing config.
+
+    Returns:
+        Truth values.
+    """
+    # If no normalization config is specified, assume the input lensing
+    # configuration.
+    if normalize_config is None:
+        normalize_config = lensing_config
+
+    # Repackage the parameters.
+    all_params = _draw_all_params(
+        lensing_config, cosmology_params, rng, all_models, kwargs_psf
+    )
+
+    # Extract the truth values and normalize them.
+    truth = extract_truth_values(
+        all_params, normalize_config, truth_parameters,
+        rotation_angle, normalize_truths
+    )
+
+    return truth
+
+
 def draw_image(
     lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
     truth: jnp.ndarray,
