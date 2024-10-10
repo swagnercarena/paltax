@@ -582,6 +582,18 @@ class EmbeddedFlowTest(chex.TestCase):
         log_prob, _ = apply_fn(params, y, context, mutable=('batch_stats',))
         self.assertTupleEqual(log_prob.shape, (batch_size,))
 
+        # Test the apt call function.
+        n_atoms = 2
+        log_prob_apt, _ = apply_fn(
+            params, jnp.repeat(y[:, None], n_atoms, axis=1), context,
+            method='call_apt', mutable=('batch_stats',)
+        )
+        self.assertTupleEqual(log_prob_apt.shape, (batch_size, n_atoms))
+        for i in range(n_atoms):
+            np.testing.assert_array_almost_equal(
+                log_prob_apt[:, i], log_prob, decimal=5
+            )
+
         # Test embed_context function.
         embed_context, _ = apply_fn(
             params, context, method='embed_context', mutable=('batch_stats',)

@@ -29,6 +29,7 @@ from jax import lax
 import jax.numpy as jnp
 import ml_collections
 import optax
+from optax import GradientTransformation, EmptyState
 
 from paltax import input_pipeline
 from paltax import models
@@ -62,11 +63,69 @@ def initialized(
     return variables['params'], variables['batch_stats']
 
 
+def get_optimizer(
+    optimizer: str,
+    learning_rate_schedule: Callable[[Union[int, jnp.ndarray]], float],
+    params: Mapping[str, jnp.ndarray]
+) -> Any:
+    """Create the optax optimizer instance with masking for int parameters.
+
+    Args:
+        optimizer: Optimizer to use.
+        learning_rate_schedule: Learning rate schedule.
+        params: Parameters of the initialzied model. Used to extract the dtype
+            of the parameters.
+
+    Returns:
+        Optimizer instance and the optimizer mask.
+    """
+    base_optimizer = train.get_optimizer(optimizer, learning_rate_schedule)
+
+    # Map out the int parameters and tell the optimizer it can freeze them.
+    def _find_int(param):
+        if (param.dtype == jnp.int32 or param.dtype == jnp.int64):
+            return 'freeze'
+        return 'train'
+
+    opt_mask = jax.tree_map(_find_int, params)
+
+    # Create a custom update function for our integer parameters.
+    def _init_empty_state(params) -> EmptyState:
+        del params
+        return EmptyState()
+
+    def set_to_zero() -> GradientTransformation:
+        def update_fn(updates, state, params=None):
+            del params  # Unused by the zero transform.
+            return (
+                jax.tree_util.tree_map(
+                    functools.partial(jnp.zeros_like, dtype=int), updates
+                ), # Force int dtype to avoid type errors from the jitted func.
+                state
+            )
+
+        return GradientTransformation(_init_empty_state, update_fn)
+
+    # Map between the two optimizers depending on the parameter.
+    optimizer = optax.multi_transform(
+        {'train': base_optimizer, 'freeze': set_to_zero()},
+        param_labels=opt_mask
+    )
+
+    return optimizer, jax.tree_map(lambda x: x == 'freeze', opt_mask)
+
+
+class TrainState(train.TrainState):
+    """Training state class for models with optimizer mask."""
+    batch_stats: Any
+    opt_mask: Any
+
+
 def create_train_state_nf(
     rng: Sequence[int], config: ml_collections.ConfigDict,
     model: Any, image_size: int, parameter_dim: int,
     learning_rate_schedule: Callable[[Union[int, jnp.ndarray]], float]
-) -> train.TrainState:
+) -> TrainState:
     """Create initial training state for flow model.
 
     Args:
@@ -81,12 +140,14 @@ def create_train_state_nf(
     """
     params, batch_stats = initialized(rng, image_size, parameter_dim, model)
     optimizer = config.get('optimizer', 'adam')
-    tx = train.get_optimizer(optimizer, learning_rate_schedule)
-    state = train.TrainState.create(
+    tx, opt_mask = get_optimizer(optimizer, learning_rate_schedule, params)
+    state = TrainState.create(
         apply_fn=model.apply,
         params=params,
         tx=tx,
-        batch_stats=batch_stats)
+        batch_stats=batch_stats,
+        opt_mask=opt_mask
+    )
     return state
 
 
@@ -94,8 +155,8 @@ def draw_sample(
     rng: Sequence[int],
     context: jnp.ndarray,
     flow_params: Mapping[str, Mapping[str, jnp.ndarray]],
-    flow_module: models.ModuleDef,
     flow_weight: float,
+    flow_module: models.ModuleDef,
     batch_size: int,
     input_config: Mapping[str, Mapping[str, jnp.ndarray]],
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
@@ -111,11 +172,11 @@ def draw_sample(
             psf is applied in the supersampled space, so the size of pixels
             should be defined with respect to the supersampled space.
         flow_params: Parameters of the flow to use for sampling.
-        flow_module: Module defining the flow.
-        batch_size: Size of the batch to sample.
         flow_weight: Proportion of samples between 0 and 1 that should be
             assigned to the flow. Remaining samples will be asigned to the
             lensing_config.
+        flow_module: Module defining the flow.
+        batch_size: Size of the batch to sample.
         input_config: Configuration used to generate lensing images.
         cosmology_params: Cosmological parameters that define the universe's
             expansion.
@@ -161,7 +222,7 @@ def draw_sample(
 
 
 def extract_flow_context(
-    state: train.TrainState, target_image: jnp.ndarray, image_batch: jnp.ndarray
+    state: TrainState, target_image: jnp.ndarray, image_batch: jnp.ndarray
 ) -> Tuple[Mapping[str, Mapping[str, jnp.ndarray]], jnp.ndarray]:
     """Extract flow parameters and the target image context.
 
@@ -177,15 +238,16 @@ def extract_flow_context(
     image_batch = image_batch.at[0].set(target_image)
     # Extract the flow parameters.
     flow_params = {
-        'params': train.cross_replica_mean(state.params['flow_module'])
+        'params': state.params['flow_module']
     }
     # Extract the context from the model.
     context, _ = state.apply_fn(
         {'params': state.params, 'batch_stats': state.batch_stats},
-        image_batch, mutable=['batch_stats'], method='embed_context'
+        image_batch, mutable=['batch_stats'],
+        method='embed_context'
     )
     # We only want the context for the target image.
-    context = train.cross_replica_mean(context)[0]
+    context = context[0]
     return flow_params, context
 
 
@@ -206,7 +268,7 @@ def get_flow_weight_schedule(
     )
 
     # Select the flow function to apply after the initial training.
-    if flow_weight_schedule_type:
+    if flow_weight_schedule_type == 'linear':
         schedule_fn = optax.linear_schedule(
             0.0, 1.0,
             config.num_train_steps - config.num_initial_train_steps
@@ -225,11 +287,92 @@ def get_flow_weight_schedule(
     return schedule_fn
 
 
+def gaussian_log_prob(
+    mean: jnp.ndarray, prec: jnp.ndarray, truth: jnp.ndarray
+) -> jnp.ndarray:
+    """Gaussian log probability calculated on mean, covariance, and truth.
+
+    Args:
+        mean: Mean of Gaussian.
+        prec: Precision matrix of Gaussian.
+        truth: True value of the parameters.
+
+    Returns:
+        Gaussian loss including only terms that depend on truth (i.e. dropping
+        determinant of the covariance matrix.)
+
+    Notes:
+        Does not inlcude terms that are constant in the truth.
+    """
+    error = truth - mean
+    log_prob = -0.5 * jnp.einsum('...n,nm,...m->...', error, prec, error)
+
+    return log_prob
+
+
+def apt_loss(log_posterior: jnp.ndarray, log_prior: jnp.ndarray) -> jnp.ndarray:
+    """APT loss with Gaussian prior.
+
+    Args:
+        log_posterior: Log posterior output by the model. Has shape (batch_size,
+            n_atoms).
+        log_prior: Log prior for truth values Has shape (batch_size, n_atoms).
+
+    Returns:
+        APT loss for given posterior and prior.
+    """
+    # Fundamental quantity is ratio of posterior to prior.
+    log_prop_posterior_full = log_posterior - log_prior
+
+    # Normalize each batch by values on remaining samples.
+    log_prop_posterior = (
+        log_prop_posterior_full[:, 0] -
+        jax.scipy.special.logsumexp(log_prop_posterior_full, axis=1)
+    )
+    return -jnp.mean(log_prop_posterior)
+
+
+def apt_get_atoms(
+    rng: Sequence[int], truth: jnp.ndarray, n_atoms: int
+) -> jnp.ndarray:
+    """Return atoms for each truth in the batch.
+
+    Args:
+        rng: jax PRNG key.
+        truth: Truth values to sample for atoms.
+        n_atoms: Number of atoms for each truth.
+
+    Returns:
+        Atoms with shape (batch_size, n_atoms). The first atom is always the
+        true value at that index.
+    """
+    # Different random permutation for each truth
+    rng_perm = jax.random.split(rng, len(truth))
+
+    # Select the contrastive indices for each truth.
+    choice_vmap = jax.vmap(
+        functools.partial(
+            jax.random.choice, shape=(n_atoms - 1,), replace=False
+        ),
+        in_axes=[0, None]
+    )
+    # One less than length since we can't select the truth for contrastive.
+    cont_indices = choice_vmap(rng_perm, len(truth) - 1)
+
+    # Shift indices >= the true index for each batch to ensure the true index is
+    # never choces.
+    shift_mask = cont_indices < jnp.arange(len(truth))[:, None]
+    cont_indices = cont_indices * shift_mask + (cont_indices + 1) * ~shift_mask
+
+    return jnp.concatenate([truth[:, None], truth[cont_indices]], axis=1)
+
+
 def train_step(
-    state: train.TrainState, batch: Mapping[str, jnp.ndarray],
+    rng: Sequence[int], state: TrainState, batch: Mapping[str, jnp.ndarray],
     mu_prior: jnp.ndarray, prec_prior: jnp.ndarray,
-    learning_rate_schedule: Callable[[Union[int, jnp.ndarray]], float]
-) -> Tuple[train.TrainState, Mapping[str, Any]]:
+    learning_rate_schedule: Callable[[Union[int, jnp.ndarray]], float],
+    n_atoms: int, opt_mask: Mapping[str, jnp.ndarray]
+) -> Tuple[TrainState, Mapping[str, Any]]:
     """Perform a single training step.
 
     Args:
@@ -242,43 +385,46 @@ def train_step(
     Returns:
         Updated TrainState object and metrics for training step.
     """
+    truth = batch['truth']
+    image = batch['image']
 
-    raise NotImplementedError
+    # Get atoms for each evaluation.
+    truth_apt = apt_get_atoms(rng, truth, n_atoms)
+    log_prior = gaussian_log_prob(mu_prior, prec_prior, truth_apt)
 
-    #  # Define loss function seperately for use with jax.value_and_grad.
-    # def loss_fn(params):
-    #     """loss function used for training."""
-    #     outputs, new_model_state = state.apply_fn(
-    #         {'params': params, 'batch_stats': state.batch_stats},
-    #         batch['image'], mutable=['batch_stats']
-    #     )
-    #     loss = train.snpe_c_loss(
-    #         outputs, batch['truth'], prop_encoding, mu_prior, prec_prior
-    #     )
+    # Select the thetas we will use for the apt_loss
+    def loss_fn(params):
+        """Loss function for training."""
+        log_posterior, new_model_state = state.apply_fn(
+            {'params': params, 'batch_stats': state.batch_stats},
+            truth_apt, image, mutable=['batch_stats'], method='call_apt'
+        )
+        loss = apt_loss(log_posterior, log_prior)
+        return loss, new_model_state
 
-    #     return loss, (new_model_state, outputs)
+    # Extract learning rate for current step.
+    step = state.step
+    lr = learning_rate_schedule(step)
 
-    # # Extract learning rate for current step.
-    # step = state.step
-    # lr = learning_rate_schedule(step)
+    # Extract gradients for weight updates and current model state / loss.
+    grad_fn = jax.value_and_grad(loss_fn, has_aux=True, allow_int=True)
+    (loss, new_model_state), grads = grad_fn(state.params)
 
-    # # Extract gradients for weight updates and current model state and outputs
-    # # for both weight updates and metrics.
-    # grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
-    # aux, grads = grad_fn(state.params)
-    # # Re-use same axis_name as in the call to `pmap(...train_step...)` below.
-    # grads = lax.pmean(grads, axis_name='batch')
-    # new_model_state, outputs = aux[1]
-    # metrics = compute_metrics(
-    #     outputs, batch['truth'], prop_encoding, mu_prior, prec_prior
-    # )
-    # metrics['learning_rate'] = lr
+    # Re-use same axis_name as in the call to `pmap(...train_step...)` below.
+    def _pmean_if_not_freeze(grad, freeze_grad):
+        # Apply pmean only if it is not a frozen gradient.
+        if freeze_grad:
+            return grad
+        return jax.lax.pmean(grad, axis_name='batch')
+    grads = jax.tree_map(_pmean_if_not_freeze, grads, opt_mask)
 
-    # new_state = state.apply_gradients(
-    #     grads=grads, batch_stats=new_model_state['batch_stats']
-    # )
+    metrics = {'learning_rate' : lr, 'loss': loss}
 
-    # return new_state, metrics
+    new_state = state.apply_gradients(
+        grads=grads, batch_stats=new_model_state['batch_stats']
+    )
+
+    return new_state, metrics
 
 
 def train_and_evaluate_nf(
@@ -354,7 +500,9 @@ def train_and_evaluate_nf(
     p_train_step = jax.pmap(
         functools.partial(
             train_step,
-            learning_rate_schedule=learning_rate_schedule
+            learning_rate_schedule=learning_rate_schedule,
+            n_atoms=config.n_atoms,
+            opt_mask=state.opt_mask
         ),
         axis_name='batch',
         in_axes=(0, 0, None, None, None)
@@ -390,9 +538,9 @@ def train_and_evaluate_nf(
         functools.partial(
             draw_sample, batch_size=config.batch_size,
             input_config=input_config, cosmology_params=cosmology_params,
-            normalize_config=normalize_config
+            normalize_config=normalize_config, flow_module=flow_module
         ),
-        axis_name='batch'
+        in_axes=(0, None, None, None)
     )
 
     # Jit compile the function for extracting the flow parrameters and context.
@@ -416,7 +564,7 @@ def train_and_evaluate_nf(
         # This restart isn't perfect, but we're not going to load weights again
         # so we'll just use whatever model we have now.
         flow_params, context = extract_flow_context_jit(
-            state,
+            train.cross_replica_mean(state),
             jnp.expand_dims(target_image, axis=-1),
             image
         )
@@ -426,13 +574,13 @@ def train_and_evaluate_nf(
         # Check if it's time for a refinement.
         if step in refinement_step_list:
             flow_params, context = extract_flow_context_jit(
-                state,
+                train.cross_replica_mean(state),
                 jnp.expand_dims(target_image, axis=-1),
                 image
             )
 
         # Generate truths and images
-        rng, rng_images = jax.random.split(rng)
+        rng, rng_images, rng_truth = jax.random.split(rng, 3)
         # Rotations will break sequential refinement (since refinement proposals
         # are not rotation invariant).
         rotation_angle = 0.0
@@ -441,9 +589,9 @@ def train_and_evaluate_nf(
             rng_images, num=jax.device_count() * config.batch_size).reshape(
                 (jax.device_count(), config.batch_size, -1)
         )
+        rng_truth = jax.random.split(rng_truth, num=jax.device_count())
         truth = draw_sample_pmap(
-            rng_images[0], context, flow_params, flow_module,
-            flow_weight_schedule(step)
+            rng_truth, context, flow_params, flow_weight_schedule(step)
         )
         image = draw_image_pmap(
             input_config['lensing_config'], truth, cosmology_params, grid_x,

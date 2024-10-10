@@ -734,6 +734,26 @@ class EmbeddedFlow(nn.Module):
         context = self.embed_context(unembedded_context)
         return self.flow_module(y, context)
 
+    def call_apt(
+        self, y_apt: jnp.ndarray, unembedded_context: jnp.ndarray
+    ) -> jnp.ndarray:
+        """Return log probability of transformed random variables.
+
+        Args:
+            y_apt: Transformed random variables with additional second dimension
+                that represent the atomic proposals (i.e. all have the same
+                unembedded_context).
+            unembedded_context: Context for flow transformation before
+                embedding. This should be the raw data.
+
+        Returns:
+            Log probability of transformed random variables.
+        """
+        context = self.embed_context(unembedded_context)
+        return jax.vmap(self.flow_module, in_axes=[1, None], out_axes=1)(
+            y_apt, context
+        )
+
     def embed_context(self, unembedded_context: jnp.ndarray) -> jnp.ndarray:
         """Embed context using embedding network.
 
