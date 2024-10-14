@@ -571,6 +571,7 @@ def train_and_evaluate_nf(
 
         # Check if it's time for a refinement.
         if step in refinement_step_list:
+            print(f'Saving new flow weights for sampling at step {step}')
             flow_params, context = extract_flow_context_pmap(
                 state, target_image, image
             )
@@ -615,6 +616,7 @@ def train_and_evaluate_nf(
             }
             summary['steps_per_second'] = steps_per_epoch / (
                 time.time() - train_metrics_last_t)
+            summary['flow_sampling_weight'] = flow_weight_schedule(step)
             writer.write_scalars(step + 1, summary)
             print(summary)
             train_metrics = []
