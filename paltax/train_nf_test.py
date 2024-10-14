@@ -24,7 +24,6 @@ import jax
 import jax.numpy as jnp
 import ml_collections
 import numpy as np
-from scipy.stats import multivariate_normal
 
 from paltax import input_pipeline
 from paltax import maf_flow
@@ -74,6 +73,7 @@ def _create_test_config():
     config.n_maf_layer = 2
     config.hidden_dims = [8, 8]
     config.activation = 'gelu'
+    config.n_atoms = 16
 
     config.momentum = 0.9
     config.batch_size = 32
@@ -98,6 +98,7 @@ def _create_test_config():
     config.learning_rate = 0.01
     config.warmup_steps = 1 * config.get_ref('steps_per_epoch')
     config.refinement_base_value_multiplier = 0.5
+    config.flow_weight_schedule_type = 'linear'
 
     config.mu_prior = jnp.zeros(5)
     config.prec_prior = jnp.diag(jnp.ones(config.mu_prior.shape)) / 25
@@ -304,7 +305,6 @@ class TrainNFTests(chex.TestCase, parameterized.TestCase):
         expected = jnp.array([[0.0, -0.25], [-0.5, -0.25]])
         np.testing.assert_array_almost_equal(result, expected)
 
-
     @chex.all_variants
     def test_apt_loss(self):
         # Test that the apt_loss converges to the correct value on certain
@@ -325,7 +325,6 @@ class TrainNFTests(chex.TestCase, parameterized.TestCase):
             loss,
             jnp.sum(np.ones_like(loss) * jnp.log(n_atoms))
         )
-
 
     @chex.all_variants
     def test_apt_get_atoms(self):
@@ -387,3 +386,17 @@ class TrainNFTests(chex.TestCase, parameterized.TestCase):
         )
         self.assertEqual(new_state.step, 1)
         self.assertTrue('loss' in metrics)
+
+    def test_train_and_evaluate_nf(self):
+        # Test that we can initialize a model from a test configuration and
+        # train it.
+        config = _create_test_config()
+        input_config = train._get_config(config.input_config_path)
+        rng = jax.random.PRNGKey(2)
+        target_image = jax.random.normal(rng, shape=(4, 4))
+
+        with TemporaryDirectory() as tmp_dir_name:
+            state = train_nf.train_and_evaluate_nf(
+                config, input_config, tmp_dir_name, rng, target_image
+            )
+            self.assertEqual(state.step, 2)

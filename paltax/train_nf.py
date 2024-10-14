@@ -117,7 +117,6 @@ def get_optimizer(
 
 class TrainState(train.TrainState):
     """Training state class for models with optimizer mask."""
-    batch_stats: Any
     opt_mask: Any
 
 
@@ -429,8 +428,7 @@ def train_step(
 
 def train_and_evaluate_nf(
     config: ml_collections.ConfigDict, input_config: dict, workdir: str,
-    rng: Union[Iterator[Sequence[int]], Sequence[int]],
-    target_image: jnp.ndarray,
+    rng: Sequence[int], target_image: jnp.ndarray,
     normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
 ):
     """Train model specified by configuration files.
@@ -475,6 +473,8 @@ def train_and_evaluate_nf(
     )
     model = maf_flow.EmbeddedFlow(embedding_module, flow_module)
 
+    # Get the learning rate schedule and the schedule for the ratio of draws
+    # from the prior and the previous flow.
     learning_rate_schedule = train_snpe.get_learning_rate_schedule(
         config, base_learning_rate
     )
@@ -496,7 +496,7 @@ def train_and_evaluate_nf(
     mu_prior = config.mu_prior
     prec_prior = config.prec_prior
 
-    # Don't pmap over the sequential distributions.
+    # Don't pmap over the prior parameters.
     p_train_step = jax.pmap(
         functools.partial(
             train_step,
@@ -505,7 +505,7 @@ def train_and_evaluate_nf(
             opt_mask=state.opt_mask
         ),
         axis_name='batch',
-        in_axes=(0, 0, None, None, None)
+        in_axes=(0, 0, 0, None, None)
     )
 
     # Create the lookup tables used to speed up derivative and function
@@ -522,8 +522,8 @@ def train_and_evaluate_nf(
             truth_parameters=input_config['truth_parameters'],
             normalize_config=normalize_config,
             lookup_tables=lookup_tables),
-        in_axes=(None, None, None, None, 0, None))),
-        in_axes=(None, None, None, None, 0, None)
+        in_axes=(None, 0, None, None, None, 0))),
+        in_axes=(None, 0, None, None, None, 0)
     )
 
     # Set the cosmology prameters and the simulation grid.
@@ -540,17 +540,18 @@ def train_and_evaluate_nf(
             input_config=input_config, cosmology_params=cosmology_params,
             normalize_config=normalize_config, flow_module=flow_module
         ),
-        in_axes=(0, None, None, None)
+        in_axes=(0, 0, 0, None)
     )
 
     # Jit compile the function for extracting the flow parrameters and context.
-    extract_flow_context_jit = jax.jit(extract_flow_context)
+    extract_flow_context_pmap = jax.pmap(extract_flow_context)
     # Create an artificial batch of initial images in case we are restarting the
     # model.
     image = jax_utils.replicate(jnp.tile(
         jnp.expand_dims(target_image, axis=-1),
         (config.batch_size, 1, 1, 1)
     ))
+    target_image = jax_utils.replicate(jnp.expand_dims(target_image, axis=-1))
 
     train_metrics = []
     hooks = []
@@ -560,30 +561,22 @@ def train_and_evaluate_nf(
 
     print('Initial compilation, this might take some minutes...')
 
-    if bisect.bisect_left(refinement_step_list, step_offset) > 0:
-        # This restart isn't perfect, but we're not going to load weights again
-        # so we'll just use whatever model we have now.
-        flow_params, context = extract_flow_context_jit(
-            train.cross_replica_mean(state),
-            jnp.expand_dims(target_image, axis=-1),
-            image
-        )
+    # This restart isn't perfect, but we're not going to load weights again
+    # so we'll just use whatever model we have now.
+    flow_params, context = extract_flow_context_pmap(
+        state, target_image, image
+    )
 
     for step in range(step_offset, num_steps):
 
         # Check if it's time for a refinement.
         if step in refinement_step_list:
-            flow_params, context = extract_flow_context_jit(
-                train.cross_replica_mean(state),
-                jnp.expand_dims(target_image, axis=-1),
-                image
+            flow_params, context = extract_flow_context_pmap(
+                state, target_image, image
             )
 
         # Generate truths and images
-        rng, rng_images, rng_truth = jax.random.split(rng, 3)
-        # Rotations will break sequential refinement (since refinement proposals
-        # are not rotation invariant).
-        rotation_angle = 0.0
+        rng, rng_images, rng_truth, rng_atoms = jax.random.split(rng, 4)
 
         rng_images = jax.random.split(
             rng_images, num=jax.device_count() * config.batch_size).reshape(
@@ -595,14 +588,17 @@ def train_and_evaluate_nf(
         )
         image = draw_image_pmap(
             input_config['lensing_config'], truth, cosmology_params, grid_x,
-            grid_y, rng_images, rotation_angle
+            grid_y, rng_images
         )
         image = jnp.expand_dims(image, axis=-1)
 
+        # Set our batch and do one step of training.
         batch = {'image': image, 'truth': truth}
+        rng_atoms = jax.random.split(rng_atoms, num=jax.device_count())
         state, metrics = p_train_step(
-            state, batch, mu_prior, prec_prior
+            rng_atoms, state, batch, mu_prior, prec_prior
         )
+
         for h in hooks:
             h(step)
         if step == step_offset:
