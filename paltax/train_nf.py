@@ -423,7 +423,7 @@ def train_step(
     # Re-use same axis_name as in the call to `pmap(...train_step...)` below.
     def _pmean_if_not_freeze(grad, freeze_grad):
         # Apply pmean only if it is not a frozen gradient.
-        if freeze_grad.any():
+        if freeze_grad:
             return grad
         return jax.lax.pmean(grad, axis_name='batch')
     grads = jax.tree_map(_pmean_if_not_freeze, grads, opt_mask)
@@ -497,6 +497,7 @@ def train_and_evaluate_nf(
         rng_state, config, model, image_size, num_outputs,
         learning_rate_schedule
     )
+    opt_mask = state.opt_mask
     state = checkpoints.restore_checkpoint(workdir, state)
 
     # step_offset > 0 if restarting from checkpoint
@@ -513,7 +514,7 @@ def train_and_evaluate_nf(
             train_step,
             learning_rate_schedule=learning_rate_schedule,
             n_atoms=config.n_atoms,
-            opt_mask=state.opt_mask
+            opt_mask=opt_mask
         ),
         axis_name='batch',
         in_axes=(0, 0, 0, None, None)
