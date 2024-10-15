@@ -224,7 +224,8 @@ def draw_sample(
     # Eliminate values outside bound.
     flow_mask *= jnp.abs(truth_from_flow) < sample_norm_bound
 
-    truth = truth_from_flow * flow_mask + truth_from_config * (~flow_mask)
+    truth = jnp.nan_to_num(truth_from_flow) * flow_mask
+    truth += truth_from_config * (~flow_mask)
 
     return truth, jnp.mean(jnp.isnan(truth_from_flow))
 
