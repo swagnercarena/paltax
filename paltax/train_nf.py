@@ -215,6 +215,9 @@ def draw_sample(
     flow_mask = jnp.expand_dims(
         jnp.linspace(0, 1, batch_size) < flow_weight, axis=-1
     )
+    # Eliminate nans that can be produced in early rounds of training.
+    flow_mask *= ~jnp.isnan(truth_from_flow)
+
     truth = truth_from_flow * flow_mask + truth_from_config * (~flow_mask)
 
     return truth
