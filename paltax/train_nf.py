@@ -165,7 +165,8 @@ def draw_sample(
     batch_size: int,
     input_config: Mapping[str, Mapping[str, jnp.ndarray]],
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-    normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]]
+    normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]],
+    sample_norm_max: Optional[float] = 4.0
 ) -> jnp.ndarray:
     """Draw from a mixture of the input configuration and flow.
 
@@ -187,6 +188,7 @@ def draw_sample(
             expansion.
         normalize_config: Seperate config that specifying the lensing
             parameter distirbutions to use when normalizing the model outputs.
+        sample_norm_max: Maximum norm to allow for flow samples.
 
     Returns:
         Mixture of samples from the lensing_config and the flow. Also returns
@@ -224,6 +226,7 @@ def draw_sample(
     )
     # Eliminate nans that can be produced in early rounds of training.
     flow_mask *= ~jnp.isnan(truth_from_flow)
+    flow_mask *= jnp.abs(truth_from_flow) < sample_norm_max
 
     truth = jnp.nan_to_num(truth_from_flow) * flow_mask
     truth += truth_from_config * (~flow_mask)
