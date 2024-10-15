@@ -423,7 +423,7 @@ def train_step(
     # Re-use same axis_name as in the call to `pmap(...train_step...)` below.
     def _pmean_if_not_freeze(grad, freeze_grad):
         # Apply pmean only if it is not a frozen gradient.
-        if freeze_grad:
+        if freeze_grad.any():
             return grad
         return jax.lax.pmean(grad, axis_name='batch')
     grads = jax.tree_map(_pmean_if_not_freeze, grads, opt_mask)
