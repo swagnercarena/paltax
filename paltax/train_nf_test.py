@@ -202,25 +202,28 @@ class TrainNFTests(chex.TestCase, parameterized.TestCase):
         # lensing config.
         flow_weight = 0.0
         context = jnp.zeros(n_cont)
-        truth = draw_sample(
+        truth, nan_fraction = draw_sample(
             rng, context, maf_params, flow_weight
         )
+        self.assertAlmostEqual(nan_fraction, 0.0)
         self.assertAlmostEqual(jnp.std(truth[:, 0]), 0.0)
 
         # Test that with 50 percent weight on the flow half the draws come from
         # the flow.
         flow_weight = 0.5
-        truth_flow = draw_sample(
+        truth_flow, nan_fraction = draw_sample(
             rng, context, maf_params, flow_weight
         )
+        self.assertAlmostEqual(nan_fraction, 0.0)
         self.assertAlmostEqual(jnp.std(truth_flow[16:, 0]), 0.0)
         self.assertGreater(jnp.std(truth_flow[:16, 0]), 0.0)
 
         # Test that the context impacts the output.
         context = jnp.ones(n_cont)
-        truth_flow_nc = draw_sample(
+        truth_flow_nc, nan_fraction = draw_sample(
             rng, context, maf_params, flow_weight
         )
+        self.assertAlmostEqual(nan_fraction, 0.0)
         np.testing.assert_array_almost_equal(
             truth_flow[16:], truth_flow_nc[16:]
         )

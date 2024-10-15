@@ -183,7 +183,8 @@ def draw_sample(
             parameter distirbutions to use when normalizing the model outputs.
 
     Returns:
-        Mixture of samples from the lensing_config and the flow.
+        Mixture of samples from the lensing_config and the flow. Also returns
+        the nan fraction given by the flow for logging.
     """
     # Split the rng between our two tasks.
     rng_params, rng_flow = jax.random.split(rng)
@@ -220,7 +221,7 @@ def draw_sample(
 
     truth = truth_from_flow * flow_mask + truth_from_config * (~flow_mask)
 
-    return truth
+    return truth, jnp.mean(jnp.isnan(truth_from_flow))
 
 
 def extract_flow_context(
@@ -587,7 +588,7 @@ def train_and_evaluate_nf(
                 (jax.device_count(), config.batch_size, -1)
         )
         rng_truth = jax.random.split(rng_truth, num=jax.device_count())
-        truth = draw_sample_pmap(
+        truth, nan_fraction = draw_sample_pmap(
             rng_truth, context, flow_params, flow_weight_schedule(step)
         )
         image = draw_image_pmap(
@@ -620,6 +621,7 @@ def train_and_evaluate_nf(
             summary['steps_per_second'] = steps_per_epoch / (
                 time.time() - train_metrics_last_t)
             summary['flow_sampling_weight'] = flow_weight_schedule(step)
+            summary['nan_fraction_in_flow'] = nan_fraction
             writer.write_scalars(step + 1, summary)
             print(summary)
             train_metrics = []
