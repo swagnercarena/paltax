@@ -81,6 +81,12 @@ def get_optimizer(
     """
     base_optimizer = train.get_optimizer(optimizer, learning_rate_schedule)
 
+    # Add gradient clipping
+    base_optimizer = optax.chain(
+        optax.clip_by_global_norm(1.0),
+        base_optimizer
+    )
+
     # Map out the int parameters and tell the optimizer it can freeze them.
     def _find_int(param):
         if (param.dtype == jnp.int32 or param.dtype == jnp.int64):
@@ -110,12 +116,6 @@ def get_optimizer(
     optimizer = optax.multi_transform(
         {'train': base_optimizer, 'freeze': set_to_zero()},
         param_labels=opt_mask
-    )
-
-    # Add gradient clipping
-    optimizer = optax.chain(
-        optax.clip_by_global_norm(1.0),
-        optimizer
     )
 
     return optimizer, jax.tree_map(lambda x: x == 'freeze', opt_mask)
