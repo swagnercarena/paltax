@@ -54,6 +54,6 @@ def get_config():
 
     # Sequential prior and initial proposal
     config.mu_prior = jnp.zeros(11)
-    config.prec_prior = jnp.diag(jnp.ones(config.mu_prior.shape)) / 25
+    config.prec_prior = jnp.diag(jnp.ones(config.mu_prior.shape))
 
     return config
