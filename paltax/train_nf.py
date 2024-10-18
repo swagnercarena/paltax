@@ -13,11 +13,10 @@
 # limitations under the License.
 """Training script for normalizing flow dark matter substructure inference."""
 
-import bisect
 import copy
 import functools
 import time
-from typing import Any, Callable, Dict, Iterator, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple, Union
 
 from clu import metric_writers
 from clu import periodic_actions
@@ -25,7 +24,6 @@ from flax import jax_utils
 from flax.training import checkpoints
 from flax.training import common_utils
 import jax
-from jax import lax
 import jax.numpy as jnp
 import ml_collections
 import optax
@@ -235,20 +233,20 @@ def draw_sample(
 
 
 def extract_flow_context(
-    state: TrainState, target_image: jnp.ndarray, image_batch: jnp.ndarray
+    state: TrainState, target_image: jnp.ndarray
 ) -> Tuple[Mapping[str, Mapping[str, jnp.ndarray]], jnp.ndarray]:
     """Extract flow parameters and the target image context.
 
     Args:
         state: Current TrainState object for the model.
         target_image: Target image for context.
-        image_batch: Batch of images for batch normalization purposes.
 
     Returns:
         Flow parameters and encoded context.
     """
     # Insert image into the training batch.
-    image_batch = image_batch.at[0].set(target_image)
+    image_batch = jnp.expand_dims(target_image, axis=0)
+
     # Extract the flow parameters.
     flow_params = {
         'params': state.params['flow_module']
@@ -257,11 +255,10 @@ def extract_flow_context(
     context, _ = state.apply_fn(
         {'params': state.params, 'batch_stats': state.batch_stats},
         image_batch, mutable=['batch_stats'],
-        method='embed_context'
+        method='embed_context', train=False
     )
-    # We only want the context for the target image.
-    context = context[0]
-    return flow_params, context
+
+    return flow_params, context[0] # Remove batch dimension.
 
 
 def get_flow_weight_schedule(
@@ -560,12 +557,6 @@ def train_and_evaluate_nf(
 
     # Jit compile the function for extracting the flow parrameters and context.
     extract_flow_context_pmap = jax.pmap(extract_flow_context)
-    # Create an artificial batch of initial images in case we are restarting the
-    # model.
-    image = jax_utils.replicate(jnp.tile(
-        jnp.expand_dims(target_image, axis=-1),
-        (config.batch_size, 1, 1, 1)
-    ))
     target_image = jax_utils.replicate(jnp.expand_dims(target_image, axis=-1))
 
     train_metrics = []
@@ -579,7 +570,7 @@ def train_and_evaluate_nf(
     # This restart isn't perfect, but we're not going to load weights again
     # so we'll just use whatever model we have now.
     flow_params, context = extract_flow_context_pmap(
-        state, target_image, image
+        state, target_image
     )
 
     for step in range(step_offset, num_steps):
@@ -588,7 +579,7 @@ def train_and_evaluate_nf(
         if step in refinement_step_list:
             print(f'Saving new flow weights for sampling at step {step}')
             flow_params, context = extract_flow_context_pmap(
-                state, target_image, image
+                state, target_image
             )
 
         # Generate truths and images

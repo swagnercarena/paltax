@@ -569,7 +569,8 @@ class EmbeddedFlowTest(chex.TestCase):
             rng, jnp.ones((1, n_dim)), jnp.ones((1, image_size, image_size, 1))
         )
         apply_fn = self.variant(
-            maf.apply, static_argnames=['method', 'sample_shape', 'mutable']
+            maf.apply,
+            static_argnames=['method', 'sample_shape', 'mutable', 'train']
         )
 
         batch_size = 4
@@ -596,7 +597,8 @@ class EmbeddedFlowTest(chex.TestCase):
 
         # Test embed_context function.
         embed_context, _ = apply_fn(
-            params, context, method='embed_context', mutable=('batch_stats',)
+            params, context, method='embed_context', mutable=('batch_stats',),
+            train=True
         )
 
         # Test sampling functions.

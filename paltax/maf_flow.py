@@ -719,7 +719,8 @@ class EmbeddedFlow(nn.Module):
     flow_module: ModuleDef
 
     def __call__(
-        self, y: jnp.ndarray, unembedded_context: jnp.ndarray
+        self, y: jnp.ndarray, unembedded_context: jnp.ndarray,
+        train: Optional[bool] = True
     ) -> jnp.ndarray:
         """Return log probability of transformed random variables.
 
@@ -727,15 +728,18 @@ class EmbeddedFlow(nn.Module):
             y: Transformed random variables.
             unembedded_context: Context for flow transformation before
                 embedding. This should be the raw data.
+            train: Whether or not the model is being trained and batch
+                statistics should be updated.
 
         Returns:
             Log probability of transformed random variables.
         """
-        context = self.embed_context(unembedded_context)
+        context = self.embed_context(unembedded_context, train)
         return self.flow_module(y, context)
 
     def call_apt(
-        self, y_apt: jnp.ndarray, unembedded_context: jnp.ndarray
+        self, y_apt: jnp.ndarray, unembedded_context: jnp.ndarray,
+        train: Optional[bool] = True
     ) -> jnp.ndarray:
         """Return log probability of transformed random variables.
 
@@ -745,30 +749,36 @@ class EmbeddedFlow(nn.Module):
                 unembedded_context).
             unembedded_context: Context for flow transformation before
                 embedding. This should be the raw data.
+            train: Whether or not the model is being trained and batch
+                statistics should be updated.
 
         Returns:
             Log probability of transformed random variables.
         """
-        context = self.embed_context(unembedded_context)
+        context = self.embed_context(unembedded_context, train)
         return jax.vmap(self.flow_module, in_axes=[1, None], out_axes=1)(
             y_apt, context
         )
 
-    def embed_context(self, unembedded_context: jnp.ndarray) -> jnp.ndarray:
+    def embed_context(
+        self, unembedded_context: jnp.ndarray, train: bool
+    ) -> jnp.ndarray:
         """Embed context using embedding network.
 
         Args:
             unembedded_context: Context for flow transformation before
                 embedding. This should be the raw data.
+            train: Whether or not the model is being trained and batch
+                statistics should be updated.
 
         Returns:
             Context after embedding.
         """
-        return self.embedding_module(unembedded_context)
+        return self.embedding_module(unembedded_context, train)
 
     def sample(
         self, rng: List[int], unembedded_context: jnp.ndarray,
-        sample_shape: List[int]
+        sample_shape: List[int], train: Optional[bool] = True
     ) -> jnp.ndarray:
         """Draw samples from transformed distribution.
 
@@ -777,6 +787,8 @@ class EmbeddedFlow(nn.Module):
             unembedded_context: Context for flow transformation before
                 embedding. This should be the raw data.
             sample_shape: Desired output shape of samples.
+            train: Whether or not the model is being trained and batch
+                statistics should be updated.
 
         Returns:
             Samples of transformed variables.
@@ -786,7 +798,7 @@ class EmbeddedFlow(nn.Module):
             in it (i.e. batch norm). Passing in only one point of context may
             may lead to unexpected behavior.
         """
-        context = self.embed_context(unembedded_context)
+        context = self.embed_context(unembedded_context, train)
         rng_sample = jax.random.split(rng, len(context))
         return jax.vmap(self.flow_module.sample, in_axes=[0, 0, None])(
             rng_sample, context, sample_shape
@@ -794,7 +806,7 @@ class EmbeddedFlow(nn.Module):
 
     def sample_and_log_prob(
         self, rng: List[int], unembedded_context: jnp.ndarray,
-        sample_shape: List[int]
+        sample_shape: List[int], train: Optional[bool] = True
     ) -> jnp.ndarray:
         """Draw samples and corresponding log probability of the sample.
 
@@ -803,6 +815,8 @@ class EmbeddedFlow(nn.Module):
             unembedded_context: Context for flow transformation before
                 embedding. This should be the raw data.
             sample_shape: Desired output shape of samples.
+            train: Whether or not the model is being trained and batch
+                statistics should be updated.
 
         Returns:
             Samples of transformed variables and log probability.
@@ -812,7 +826,7 @@ class EmbeddedFlow(nn.Module):
             in it (i.e. batch norm). Passing in only one point of context may
             may lead to unexpected behavior.
         """
-        context = self.embed_context(unembedded_context)
+        context = self.embed_context(unembedded_context, train)
         rng_sample = jax.random.split(rng, len(context))
         return jax.vmap(
             self.flow_module.sample_and_log_prob, in_axes=[0, 0, None]

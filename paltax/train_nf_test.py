@@ -258,7 +258,8 @@ class TrainNFTests(chex.TestCase, parameterized.TestCase):
         context = jax.random.normal(rng, (10, image_size, image_size, 1))
         embed_context, _ = model.apply(
             {'params': params, 'batch_stats': batch_stats},
-            context, method='embed_context', mutable=('batch_stats',)
+            context, method='embed_context', mutable=('batch_stats',),
+            train=False
         )
 
         # Create the train state and extract the parameters and context.
@@ -270,7 +271,7 @@ class TrainNFTests(chex.TestCase, parameterized.TestCase):
 
         extract_flow_context = self.variant(train_nf.extract_flow_context)
         flow_params, embed_context_test = extract_flow_context(
-            train_state, context[0], context
+            train_state, context[0]
         )
 
         # Check that the resulting contexts are equivalent.
