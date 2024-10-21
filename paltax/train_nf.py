@@ -480,7 +480,7 @@ def train_and_evaluate_nf(
         config=config.copy_and_resolve_references(),
         project=config.get('wandb_project', None),
         name=config.get('wandb_run_name', None),
-        mode=config.get('wandb_mode', 'online')
+        mode=config.get('wandb_mode', 'disabled')
     )
 
     # Log the input config being used.

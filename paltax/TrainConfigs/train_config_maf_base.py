@@ -56,4 +56,8 @@ def get_config():
     config.mu_prior = jnp.zeros(11)
     config.prec_prior = jnp.diag(jnp.ones(config.mu_prior.shape))
 
+    # Wandb options.
+    config.wandb_mode = 'online'
+    config.wandb_project = 'sl-wdm-maf'
+
     return config
