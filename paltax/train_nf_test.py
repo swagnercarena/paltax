@@ -399,8 +399,21 @@ class TrainNFTests(chex.TestCase, parameterized.TestCase):
         rng = jax.random.PRNGKey(2)
         target_image = jax.random.normal(rng, shape=(4, 4))
 
+        log_prob_batches = {
+            'target_train':
+            {
+                'truth': jnp.ones((32,5)),
+                'image': jnp.ones((32, 4, 4))
+            }
+        }
+
+
+        config.wandb_project = 'sl-wdm-maf'
+        config.wandb_mode = 'disable'
+
         with TemporaryDirectory() as tmp_dir_name:
             state = train_nf.train_and_evaluate_nf(
-                config, input_config, tmp_dir_name, rng, target_image
+                config, input_config, tmp_dir_name, rng, target_image,
+                log_prob_batches=log_prob_batches
             )
             self.assertEqual(state.step, 2)

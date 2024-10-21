@@ -28,6 +28,7 @@ import jax.numpy as jnp
 import ml_collections
 import optax
 from optax import GradientTransformation, EmptyState
+import wandb
 
 from paltax import input_pipeline
 from paltax import models
@@ -440,7 +441,8 @@ def train_step(
 def train_and_evaluate_nf(
     config: ml_collections.ConfigDict, input_config: dict, workdir: str,
     rng: Sequence[int], target_image: jnp.ndarray,
-    normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
+    normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None,
+    log_prob_batches: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
 ):
     """Train model specified by configuration files.
 
@@ -452,6 +454,9 @@ def train_and_evaluate_nf(
         target_image: Target image / observation for sequential inference.
         normalize_config: Optional seperate config that specifying the lensing
             parameter distirbutions to use when normalizing the model outputs.
+        log_prob_batches: Labeled batches of truth and images. If provided, the
+            log probability of each batch will be evaluated and logged at the
+            end of each epoch.
 
     Returns:
         Training state after training has completed.
@@ -459,14 +464,23 @@ def train_and_evaluate_nf(
 
     if normalize_config is None:
         normalize_config = copy.deepcopy(input_config['lensing_config'])
+    if log_prob_batches is None:
+        log_prob_batches = {}
 
     # Pull parameters from config files.
     image_size = input_config['kwargs_detector']['n_x']
     learning_rate = config.learning_rate
     base_learning_rate = learning_rate * config.batch_size / 256.
 
+    # Set up local logging and wandb logging.
     writer = metric_writers.create_default_writer(
         logdir=workdir, just_logging=jax.process_index() != 0
+    )
+    wandb.init(
+        config=config.copy_and_resolve_references(),
+        project=config.get('wandb_project', None),
+        name=config.get('wandb_run_name', None),
+        mode=config.get('wandb_mode', 'online')
     )
 
     steps_per_epoch = config.steps_per_epoch
@@ -545,7 +559,7 @@ def train_and_evaluate_nf(
     )
     grid_x, grid_y = input_pipeline.generate_grids(input_config)
 
-    # Set up code for sampling truth values.
+    # Set up code for sampling truth values and evaluating log probability.
     draw_sample_pmap = jax.pmap(
         functools.partial(
             draw_sample, batch_size=config.batch_size,
@@ -554,15 +568,13 @@ def train_and_evaluate_nf(
         ),
         in_axes=(0, 0, 0, None)
     )
+    log_prob_pmap = jax.pmap(functools.partial(state.apply_fn, train=False))
 
     # Jit compile the function for extracting the flow parrameters and context.
     extract_flow_context_pmap = jax.pmap(extract_flow_context)
     target_image = jax_utils.replicate(jnp.expand_dims(target_image, axis=-1))
 
     train_metrics = []
-    hooks = []
-    if jax.process_index() == 0:
-        hooks += [periodic_actions.Profile(num_profile_steps=5, logdir=workdir)]
     train_metrics_last_t = time.time()
 
     print('Initial compilation, this might take some minutes...')
@@ -605,30 +617,44 @@ def train_and_evaluate_nf(
         state, metrics = p_train_step(
             rng_atoms, state, batch, mu_prior, prec_prior
         )
+        metrics['nan_fraction'] = nan_fraction
 
-        for h in hooks:
-            h(step)
-        if step == step_offset:
-            print('Initial compilation completed.')
-
+        # Log training metrics.
         train_metrics.append(metrics)
+        wandb.log(jax.tree_map(lambda x: jnp.mean(x), metrics), step=step + 1)
+        wandb.log({'flow_weight': flow_weight_schedule(step)}, step=step + 1)
+
+        # Log additional metrics every epoch.
         if (step + 1) % steps_per_epoch == 0:
             train_metrics = common_utils.get_metrics(train_metrics)
             summary = {
-                f'train_{k}': v
+                f'epoch_{k}': v
                 for k, v in jax.tree_util.tree_map(
                     lambda x: x.mean(), train_metrics
                 ).items()
             }
-            summary['steps_per_second'] = steps_per_epoch / (
+            summary['epoch_steps_per_second'] = steps_per_epoch / (
                 time.time() - train_metrics_last_t)
-            summary['flow_sampling_weight'] = flow_weight_schedule(step)
-            summary['nan_fraction_in_flow'] = jnp.mean(nan_fraction)
+
+            # Log the performance on any provided batches.
+            for batch_name, logging_batch in log_prob_batches.items():
+                log_prob_batch_val = log_prob_pmap(
+                    {'params': state.params, 'batch_stats': state.batch_stats},
+                    jax_utils.replicate(logging_batch['truth']),
+                    jax_utils.replicate(
+                        jnp.expand_dims(logging_batch['image'], axis=-1)
+                    )
+                )
+                summary[f'epoch_{batch_name}_log_prob'] = float(
+                    jnp.mean(log_prob_batch_val)
+                )
+
             writer.write_scalars(step + 1, summary)
-            print(summary)
+            wandb.log(summary, step=step + 1)
             train_metrics = []
             train_metrics_last_t = time.time()
 
+        # Save the checkpoint every epoch.
         if (step + 1) % steps_per_epoch == 0 or step + 1 == num_steps:
             state = train.sync_batch_stats(state)
             train.save_checkpoint(state, workdir, config.keep_every_n_steps)
