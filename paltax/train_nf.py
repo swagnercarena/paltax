@@ -483,6 +483,11 @@ def train_and_evaluate_nf(
         mode=config.get('wandb_mode', 'online')
     )
 
+    # Log the input config being used.
+    artifact = wandb.Artifact("input_config", type="code")
+    artifact.add_file(config.input_config_path)
+    wandb.log_artifact(artifact)
+
     steps_per_epoch = config.steps_per_epoch
     refinement_step_list, num_steps = train_snpe._get_refinement_step_list(
         config
@@ -662,5 +667,6 @@ def train_and_evaluate_nf(
 
     # Wait until computations are done before exiting
     jax.random.normal(jax.random.PRNGKey(0), ()).block_until_ready()
+    wandb.finish()
 
     return state
