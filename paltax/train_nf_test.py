@@ -407,9 +407,8 @@ class TrainNFTests(chex.TestCase, parameterized.TestCase):
             }
         }
 
-
         config.wandb_project = 'sl-wdm-maf'
-        config.wandb_mode = 'disable'
+        config.wandb_mode = 'disabled'
 
         with TemporaryDirectory() as tmp_dir_name:
             state = train_nf.train_and_evaluate_nf(
