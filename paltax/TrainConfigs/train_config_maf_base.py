@@ -53,7 +53,7 @@ def get_config():
     config.refinement_base_value_multiplier = 1.0
 
     # Sequential prior and initial proposal
-    config.mu_prior = jnp.zeros(11)
+    config.mu_prior = jnp.zeros(13)
     config.prec_prior = jnp.diag(jnp.ones(config.mu_prior.shape))
 
     # Wandb options.
