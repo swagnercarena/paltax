@@ -36,21 +36,21 @@ def get_config():
     # Need to set the boundaries of how long the model will train generically
     # and when the sequential training will turn on.
     config.steps_per_epoch = FieldReference(978) # Assuming 4 GPUs
-    config.num_initial_train_steps = config.get_ref('steps_per_epoch') * 10
-    config.num_steps_per_refinement = config.get_ref('steps_per_epoch') * 10
     config.num_train_steps = config.get_ref('steps_per_epoch') * 50
-    config.num_refinements = ((
-        config.get_ref('num_train_steps') -
-         config.get_ref('num_initial_train_steps')) //
-        config.get_ref('num_steps_per_refinement'))
+
+    # Parameters for training the flow
+    config.flow_weight_schedule_type = 'power'
+    config.flow_weight_schedule_power = 1.0
+    config.num_steps_per_refinement = config.get_ref('steps_per_epoch') * 10
+    config.num_initial_train_steps = config.get_ref('steps_per_epoch') * 10
 
     # Decide how often to save the model in checkpoints.
     config.keep_every_n_steps = config.get_ref('steps_per_epoch')
 
     # Parameters of the learning rate schedule
     config.learning_rate = 0.001
+    config.schedule_function_type = 'cosine'
     config.warmup_steps = 10 * config.get_ref('steps_per_epoch')
-    config.refinement_base_value_multiplier = 1.0
 
     # Sequential prior and initial proposal
     config.mu_prior = jnp.zeros(13)

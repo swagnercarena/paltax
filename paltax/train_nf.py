@@ -19,7 +19,6 @@ import time
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple, Union
 
 from clu import metric_writers
-from clu import periodic_actions
 from flax import jax_utils
 from flax.training import checkpoints
 from flax.training import common_utils
@@ -33,7 +32,7 @@ import wandb
 from paltax import input_pipeline
 from paltax import models
 from paltax import maf_flow
-from paltax import train, train_snpe
+from paltax import train
 
 
 def initialized(
@@ -284,6 +283,11 @@ def get_flow_weight_schedule(
             0.0, 1.0,
             config.num_train_steps - config.num_initial_train_steps
         )
+    elif flow_weight_schedule_type == 'power':
+        schedule_fn = optax.polynomial_schedule(
+            0.0, 1.0, config.flow_weight_schedule_power,
+            config.num_train_steps - config.num_initial_train_steps
+        )
     else:
         raise ValueError(
             f'{flow_weight_schedule_type} is not a valid learning ' +
@@ -296,6 +300,33 @@ def get_flow_weight_schedule(
         boundaries=[config.num_initial_train_steps]
     )
     return schedule_fn
+
+
+def get_refinement_step_list(
+    config: ml_collections.ConfigDict
+) -> Tuple[Sequence[int], int]:
+    """Get the sequential refinement step list from the config.
+
+    Args:
+        config: Configuration specifying training and model parameters.
+
+    Returns:
+        Sequential refinment step list and total number of steps.
+    """
+    num_initial_steps = config.num_initial_train_steps
+    num_steps_per_refinement = config.num_steps_per_refinement
+
+    # Keep adding refinements until we're out of steps.
+    cur_num_steps = num_initial_steps
+
+    refinement_step_list = []
+    while cur_num_steps < config.num_train_steps:
+        refinement_step_list.append(
+            cur_num_steps
+        )
+        cur_num_steps += num_steps_per_refinement
+
+    return refinement_step_list
 
 
 def gaussian_log_prob(
@@ -489,9 +520,7 @@ def train_and_evaluate_nf(
     wandb.log_artifact(artifact)
 
     steps_per_epoch = config.steps_per_epoch
-    refinement_step_list, num_steps = train_snpe._get_refinement_step_list(
-        config
-    )
+    refinement_step_list = get_refinement_step_list(config)
 
     # Set up the normalizing flow model.
     num_outputs = len(input_config['truth_parameters'][0])
@@ -505,7 +534,7 @@ def train_and_evaluate_nf(
 
     # Get the learning rate schedule and the schedule for the ratio of draws
     # from the prior and the previous flow.
-    learning_rate_schedule = train_snpe.get_learning_rate_schedule(
+    learning_rate_schedule = train.get_learning_rate_schedule(
         config, base_learning_rate
     )
     flow_weight_schedule = get_flow_weight_schedule(config)
@@ -590,7 +619,7 @@ def train_and_evaluate_nf(
         state, target_image
     )
 
-    for step in range(step_offset, num_steps):
+    for step in range(step_offset, config.num_train_steps):
 
         # Check if it's time for a refinement.
         if step in refinement_step_list:
@@ -660,7 +689,10 @@ def train_and_evaluate_nf(
             train_metrics_last_t = time.time()
 
         # Save the checkpoint every epoch.
-        if (step + 1) % steps_per_epoch == 0 or step + 1 == num_steps:
+        if (
+            (step + 1) % steps_per_epoch == 0 or
+            step + 1 == config.num_train_steps
+        ):
             state = train.sync_batch_stats(state)
             train.save_checkpoint(state, workdir, config.keep_every_n_steps)
 

@@ -83,22 +83,19 @@ def _create_test_config():
 
     # One step of training and one step of refinement.
     config.steps_per_epoch = ml_collections.config_dict.FieldReference(1)
+    config.num_train_steps = config.get_ref('steps_per_epoch') * 2
+
+    config.flow_weight_schedule_type = 'linear'
     config.num_initial_train_steps = config.get_ref('steps_per_epoch') * 1
     config.num_steps_per_refinement = config.get_ref('steps_per_epoch') * 1
-    config.num_train_steps = config.get_ref('steps_per_epoch') * 2
-    config.num_refinements = ((
-        config.get_ref('num_train_steps') -
-         config.get_ref('num_initial_train_steps')) //
-        config.get_ref('num_steps_per_refinement'))
 
     # Decide how often to save the model in checkpoints.
     config.keep_every_n_steps = config.get_ref('steps_per_epoch')
 
     # Parameters of the learning rate schedule
     config.learning_rate = 0.01
+    config.schedule_function_type = 'cosine'
     config.warmup_steps = 1 * config.get_ref('steps_per_epoch')
-    config.refinement_base_value_multiplier = 0.5
-    config.flow_weight_schedule_type = 'linear'
 
     config.mu_prior = jnp.zeros(5)
     config.prec_prior = jnp.diag(jnp.ones(config.mu_prior.shape)) / 25
@@ -293,6 +290,25 @@ class TrainNFTests(chex.TestCase, parameterized.TestCase):
         self.assertEqual(flow_weight_schedule(3), 0.0)
         self.assertEqual(flow_weight_schedule(5), 0.25)
         self.assertEqual(flow_weight_schedule(7), 0.75)
+
+        config.flow_weight_schedule_type = 'power'
+        config.flow_weight_schedule_power = 2.0
+        flow_weight_schedule = train_nf.get_flow_weight_schedule(config)
+        self.assertEqual(flow_weight_schedule(0), 0.0)
+        self.assertEqual(flow_weight_schedule(3), 0.0)
+        self.assertEqual(flow_weight_schedule(5), 0.4375)
+        self.assertEqual(flow_weight_schedule(7), 0.9375)
+
+    def test_get_refinement_step_list(self):
+        # Test that the refinement list is correctly produced.
+        config = _create_test_config()
+        config.steps_per_epoch = 100
+        config.num_train_steps = config.get_ref('steps_per_epoch') * 5
+
+        refinement_step_list = (
+            train_nf.get_refinement_step_list(config)
+        )
+        self.assertListEqual(refinement_step_list, [100, 200, 300, 400])
 
     @chex.all_variants
     def test_gaussian_log_prob(self):
