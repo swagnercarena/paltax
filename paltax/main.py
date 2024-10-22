@@ -46,6 +46,8 @@ config_flags.DEFINE_config_file(
 def main(_: Any):
     """Train neural network model with configuration defined by flags."""
     config = FLAGS.config
+    config.workddir = FLAGS.workdir
+
     # The training configuration will tell us what configuration we want to
     # use to generate images.
     input_config = train._get_config(config.input_config_path)
