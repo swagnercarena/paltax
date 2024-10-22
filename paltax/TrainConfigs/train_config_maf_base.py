@@ -59,5 +59,6 @@ def get_config():
     # Wandb options.
     config.wandb_mode = 'online'
     config.wandb_project = 'sl-wdm-maf'
+    config.wandb_run_name = None
 
     return config
