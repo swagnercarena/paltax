@@ -41,7 +41,7 @@ def get_config():
     # Parameters for training the flow
     config.flow_weight_schedule_type = 'power'
     config.flow_weight_schedule_power = 1.0
-    config.num_steps_per_refinement = config.get_ref('steps_per_epoch') * 10
+    config.num_steps_per_refinement = config.get_ref('steps_per_epoch') * 1
     config.num_initial_train_steps = config.get_ref('steps_per_epoch') * 10
 
     # Decide how often to save the model in checkpoints.
