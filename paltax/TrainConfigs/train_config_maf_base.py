@@ -48,7 +48,7 @@ def get_config():
     config.keep_every_n_steps = config.get_ref('steps_per_epoch')
 
     # Parameters of the learning rate schedule
-    config.learning_rate = 0.01
+    config.learning_rate = 0.001
     config.warmup_steps = 10 * config.get_ref('steps_per_epoch')
     config.refinement_base_value_multiplier = 1.0
 
