@@ -62,7 +62,7 @@ def main(_: Any):
     log_prob_batches = None
     if FLAGS.log_prob_batches_path is not None:
         log_prob_batches = {}
-        for path in FLAGS.log_prob_batches:
+        for path in FLAGS.log_prob_batches_path:
             batch = np.load(path, allow_pickle=True).item()
             log_prob_batches[batch['name']] = {
                 'truth': batch['truth'],
