@@ -220,7 +220,7 @@ def draw_sample(
 
     # Determine the ratio based off of the flow weight.
     flow_mask = jnp.expand_dims(
-        jnp.linspace(0, 1, batch_size) < flow_weight, axis=-1
+        jnp.linspace(0, 1, batch_size) <= flow_weight, axis=-1
     )
     # Eliminate nans that can be produced in early rounds of training.
     flow_mask *= ~jnp.isnan(truth_from_flow)
