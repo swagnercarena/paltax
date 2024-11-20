@@ -11,4 +11,8 @@ def get_config():
     # No refinements by default to improve stability of the MAF.
     config.num_steps_per_refinement = config.get_ref('num_train_steps')
 
+    # Go to large weights instantly.
+    config.num_initial_train_steps = 0
+    config.flow_weight_schedule_power = 100.0
+
     return config
