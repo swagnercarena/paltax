@@ -64,7 +64,7 @@ def initialized(
 def get_optimizer(
     optimizer: str,
     learning_rate_schedule: Callable[[Union[int, jnp.ndarray]], float],
-    params: Mapping[str, jnp.ndarray]
+    params: Mapping[str, jnp.ndarray], update_embedding: Optional[bool] = True
 ) -> Any:
     """Create the optax optimizer instance with masking for int parameters.
 
@@ -73,6 +73,8 @@ def get_optimizer(
         learning_rate_schedule: Learning rate schedule.
         params: Parameters of the initialzied model. Used to extract the dtype
             of the parameters.
+        update_embedding: If False, set the gradients for the embedding module
+            to zero.
 
     Returns:
         Optimizer instance and the optimizer mask.
@@ -93,6 +95,12 @@ def get_optimizer(
 
     opt_mask = jax.tree_map(_find_int, params)
 
+    if update_embedding is False:
+        # For all the embedding module parameters, set the gradient to zero.
+        opt_mask['embedding_module'] = jax.tree_map(
+            lambda x: 'embedding', opt_mask['embedding_module']
+        )
+
     # Create a custom update function for our integer parameters.
     def _init_empty_state(params) -> EmptyState:
         del params
@@ -112,7 +120,10 @@ def get_optimizer(
 
     # Map between the two optimizers depending on the parameter.
     optimizer = optax.multi_transform(
-        {'train': base_optimizer, 'freeze': set_to_zero()},
+        {
+            'train': base_optimizer, 'freeze': set_to_zero(),
+            'embedding': optax.set_to_zero()
+        },
         param_labels=opt_mask
     )
 
@@ -143,7 +154,11 @@ def create_train_state_nf(
     """
     params, batch_stats = initialized(rng, image_size, parameter_dim, model)
     optimizer = config.get('optimizer', 'adam')
-    tx, opt_mask = get_optimizer(optimizer, learning_rate_schedule, params)
+    update_embedding = config.get('update_embedding', True)
+    tx, opt_mask = get_optimizer(
+        optimizer, learning_rate_schedule, params,
+        update_embedding=update_embedding
+    )
     state = TrainState.create(
         apply_fn=model.apply,
         params=params,
