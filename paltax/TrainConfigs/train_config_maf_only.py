@@ -13,6 +13,7 @@ def get_config():
 
     # Go to large weights instantly.
     config.num_initial_train_steps = 0
-    config.flow_weight_schedule_power = 100.0
+    config.flow_weight_schedule_type = 'constant'
+    config.flow_weight_constant = 1.0
 
     return config

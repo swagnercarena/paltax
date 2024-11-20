@@ -303,6 +303,8 @@ def get_flow_weight_schedule(
             0.0, 1.0, config.flow_weight_schedule_power,
             config.num_train_steps - config.num_initial_train_steps
         )
+    elif flow_weight_schedule_type == 'constant':
+        schedule_fn = optax.constant_schedule(config.flow_weight_constant)
     else:
         raise ValueError(
             f'{flow_weight_schedule_type} is not a valid learning ' +
