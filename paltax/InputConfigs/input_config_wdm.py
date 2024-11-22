@@ -14,7 +14,7 @@
 """Configuration file for warm dark matter.
 """
 
-from  paltax.InputConfigs import input_config_br
+from paltax.InputConfigs import input_config_br
 from paltax.input_pipeline import encode_constant, encode_normal, encode_uniform
 
 def get_config():
