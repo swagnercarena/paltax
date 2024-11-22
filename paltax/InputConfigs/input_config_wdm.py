@@ -45,7 +45,7 @@ def get_config():
         'num_z_bins': 1000,
         'los_pad_length': 10,
         'subhalos_pad_length': 8192,
-        'subhalos_n_chunks': 16,
+        'subhalos_n_chunks': 32,
         'sampling_pad_length': 2000000,
     }
 
