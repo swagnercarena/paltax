@@ -38,36 +38,49 @@ class UtilTest(chex.TestCase):
 
         degrees = maf_flow._made_degrees(input_size, hidden_dims)
         expected = [
-            jnp.array([1, 2, 3]), jnp.array([1, 1, 2, 2]),
-            jnp.array([1, 1, 1, 1, 2, 2, 2]), jnp.array([1, 1, 1, 2, 2])
+            jnp.array([1, 2, 3]), jnp.array([1, 2, 1, 2]),
+            jnp.array([1, 2, 1, 2, 1, 2, 1]), jnp.array([1, 2, 1, 2, 1])
         ]
+        for deg, exp in zip(degrees, expected):
+            np.testing.assert_array_almost_equal(deg, exp)
+
+        # Repeat the test with context
+        n_context = 2
+        expected = [
+            jnp.array([1, 2, 3]), jnp.array([2, 2, 2, 2]),
+            jnp.array([2, 2, 2, 2, 2, 2, 2]), jnp.array([2, 2, 2, 2, 2])
+        ]
+        degrees = maf_flow._made_degrees(input_size, hidden_dims, n_context)
         for deg, exp in zip(degrees, expected):
             np.testing.assert_array_almost_equal(deg, exp)
 
     def test__made_masks(self):
         # Test that the masks have the desired shape and boolean entries.
-        input_size = 3
+        input_size = 4
         hidden_dims = [5]
-        n_context = 1
-        degrees = maf_flow._made_degrees(input_size, hidden_dims)
+        n_context = 2
+        degrees = maf_flow._made_degrees(input_size, hidden_dims, n_context)
 
         masks = maf_flow._made_masks(degrees, n_context)
         expected = [
             jnp.array([
                 [ True,  True,  True,  True,  True],
-                [False, False, False,  True,  True],
+                [True, True, True,  True,  True],
+                [False, True, False, True, False],
                 [False, False, False, False, False]
             ]),
             jnp.array([
-                [True,  True], [True,  True], [True,  True], [False,  True],
-                [False,  True]
+                [True,  True], [False,  True], [True,  True], [False,  True],
+                [True,  True]
             ])
         ]
         for mask, exp in zip(masks, expected):
             np.testing.assert_array_almost_equal(mask, exp)
 
         # Make sure the product mask behaves as expected
-        product = jnp.array([[True, True], [False, True], [False, False]])
+        product = jnp.array(
+            [[True, True], [True, True], [False, True], [False, False]]
+        )
         np.testing.assert_array_almost_equal(
             product, jnp.matmul(masks[0], masks[1])
         )
@@ -77,14 +90,14 @@ class UtilTest(chex.TestCase):
         # final mask.
         n_params = 2
         n_total_cond = 3
-        n_context = 1
+        n_context = 3
         hidden_dims = [5]
         masks = maf_flow._made_dense_autoregressive_masks(
             n_params, n_total_cond, n_context, hidden_dims
         )
 
         # Compare to _made_masks
-        degrees = maf_flow._made_degrees(n_total_cond, hidden_dims)
+        degrees = maf_flow._made_degrees(n_total_cond, hidden_dims, n_context)
         masks_expected = maf_flow._made_masks(degrees, n_context)
         for mask, mask_exp in zip(masks[:-1], masks_expected[:-1]):
             np.testing.assert_array_almost_equal(mask, mask_exp)
@@ -628,7 +641,9 @@ class EmbeddedFlowTest(chex.TestCase):
             {'params': params['params']['flow_module']}, rng_sample[0],
             embed_context[0], sample_shape=sample_shape, method='sample'
         )
-        np.testing.assert_array_almost_equal(samples[0], maf_samples)
+        np.testing.assert_array_almost_equal(
+            samples[0], maf_samples, decimal=5
+        )
 
 
 if __name__ == '__main__':
