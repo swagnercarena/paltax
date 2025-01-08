@@ -27,7 +27,7 @@ def get_config():
     config['lensing_config']['subhalo_params']['log_m_hm'] = (
         encode_normal(mean=8.0, std=2.0)
     )
-    config['lensing_config']['subhalo_params']['log_m_hm'] = (
+    config['lensing_config']['subhalo_params']['shmf_plaw_index'] = (
         encode_constant(constant=-1.9),
     )
 
