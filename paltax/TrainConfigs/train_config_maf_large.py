@@ -4,6 +4,7 @@ def get_config():
     """Get the hyperparameter configuration."""
     config = train_config_maf_base.get_config()
 
-    config.hidden_dims = [128, 128]
+    config.embedding_dim = 1024
+    config.hidden_dims = [1024, 1024]
 
     return config
