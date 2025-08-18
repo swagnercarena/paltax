@@ -102,7 +102,7 @@ def get_config():
     }
 
     cosmos_path = str(pathlib.Path(__file__).parent.parent.parent)
-    cosmos_path += '/datasets/cosmos/cosmos_catalog_train.h5'
+    cosmos_path += '/datasets/cosmos/weighted_catalog_training.h5'
     # Options for parameter are asymmetry, axial_ratio, concpetro, gini, m20, rhalfreal, rpetroreal
     # This parameter's corresponding weights will be used in the WeightedCatalog class
     parameter = 'gini'
@@ -110,9 +110,12 @@ def get_config():
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),
-        'all_main_deflector_models': (lens_models.EPLEllip(),
-                                      lens_models.ShearCart()),
-        'all_source_models': (source_models.WeightedCatalog(cosmos_path, parameter),),
+        'all_main_deflector_models': (
+            lens_models.EPLEllip(), lens_models.ShearCart()
+        ),
+        'all_source_models': (
+            source_models.WeightedCatalog(cosmos_path, parameter),
+        ),
         'all_lens_light_models': (source_models.SersicElliptic(),),
         'all_psf_models': (psf_models.Gaussian(),)
     }

@@ -15,7 +15,7 @@
 """
 
 from  paltax.InputConfigs import input_config_br
-from paltax.input_pipeline import encode_constant, encode_normal, encode_uniform
+from paltax.input_pipeline import encode_constant, encode_normal
 
 def get_config():
     """Get the hyperparameter configuration"""
