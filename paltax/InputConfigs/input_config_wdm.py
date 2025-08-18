@@ -51,7 +51,7 @@ def get_config():
 
     # Control how often cosmology parameters are updated by source models
     # Set to 1 to update every step, higher values update less frequently
-    config['cosmology_update_frequency'] = 128
+    config['cosmology_update_frequency'] = 32
 
     config['truth_parameters'] = (
         [
