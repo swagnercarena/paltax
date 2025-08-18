@@ -138,8 +138,8 @@ def _prepare_all_lens_models(model_group):
 def _prepare_all_source_models():
     all_source_models = []
     cosmos_path = str(pathlib.Path(__file__).parent)
-    cosmos_path += '/test_files/cosmos_galaxies_testing.npz'
-    catalog_weights = jnp.array([2.0, 5.0])
+    cosmos_path += '/test_files/cosmos_catalog_test.h5'
+    parameter = 'gini'
     for model in source_models.__all__:
         # CosmosCatalog model required initialization parameters.
         if model == 'CosmosCatalog':
@@ -149,7 +149,7 @@ def _prepare_all_source_models():
         elif model == 'WeightedCatalog':
             all_source_models.append(
                 source_models.__getattribute__(model)(
-                    cosmos_path, catalog_weights
+                    cosmos_path, parameter
                 )
             )
         else:

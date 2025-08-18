@@ -17,12 +17,12 @@ Implementation of light profiles for lensing closely following implementations
 in lenstronomy: https://github.com/lenstronomy/lenstronomy.
 """
 
-from typing import Dict, Mapping, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
+import atexit
 import dm_pix
-import jax
+import h5py
 import jax.numpy as jnp
-import numpy as np
 
 from paltax import cosmology_utils
 from paltax import utils
@@ -292,15 +292,33 @@ class CosmosCatalog(Interpol):
     )
     parameters = ('image', 'amp', 'center_x', 'center_y', 'angle', 'scale')
 
-    def __init__(self, cosmos_path: str):
+    def __init__(
+        self, cosmos_path: str, images_per_chunk: Optional[int] = 2048,
+        default_redshift: Optional[float] = None,
+        default_pixel_scale: Optional[float] = None
+    ):
         """Initialize the path to the COSMOS galaxies.
 
         Args:
             cosmos_path: Path to the npz file containing the cosmos images,
                 redshift array, and pixel sizes.
         """
-        # Save the cosmos image path.
-        self.cosmos_path = cosmos_path
+
+        # Opens the hdf5 file and extract the total number of images
+        self.hdf5_file = h5py.File(cosmos_path, 'r')
+        self.total_num_galaxies = len(self.hdf5_file['images'])
+
+        # Only load one chunk of the hdf5 file into memory at a time
+        self.images_per_chunk = images_per_chunk
+        self.chunk_number = 0
+
+        # Set the default redshift and pixel scale if provided.
+        self.default_redshift = default_redshift
+        self.default_pixel_scale = default_pixel_scale
+
+        # Close the hdf5 file whenever all code is finished executing
+        atexit.register(self.cleanup)
+
 
     def modify_cosmology_params(
         self,
@@ -315,16 +333,37 @@ class CosmosCatalog(Interpol):
         Returns:
             Modified cosmology parameters.
         """
-        npz_file = np.load(self.cosmos_path)
-        images = npz_file['images']
+
+        # Sets up the chunk of images to be loaded
+        start_val = self.chunk_number * self.images_per_chunk
+        end_val = start_val + self.images_per_chunk
+
+        # Load the chunk of images. Indexing out of range with end_val is not an issue
+        # when loading from hdf5 dataset
+        images = self.hdf5_file['images'][start_val:end_val]
+        if self.default_redshift is not None:
+            redshifts = self.default_redshift * jnp.ones(len(images))
+        else:
+            redshifts = self.hdf5_file['redshifts'][start_val:end_val]
+        if self.default_pixel_scale is not None:
+            pixel_sizes = self.default_pixel_scale * jnp.ones(len(images))
+        else:
+            pixel_sizes = self.hdf5_file['pixel_sizes'][start_val:end_val]
         cosmology_params['cosmos_n_images'] = len(images)
-        redshifts = npz_file['redshifts']
-        pixel_sizes = npz_file['pixel_sizes']
+
 
         # Convert attributes we need later to jax arrays
-        cosmology_params['cosmos_pixel_sizes'] = jnp.asarray(pixel_sizes)
-        cosmology_params['cosmos_redshifts'] = jnp.asarray(redshifts)
-        cosmology_params['cosmos_images'] = jnp.asarray(images)
+        cosmology_params['cosmos_pixel_sizes'] = jnp.array(pixel_sizes)
+        cosmology_params['cosmos_redshifts'] = jnp.array(redshifts)
+        cosmology_params['cosmos_images'] = jnp.array(images)
+
+        # Increment the chunk counter; reset to 0 if we've already loaded all
+        # chunks.
+        self.chunk_number = int(
+            jnp.where(
+                end_val >= self.total_num_galaxies, 0, self.chunk_number + 1
+            )
+        )
 
         return cosmology_params
 
@@ -380,20 +419,21 @@ class CosmosCatalog(Interpol):
         pixel_scale_catalog = (
             cosmology_params['cosmos_pixel_sizes'][galaxy_index]
         )
-        image = (cosmology_params['cosmos_images'][galaxy_index] /
-                 pixel_scale_catalog ** 2)
-
-        # TODO: Do we still need to do this?
-        # Force the image onto the default device (gpu if one is present).
-        image = jax.device_put(image, jax.devices()[0])
+        image = (
+            cosmology_params['cosmos_images'][galaxy_index]
+            / pixel_scale_catalog ** 2
+        )
 
         # Take into account the difference in the magnitude zeropoints
         # of the input survey and the output survey. Note this doesn't
         # take into account the color of the object.
         amp = all_kwargs['amp']
         amp *= 10 ** (
-            (all_kwargs['output_ab_zeropoint'] -
-             all_kwargs['catalog_ab_zeropoint']) / 2.5)
+            (
+                all_kwargs['output_ab_zeropoint'] -
+                all_kwargs['catalog_ab_zeropoint']
+            ) / 2.5
+        )
 
         # Calculate the new pixel scale and amplitude at the given redshift.
         pixel_scale = pixel_scale_catalog * CosmosCatalog.z_scale_factor(
@@ -445,12 +485,16 @@ class CosmosCatalog(Interpol):
         mag_k_correction -= utils.get_k_correction(z_old)
         return 10 ** (-mag_k_correction / 2.5)
 
+    def cleanup(self) -> None:
+        """Closes the hdf5 file"""
+        self.hdf5_file.close()
+
 
 class WeightedCatalog(CosmosCatalog):
     """Light profiles from catalog with custom weights
     """
 
-    def __init__(self, cosmos_path: str, catalog_weights: jnp.ndarray):
+    def __init__(self, cosmos_path: str, parameter: str, images_per_chunk: Optional[int] = 2048):
         """Initialize the path to the catalog galaxies and catalog weights.
 
         Args:
@@ -459,14 +503,10 @@ class WeightedCatalog(CosmosCatalog):
             catalog_weights: Weights for the sources in the catalog. Do not
                 need to be normalized.
         """
-        # Save the cosmos image path.
-        super().__init__(cosmos_path=cosmos_path)
 
-        # Turns the catalog_weights pdf into a normalized cdf
-        catalog_weights_cdf = (
-            jnp.cumsum(catalog_weights) / jnp.sum(catalog_weights)
-        )
-        self.catalog_weights_cdf = catalog_weights_cdf
+        # Saves the cosmos path, chunk size, and opens the hdf5 file
+        super().__init__(cosmos_path=cosmos_path, images_per_chunk=images_per_chunk)
+        self.parameter = parameter
 
     def modify_cosmology_params(
         self,
@@ -481,17 +521,23 @@ class WeightedCatalog(CosmosCatalog):
         Returns:
             Modified cosmology parameters.
         """
+
+        # Sets up the chunk of weights to be loaded
+        start_val = self.chunk_number * self.images_per_chunk
+        end_val = start_val + self.images_per_chunk
+
+        catalog_weights = (
+            self.hdf5_file[self.parameter + '_weights'][start_val:end_val]
+        )
+        catalog_weights_cdf = (
+            jnp.cumsum(catalog_weights) / jnp.sum(catalog_weights)
+        )
+
+        cosmology_params['catalog_weights_cdf'] = catalog_weights_cdf
+
         cosmology_params = super().modify_cosmology_params(
             cosmology_params=cosmology_params
         )
-        cosmology_params['catalog_weights_cdf'] = self.catalog_weights_cdf
-
-        n_weights = len(cosmology_params['catalog_weights_cdf'])
-        if cosmology_params['cosmos_n_images'] != n_weights:
-            raise ValueError(
-                f'Number of weights {n_weights} should be equal to the ' +
-                f'number of sources {cosmology_params["cosmos_n_images"]}'
-            )
 
         return cosmology_params
 
