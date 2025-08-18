@@ -227,7 +227,7 @@ class MADE(nn.Module):
         return x.reshape(x_shape + (2,))
 
 
-class _ConidtionalBijector(distrax.Bijector):
+class _ConditionalBijector(distrax.Bijector):
     """Base for conditional bijectors."""
     # pylint: disable=arguments-differ
 
@@ -320,7 +320,7 @@ class _ConidtionalBijector(distrax.Bijector):
         """
 
 
-class _MAFLayer(_ConidtionalBijector):
+class _MAFLayer(_ConditionalBijector):
     """Masked autoregressive flow layer implementation.
 
     Implementation of https://arxiv.org/abs/1705.07057v4 that follows the code
@@ -453,7 +453,7 @@ class _PermuteLayer(nn.Module):
         return jax.random.permutation(rng, in_dim)
 
 
-class Permute(_ConidtionalBijector):
+class Permute(_ConditionalBijector):
     """Permutation layer implementation.
 
     Args:
@@ -495,7 +495,7 @@ class Permute(_ConidtionalBijector):
         return x, jnp.zeros(y.shape[:-1])
 
 
-class ChainConditional(_ConidtionalBijector):
+class ChainConditional(_ConditionalBijector):
     """Chain of bijectors that allow for context.
 
     Args:
@@ -553,7 +553,7 @@ class TransformedConditional():
 
     def __init__(
         self, distribution: distrax.Distribution,
-        bijector: _ConidtionalBijector
+        bijector: _ConditionalBijector
     ):
         self.distribution = distribution
         self.bijector = bijector

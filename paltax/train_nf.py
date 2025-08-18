@@ -174,10 +174,10 @@ def draw_sample(
     context: jnp.ndarray,
     flow_params: Mapping[str, Mapping[str, jnp.ndarray]],
     flow_weight: float,
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     flow_module: models.ModuleDef,
     batch_size: int,
     input_config: Mapping[str, Mapping[str, jnp.ndarray]],
-    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]],
     sample_norm_max: Optional[float] = 4.0
 ) -> jnp.ndarray:
@@ -194,11 +194,11 @@ def draw_sample(
         flow_weight: Proportion of samples between 0 and 1 that should be
             assigned to the flow. Remaining samples will be asigned to the
             lensing_config.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
         flow_module: Module defining the flow.
         batch_size: Size of the batch to sample.
         input_config: Configuration used to generate lensing images.
-        cosmology_params: Cosmological parameters that define the universe's
-            expansion.
         normalize_config: Seperate config that specifying the lensing
             parameter distirbutions to use when normalizing the model outputs.
         sample_norm_max: Maximum norm to allow for flow samples.
@@ -419,7 +419,7 @@ def apt_get_atoms(
     cont_indices = choice_vmap(rng_perm, len(truth) - 1)
 
     # Shift indices >= the true index for each batch to ensure the true index is
-    # never choces.
+    # never chosen.
     shift_mask = cont_indices < jnp.arange(len(truth))[:, None]
     cont_indices = cont_indices * shift_mask + (cont_indices + 1) * ~shift_mask
 
@@ -614,10 +614,10 @@ def train_and_evaluate_nf(
     draw_sample_pmap = jax.pmap(
         functools.partial(
             draw_sample, batch_size=config.batch_size,
-            input_config=input_config, cosmology_params=cosmology_params,
-            normalize_config=normalize_config, flow_module=flow_module
+            input_config=input_config, normalize_config=normalize_config,
+            flow_module=flow_module
         ),
-        in_axes=(0, 0, 0, None)
+        in_axes=(0, 0, 0, None, None)
     )
     log_prob_pmap = jax.pmap(functools.partial(state.apply_fn, train=False))
 
@@ -653,8 +653,17 @@ def train_and_evaluate_nf(
                 (jax.device_count(), config.batch_size, -1)
         )
         rng_truth = jax.random.split(rng_truth, num=jax.device_count())
+
+        if step % input_config.get('cosmology_update_frequency', 1) == 0:
+            # Update the cosmology parameters for each batch using the source.
+            for source_model in input_config['all_models']['all_source_models']:
+                cosmology_params = (
+                    source_model.modify_cosmology_params(cosmology_params)
+                )
+
         truth, nan_fraction = draw_sample_pmap(
-            rng_truth, context, flow_params, flow_weight_schedule(step)
+            rng_truth, context, flow_params, flow_weight_schedule(step),
+            cosmology_params
         )
         image = draw_image_pmap(
             input_config['lensing_config'], truth, cosmology_params, grid_x,

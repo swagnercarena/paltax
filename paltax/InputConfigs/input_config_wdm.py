@@ -15,7 +15,7 @@
 """
 
 from paltax.InputConfigs import input_config_br
-from paltax.input_pipeline import encode_constant, encode_normal, encode_uniform
+from paltax.input_pipeline import encode_constant, encode_normal
 
 def get_config():
     """Get the hyperparameter configuration"""
@@ -48,6 +48,10 @@ def get_config():
         'subhalos_n_chunks': 32,
         'sampling_pad_length': 2000000,
     }
+
+    # Control how often cosmology parameters are updated by source models
+    # Set to 1 to update every step, higher values update less frequently
+    config['cosmology_update_frequency'] = 128
 
     config['truth_parameters'] = (
         [
