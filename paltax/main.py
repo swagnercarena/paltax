@@ -57,10 +57,16 @@ def main(_: Any):
         input_config['all_models']['all_source_models'][0].total_num_galaxies = (
             config.total_num_galaxies
         )
+        print(
+            'Using ',
+            f'{input_config['all_models']['all_source_models'][0].total_num_galaxies}',
+            ' galaxies in training catalog.'
+        )
+
     rng = jax.random.PRNGKey(config.get('rng_key',0))
 
     if config.get('num_unique_batches', 0) > 0:
-        if not (config.train_type == 'NPE'):
+        if not config.train_type == 'NPE':
             raise ValueError('Cannot do finite batches with sequential.')
         rng_list = jax.random.split(rng, config.get('num_unique_batches'))
         rng = utils.random_permutation_iterator(rng_list, rng)
