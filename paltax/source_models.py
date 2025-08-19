@@ -348,8 +348,7 @@ class CosmosCatalog(Interpol):
             start_val + self.images_per_chunk, self.total_num_galaxies
         )
 
-        # Load the chunk of images. Indexing out of range with end_val is not an issue
-        # when loading from hdf5 dataset
+        # Load the chunk of images.
         images = self.hdf5_file['images'][start_val:end_val]
         if self.default_redshift is not None:
             redshifts = self.default_redshift * jnp.ones(len(images))
