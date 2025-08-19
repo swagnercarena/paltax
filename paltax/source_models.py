@@ -295,18 +295,26 @@ class CosmosCatalog(Interpol):
     def __init__(
         self, cosmos_path: str, images_per_chunk: Optional[int] = 2048,
         default_redshift: Optional[float] = None,
-        default_pixel_scale: Optional[float] = None
+        default_pixel_scale: Optional[float] = None,
+        total_num_galaxies: Optional[int] = None
     ):
         """Initialize the path to the COSMOS galaxies.
 
         Args:
             cosmos_path: Path to the npz file containing the cosmos images,
                 redshift array, and pixel sizes.
+            images_per_chunk: Number of images to load into memory at a time.
+            default_redshift: Default redshift to use for all galaxies.
+            default_pixel_scale: Default pixel scale to use for all galaxies.
+            total_num_galaxies: Total number of galaxies to consider in the
+                catalog. If None, will use all the galaxies in the catalog.
         """
 
         # Opens the hdf5 file and extract the total number of images
         self.hdf5_file = h5py.File(cosmos_path, 'r')
-        self.total_num_galaxies = len(self.hdf5_file['images'])
+        self.total_num_galaxies = (
+            total_num_galaxies or len(self.hdf5_file['images'])
+        )
 
         # Only load one chunk of the hdf5 file into memory at a time
         self.images_per_chunk = images_per_chunk
@@ -336,7 +344,9 @@ class CosmosCatalog(Interpol):
 
         # Sets up the chunk of images to be loaded
         start_val = self.chunk_number * self.images_per_chunk
-        end_val = start_val + self.images_per_chunk
+        end_val = min(
+            start_val + self.images_per_chunk, self.total_num_galaxies
+        )
 
         # Load the chunk of images. Indexing out of range with end_val is not an issue
         # when loading from hdf5 dataset
