@@ -655,6 +655,7 @@ def train_and_evaluate_nf(
         rng_truth = jax.random.split(rng_truth, num=jax.device_count())
 
         if step % input_config.get('cosmology_update_frequency', 1) == 0:
+            print(f'Updating cosmology parameters at step {step}')
             # Update the cosmology parameters for each batch using the source.
             for source_model in input_config['all_models']['all_source_models']:
                 cosmology_params = (

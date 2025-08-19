@@ -104,7 +104,7 @@ def get_config():
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
     cosmos_path = str(pathlib.Path(__file__).parent.parent.parent)
-    cosmos_path += '/datasets/cosmos/weighted_catalog_training.h5'
+    cosmos_path += '/datasets/cosmos/ddprism_v1.h5'
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),
@@ -135,6 +135,7 @@ def get_config():
         'n_s': encode_constant(0.9667),
         'sigma_eight': encode_constant(0.815)
     }
+    config['cosmology_update_frequency'] = 32
     config['kwargs_simulation'] = {
         'num_z_bins': 1000,
         'los_pad_length': 10,
