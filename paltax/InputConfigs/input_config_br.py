@@ -81,7 +81,7 @@ def get_config():
             'output_ab_zeropoint': encode_constant(25.127),
             'catalog_ab_zeropoint': encode_constant(25.127),
             'z_source': encode_constant(1.5),
-            'amp': encode_uniform(minimum=0.5, maximum=2.0),
+            'amp': encode_uniform(minimum=0.5, maximum=4.0),
             'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
             'center_x': encode_normal(mean=0.0, std=0.16),
             'center_y': encode_normal(mean=0.0, std=0.16)
