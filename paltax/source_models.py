@@ -504,18 +504,28 @@ class WeightedCatalog(CosmosCatalog):
     """Light profiles from catalog with custom weights
     """
 
-    def __init__(self, cosmos_path: str, parameter: str, images_per_chunk: Optional[int] = 2048):
+    def __init__(
+        self, cosmos_path: str, parameter: str,
+        images_per_chunk: Optional[int] = 2048,
+        total_num_galaxies: Optional[int] = None
+    ):
         """Initialize the path to the catalog galaxies and catalog weights.
 
         Args:
             cosmos_path: Path to the npz file containing the cosmos images,
                 redshift array, and pixel sizes.
-            catalog_weights: Weights for the sources in the catalog. Do not
-                need to be normalized.
+            parameter: Name of the parameter to use for the weights.
+            images_per_chunk: Number of images to load into memory at a time.
+            total_num_galaxies: Total number of galaxies to consider in the
+                catalog. If None, will use all the galaxies in the catalog.
         """
 
         # Saves the cosmos path, chunk size, and opens the hdf5 file
-        super().__init__(cosmos_path=cosmos_path, images_per_chunk=images_per_chunk)
+        super().__init__(
+            cosmos_path=cosmos_path,
+            images_per_chunk=images_per_chunk,
+            total_num_galaxies=total_num_galaxies
+        )
         self.parameter = parameter
 
     def modify_cosmology_params(
@@ -534,7 +544,9 @@ class WeightedCatalog(CosmosCatalog):
 
         # Sets up the chunk of weights to be loaded
         start_val = self.chunk_number * self.images_per_chunk
-        end_val = start_val + self.images_per_chunk
+        end_val = min(
+            start_val + self.images_per_chunk, self.total_num_galaxies
+        )
 
         catalog_weights = (
             self.hdf5_file[self.parameter + '_weights'][start_val:end_val]
