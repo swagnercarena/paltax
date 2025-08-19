@@ -18,6 +18,6 @@ def get_config():
     config.mu_prior = jnp.zeros(12)
     config.prec_prior = jnp.diag(jnp.ones(config.mu_prior.shape))
 
-    config.wandb_project = 'sl-wdm-wide'
+    config.wandb_project = 'sl-wdm-new-gals-wide'
 
     return config

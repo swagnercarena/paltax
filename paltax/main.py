@@ -50,6 +50,13 @@ def main(_: Any):
     # The training configuration will tell us what configuration we want to
     # use to generate images.
     input_config = train._get_config(config.input_config_path)
+
+    # If a total number of galaxies is specified in the training configuration,
+    # use it to update the total number of galaxies in the source model.
+    if config.get('total_num_galaxies', None) is not None:
+        input_config['all_models']['all_source_models'][0].total_num_galaxies = (
+            config.total_num_galaxies
+        )
     rng = jax.random.PRNGKey(config.get('rng_key',0))
 
     if config.get('num_unique_batches', 0) > 0:

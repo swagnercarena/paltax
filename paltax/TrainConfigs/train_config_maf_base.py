@@ -18,6 +18,9 @@ def get_config():
     # use accross filesystems.
     config.input_config_path = str(pathlib.Path(__file__).parent)
     config.input_config_path += '/../InputConfigs/input_config_wdm.py'
+    # Total number of galaxies in training catalog to use in the training.
+    # If None, will use all the galaxies in the catalog.
+    config.total_num_galaxies = None
 
     # As defined in the `models` module.
     config.embedding_model = 'ResNet50'
@@ -58,7 +61,7 @@ def get_config():
 
     # Wandb options.
     config.wandb_mode = 'online'
-    config.wandb_project = 'sl-wdm-maf'
+    config.wandb_project = 'sl-wdm-new-gals'
     config.wandb_run_name = None
 
     return config
