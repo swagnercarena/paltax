@@ -20,7 +20,7 @@ def get_config():
     config.input_config_path += '/../InputConfigs/input_config_wdm.py'
     # Total number of galaxies in training catalog to use in the training.
     # If None, will use all the galaxies in the catalog.
-    config.total_num_galaxies = None
+    config.total_num_galaxies = 76608
 
     # As defined in the `models` module.
     config.embedding_model = 'ResNet50'
