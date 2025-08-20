@@ -59,7 +59,7 @@ def main(_: Any):
         )
         print(
             'Using ',
-            f'{input_config['all_models']['all_source_models'][0].total_num_galaxies}',
+            f'{input_config["all_models"]["all_source_models"][0].total_num_galaxies}',
             ' galaxies in training catalog.'
         )
 
