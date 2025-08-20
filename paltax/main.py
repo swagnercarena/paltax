@@ -58,8 +58,8 @@ def main(_: Any):
             config.total_num_galaxies
         )
         print(
-            'Using ',
-            f'{input_config["all_models"]["all_source_models"][0].total_num_galaxies}',
+            'Using ' +
+            f'{input_config["all_models"]["all_source_models"][0].total_num_galaxies}' +
             ' galaxies in training catalog.'
         )
 
