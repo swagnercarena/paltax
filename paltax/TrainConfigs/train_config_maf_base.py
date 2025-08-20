@@ -27,7 +27,7 @@ def get_config():
     config.embedding_dim = 32
     config.n_maf_layer = 5
     config.hidden_dims = [64, 64]
-    config.activation = 'gelu'
+    config.activation = 'tanh'
     config.n_atoms = 64
 
     config.momentum = 0.9
@@ -39,13 +39,13 @@ def get_config():
     # Need to set the boundaries of how long the model will train generically
     # and when the sequential training will turn on.
     config.steps_per_epoch = FieldReference(978) # Assuming 4 GPUs
-    config.num_train_steps = config.get_ref('steps_per_epoch') * 50
+    config.num_train_steps = config.get_ref('steps_per_epoch') * 200
 
     # Parameters for training the flow
     config.flow_weight_schedule_type = 'power'
-    config.flow_weight_schedule_power = 1.0
+    config.flow_weight_schedule_power = 10.0
     config.num_steps_per_refinement = config.get_ref('steps_per_epoch') * 1
-    config.num_initial_train_steps = config.get_ref('steps_per_epoch') * 10
+    config.num_initial_train_steps = config.get_ref('steps_per_epoch') * 5
 
     # Decide how often to save the model in checkpoints.
     config.keep_every_n_steps = config.get_ref('steps_per_epoch')
