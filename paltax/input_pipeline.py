@@ -944,7 +944,7 @@ def _draw_image_and_truth(
     image += image_simulation.noise_realization(
         image, rng_noise, kwargs_detector
     )
-    # Normalize and the image to have standard deviation 1.
+    # Normalize the image to have standard deviation 1.
     if normalize_image:
         image /= jnp.std(image)
 

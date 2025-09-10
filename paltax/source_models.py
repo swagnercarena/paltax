@@ -28,7 +28,8 @@ from paltax import cosmology_utils
 from paltax import utils
 
 __all__ = [
-    'Interpol', 'SersicElliptic', 'CosmosCatalog', 'WeightedCatalog'
+    'Interpol', 'SersicElliptic', 'DoubleSersicElliptic', 'CosmosCatalog',
+    'WeightedCatalog'
 ]
 
 
@@ -280,6 +281,94 @@ class SersicElliptic(_SourceModelBase):
             Approximate b(n_sersic).
         """
         return 1.9992 * n_sersic - 0.3271
+
+
+class DoubleSersicElliptic(_SourceModelBase):
+    """Double Sersic light profile with coupled parameters.
+
+    Double Sersic light profile with two Sersic components that have
+    coupled ellipticities and centers controlled by an epsilon parameter.
+    """
+
+    parameters = (
+        'amp_1', 'sersic_radius_1', 'n_sersic_1',
+        'amp_2', 'sersic_radius_2', 'n_sersic_2',
+        'axis_ratio', 'angle', 'epsilon_angle', 'epsilon_ratio', 'center_x',
+        'center_y', 'epsilon_center'
+    )
+
+    @staticmethod
+    def function(
+        x: jnp.ndarray, y: jnp.ndarray,
+        amp_1: float, sersic_radius_1: float, n_sersic_1: float,
+        amp_2: float, sersic_radius_2: float, n_sersic_2: float,
+        axis_ratio: float, angle: float, epsilon_angle: float,
+        epsilon_ratio: float, center_x: float, center_y: float,
+        epsilon_center: float,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
+    ) -> jnp.ndarray:
+        """Calculate the brightness for the double elliptical Sersic light profile.
+
+        Args:
+            x: X-coordinates at which to evaluate the brightness.
+            y: Y-coordinates at which to evaluate the derivative.
+            amp_1: Amplitude of first Sersic component.
+            sersic_radius_1: Sersic radius of first component.
+            n_sersic_1: Sersic index of first component.
+            amp_2: Amplitude of second Sersic component.
+            sersic_radius_2: Sersic radius of second component.
+            n_sersic_2: Sersic index of second component.
+            axis_ratio: Base axis ratio of the major and minor axis of
+                ellipticity.
+            angle: Base clockwise angle of orientation of major axis.
+            epsilon_angle: Epsilon offset between the two sersic angles of the
+                two components.
+            epsilon_ratio: Epsilon offset between the axis ratios of the two
+                components.
+            center_x: X-coordinate center of the Sersic profile.
+            center_y: Y-coordinate center of the Sersic profile.
+            epsilon_center: Epsilon offset between the two sersic centers of the
+                two components.
+            lookup_tables: Optional lookup tables initialized with class.
+
+        Returns:
+            Brightness from double elliptical Sersic profile.
+
+        Notes:
+            The epsilon parameters are used to slightly offset the parameter
+            values of the two components from the base values. The first sersic
+            will be given a positive epsilon/2 offset and the second will be
+            given a negative epsilon/2 offset.
+        """
+        # Calculate brightness from first component
+
+        # Get the offset centers, axis ratios, and angles.
+        center_x_1 = center_x + epsilon_center / 2.0
+        center_y_1 = center_y + epsilon_center / 2.0
+        center_x_2 = center_x - epsilon_center / 2.0
+        center_y_2 = center_y - epsilon_center / 2.0
+        axis_ratio_1 = axis_ratio + epsilon_ratio / 2.0
+        axis_ratio_2 = axis_ratio - epsilon_ratio / 2.0
+        angle_1 = angle + epsilon_angle / 2.0
+        angle_2 = angle - epsilon_angle / 2.0
+
+        # Brightness from the first component.
+        radius_1 = SersicElliptic._get_distance_from_center(
+            x, y, axis_ratio_1, angle_1, center_x_1, center_y_1
+        )
+        brightness_1 = amp_1 * SersicElliptic._brightness(
+            radius_1, sersic_radius_1, n_sersic_1
+        )
+
+        # Brightness from the second component.
+        radius_2 = SersicElliptic._get_distance_from_center(
+            x, y, axis_ratio_2, angle_2, center_x_2, center_y_2
+        )
+        brightness_2 = amp_2 * SersicElliptic._brightness(
+            radius_2, sersic_radius_2, n_sersic_2
+        )
+
+        return brightness_1 + brightness_2
 
 
 class CosmosCatalog(Interpol):

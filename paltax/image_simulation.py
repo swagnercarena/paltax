@@ -162,7 +162,8 @@ def noise_realization(
         kwargs_detector['exposure_time'] * kwargs_detector['num_exposures']
     )
     read_noise = (
-        kwargs_detector['read_noise'] ** 2 * kwargs_detector['num_exposures'])
+        kwargs_detector['read_noise'] ** 2 * kwargs_detector['num_exposures']
+    )
     sky_brightness_cps = utils.magnitude_to_cps(
         kwargs_detector['sky_brightness'],
         kwargs_detector['magnitude_zero_point']
@@ -172,7 +173,8 @@ def noise_realization(
         kwargs_detector['pixel_width'] ** 2
     )
     background_noise = (
-        jnp.sqrt(read_noise + sky_brightness_tot) / exposure_time_total)
+        jnp.sqrt(read_noise + sky_brightness_tot) / exposure_time_total
+    )
 
     # By default all simulations are done in units of counts per second, but you
     # want to calculate poisson statistics in units of counts.

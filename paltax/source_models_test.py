@@ -139,6 +139,24 @@ def _prepare_sersic_elliptic_parameters():
     }
 
 
+def _prepare_double_sersic_elliptic_parameters():
+    return {
+            'amp_1': 1.2,
+            'sersic_radius_1': 0.8,
+            'n_sersic_1': 1.5,
+            'amp_2': 0.9,
+            'sersic_radius_2': 1.5,
+            'n_sersic_2': 3.0,
+            'axis_ratio': 0.6,
+            'angle': np.pi / 4,
+            'epsilon_angle': np.pi / 12,
+            'epsilon_ratio': 0.01,
+            'center_x': 0.1,
+            'center_y': -0.1,
+            'epsilon_center': 0.05,
+    }
+
+
 class AllTest(absltest.TestCase):
     """Runs tests of __all__ property of source_models module."""
 
@@ -306,6 +324,74 @@ class SersicEllipticTest(chex.TestCase, parameterized.TestCase):
 
         np.testing.assert_allclose(b_n(n_sersic), expected, rtol=1e-5)
 
+
+class DoubleSersicEllipticTest(chex.TestCase, parameterized.TestCase):
+    """Runs tests of double elliptical Sersic brightness functions."""
+
+    def test_parameters(self):
+        annotated_parameters = sorted(
+            source_models.DoubleSersicElliptic.parameters
+        )
+        correct_parameters = sorted(
+            _prepare_double_sersic_elliptic_parameters().keys()
+        )
+        self.assertListEqual(annotated_parameters, correct_parameters)
+
+    @chex.all_variants
+    def test_function(self):
+        x, y = _prepare_x_y()
+        parameters = _prepare_double_sersic_elliptic_parameters()
+
+        function = self.variant(source_models.DoubleSersicElliptic.function)
+        sersic_function = jax.jit(source_models.SersicElliptic.function)
+
+        # Calculate double Sersic result
+        double_result = function(x, y, **parameters)
+
+        # Calculate individual components manually
+        center_x_1 = (
+            parameters['center_x'] + parameters['epsilon_center'] / 2.0
+        )
+        center_y_1 = (
+            parameters['center_y'] + parameters['epsilon_center'] / 2.0
+        )
+        axis_ratio_1 = (
+            parameters['axis_ratio'] + parameters['epsilon_ratio'] / 2.0
+        )
+        angle_1 = (
+            parameters['angle'] + parameters['epsilon_angle'] / 2.0
+        )
+        component_1 = sersic_function(
+            x, y, amp=parameters['amp_1'],
+            sersic_radius=parameters['sersic_radius_1'],
+            n_sersic=parameters['n_sersic_1'], axis_ratio=axis_ratio_1,
+            angle=angle_1, center_x=center_x_1, center_y=center_y_1
+        )
+
+        # Component 2 with -epsilon/2 offsets
+        center_x_2 = (
+            parameters['center_x'] - parameters['epsilon_center'] / 2.0
+        )
+        center_y_2 = (
+            parameters['center_y'] - parameters['epsilon_center'] / 2.0
+        )
+        axis_ratio_2 = (
+            parameters['axis_ratio'] - parameters['epsilon_ratio'] / 2.0
+        )
+        angle_2 = (
+            parameters['angle'] - parameters['epsilon_angle'] / 2.0
+        )
+
+        component_2 = sersic_function(
+            x, y, amp=parameters['amp_2'],
+            sersic_radius=parameters['sersic_radius_2'],
+            n_sersic=parameters['n_sersic_2'], axis_ratio=axis_ratio_2,
+            angle=angle_2, center_x=center_x_2, center_y=center_y_2
+        )
+
+        # Verify that double Sersic equals sum of components
+        expected = component_1 + component_2
+        np.testing.assert_allclose(double_result, expected, rtol=1e-6)
 
 class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
     """Runs tests of CosmosCatalog functions.
