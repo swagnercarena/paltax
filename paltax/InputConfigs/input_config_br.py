@@ -81,27 +81,34 @@ def get_config():
             'output_ab_zeropoint': encode_constant(25.127),
             'catalog_ab_zeropoint': encode_constant(25.127),
             'z_source': encode_constant(1.5),
-            'amp': encode_uniform(minimum=1.0, maximum=4.0),
+            'amp': encode_uniform(minimum=6.0, maximum=16.0),
             'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
             'center_x': encode_normal(mean=0.0, std=0.16),
             'center_y': encode_normal(mean=0.0, std=0.16)
         },
         'lens_light_params':{
-            'amp': encode_constant(0.0),
-            'sersic_radius': encode_uniform(minimum=1.0, maximum=3.0),
-            'n_sersic': encode_uniform(minimum=1.0, maximum=4.0),
-            'axis_ratio': encode_normal(mean=1.0, std=0.05),
+            'amp_1': encode_uniform(minimum=0.0, maximum=3.5),
+            'sersic_radius_1': encode_uniform(minimum=0.1, maximum=10.0),
+            'n_sersic_1': encode_uniform(minimum=0.5, maximum=2.0),
+            'amp_2': encode_uniform(minimum=0.0, maximum=6.0),
+            'sersic_radius_2': encode_uniform(minimum=0.0, maximum=15.0),
+            'n_sersic_2': encode_uniform(minimum=3.0, maximum=6.0),
+            'axis_ratio': encode_uniform(minimum=0.02, maximum=1.0),
             'angle': encode_uniform(minimum=0.0, maximum=2 * jnp.pi),
-            'center_x': encode_normal(mean=0.0, std=0.16),
-            'center_y': encode_normal(mean=0.0, std=0.16)
+            'epsilon_angle': encode_normal(mean=0.0, std=jnp.pi / 10.0),
+            'epsilon_ratio': encode_normal(mean=0.0, std=0.3),
+            'center_x': encode_normal(mean=0.0, std=0.05),
+            'center_y': encode_normal(mean=0.0, std=0.05),
+            'epsilon_center_x': encode_normal(mean=0.0, std=0.005),
+            'epsilon_center_y': encode_normal(mean=0.0, std=0.005),
         }
     }
 
     # The remaining parameters should not be drawn from random distributions.
     config['kwargs_detector'] = {
-        'n_x': 128, 'n_y': 128, 'pixel_width': 0.04, 'supersampling_factor': 2,
-        'exposure_time': 1024, 'num_exposures': 2.0, 'sky_brightness': 22,
-        'magnitude_zero_point': 25, 'read_noise': 3.0
+        'n_x': 128, 'n_y': 128, 'pixel_width': 0.05, 'supersampling_factor': 2,
+        'exposure_time': 522, 'num_exposures': 4.0, 'sky_brightness': 22,
+        'magnitude_zero_point': 25.93, 'read_noise': 3.0
     }
     cosmos_path = str(pathlib.Path(__file__).parent.parent.parent)
     cosmos_path += '/datasets/cosmos/ddprism_v1.h5'
@@ -111,7 +118,7 @@ def get_config():
         'all_main_deflector_models': (lens_models.EPLEllip(),
                                       lens_models.ShearCart()),
         'all_source_models': (source_models.CosmosCatalog(cosmos_path),),
-        'all_lens_light_models': (source_models.SersicElliptic(),),
+        'all_lens_light_models': (source_models.DoubleSersicElliptic(),),
         'all_psf_models': (psf_models.Gaussian(),)
     }
     # Some objects (subhalos for example) want to know the properties of another
@@ -150,13 +157,20 @@ def get_config():
     }
 
     config['truth_parameters'] = (
-        ['main_deflector_params', 'main_deflector_params',
-         'main_deflector_params', 'main_deflector_params',
-         'main_deflector_params', 'main_deflector_params',
-         'main_deflector_params', 'main_deflector_params',
-         'source_params', 'source_params', 'subhalo_params'],
-        ['theta_e', 'slope', 'center_x', 'center_y', 'ellip_x', 'ellip_xy',
-         'gamma_one', 'gamma_two', 'center_x', 'center_y', 'sigma_sub'],
-        [0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0])
+        [
+            'main_deflector_params', 'main_deflector_params',
+            'main_deflector_params', 'main_deflector_params',
+            'main_deflector_params', 'main_deflector_params',
+            'main_deflector_params', 'main_deflector_params',
+            'source_params', 'source_params', 'source_params',
+            'subhalo_params'
+        ],
+        [
+            'theta_e', 'slope', 'center_x', 'center_y', 'ellip_x', 'ellip_xy',
+            'gamma_one', 'gamma_two', 'amp', 'center_x', 'center_y',
+            'sigma_sub'
+        ],
+        [0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0]
+    )
 
     return config

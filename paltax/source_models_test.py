@@ -153,7 +153,8 @@ def _prepare_double_sersic_elliptic_parameters():
             'epsilon_ratio': 0.01,
             'center_x': 0.1,
             'center_y': -0.1,
-            'epsilon_center': 0.05,
+            'epsilon_center_x': 0.005,
+            'epsilon_center_y': 0.005,
     }
 
 
@@ -350,10 +351,10 @@ class DoubleSersicEllipticTest(chex.TestCase, parameterized.TestCase):
 
         # Calculate individual components manually
         center_x_1 = (
-            parameters['center_x'] + parameters['epsilon_center'] / 2.0
+            parameters['center_x'] + parameters['epsilon_center_x'] / 2.0
         )
         center_y_1 = (
-            parameters['center_y'] + parameters['epsilon_center'] / 2.0
+            parameters['center_y'] + parameters['epsilon_center_y'] / 2.0
         )
         axis_ratio_1 = (
             parameters['axis_ratio'] + parameters['epsilon_ratio'] / 2.0
@@ -370,10 +371,10 @@ class DoubleSersicEllipticTest(chex.TestCase, parameterized.TestCase):
 
         # Component 2 with -epsilon/2 offsets
         center_x_2 = (
-            parameters['center_x'] - parameters['epsilon_center'] / 2.0
+            parameters['center_x'] - parameters['epsilon_center_x'] / 2.0
         )
         center_y_2 = (
-            parameters['center_y'] - parameters['epsilon_center'] / 2.0
+            parameters['center_y'] - parameters['epsilon_center_y'] / 2.0
         )
         axis_ratio_2 = (
             parameters['axis_ratio'] - parameters['epsilon_ratio'] / 2.0

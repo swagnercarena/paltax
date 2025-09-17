@@ -294,7 +294,7 @@ class DoubleSersicElliptic(_SourceModelBase):
         'amp_1', 'sersic_radius_1', 'n_sersic_1',
         'amp_2', 'sersic_radius_2', 'n_sersic_2',
         'axis_ratio', 'angle', 'epsilon_angle', 'epsilon_ratio', 'center_x',
-        'center_y', 'epsilon_center'
+        'center_y', 'epsilon_center_x', 'epsilon_center_y'
     )
 
     @staticmethod
@@ -304,7 +304,7 @@ class DoubleSersicElliptic(_SourceModelBase):
         amp_2: float, sersic_radius_2: float, n_sersic_2: float,
         axis_ratio: float, angle: float, epsilon_angle: float,
         epsilon_ratio: float, center_x: float, center_y: float,
-        epsilon_center: float,
+        epsilon_center_x: float, epsilon_center_y: float,
         lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> jnp.ndarray:
         """Calculate the brightness for the double elliptical Sersic light profile.
@@ -327,8 +327,10 @@ class DoubleSersicElliptic(_SourceModelBase):
                 components.
             center_x: X-coordinate center of the Sersic profile.
             center_y: Y-coordinate center of the Sersic profile.
-            epsilon_center: Epsilon offset between the two sersic centers of the
-                two components.
+            epsilon_center_x: Epsilon offset between the x-coordinate of the
+                sersic centers.
+            epsilon_center_y: Epsilon offset between the y-coordinate of the
+                sersic centers.
             lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
@@ -336,19 +338,23 @@ class DoubleSersicElliptic(_SourceModelBase):
 
         Notes:
             The epsilon parameters are used to slightly offset the parameter
-            values of the two components from the base values. The first sersic
+            values of the two components from the base values. The first Sersic
             will be given a positive epsilon/2 offset and the second will be
-            given a negative epsilon/2 offset.
+            given a negative epsilon/2 offset. The axis ratios for both
+            components are bounded to the range [0.02, 1.0] after applying the
+             epsilon offsets, to ensure physical validity.
         """
         # Calculate brightness from first component
 
         # Get the offset centers, axis ratios, and angles.
-        center_x_1 = center_x + epsilon_center / 2.0
-        center_y_1 = center_y + epsilon_center / 2.0
-        center_x_2 = center_x - epsilon_center / 2.0
-        center_y_2 = center_y - epsilon_center / 2.0
-        axis_ratio_1 = axis_ratio + epsilon_ratio / 2.0
-        axis_ratio_2 = axis_ratio - epsilon_ratio / 2.0
+        center_x_1 = center_x + epsilon_center_x / 2.0
+        center_y_1 = center_y + epsilon_center_y / 2.0
+        center_x_2 = center_x - epsilon_center_x / 2.0
+        center_y_2 = center_y - epsilon_center_y / 2.0
+        # Enforce axis ratio bounds (0 < axis_ratio <= 1.0) after epsilon
+        # offsets
+        axis_ratio_1 = jnp.clip(axis_ratio + epsilon_ratio / 2.0, 2e-2, 1.0)
+        axis_ratio_2 = jnp.clip(axis_ratio - epsilon_ratio / 2.0, 2e-2, 1.0)
         angle_1 = angle + epsilon_angle / 2.0
         angle_2 = angle - epsilon_angle / 2.0
 

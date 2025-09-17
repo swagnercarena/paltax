@@ -29,6 +29,7 @@ def get_config():
         'conc_dex_scatter': encode_normal(mean=0.1, std=0.06),
     }
 
+    # Update the subhalo parameters.
     config['lensing_config']['subhalo_params'] = {
         'sigma_sub': encode_normal(mean=2.0e-3, std=1.1e-3),
         'log_m_hm': encode_normal(mean=8.0, std=1.0),
@@ -59,15 +60,18 @@ def get_config():
             'main_deflector_params', 'main_deflector_params',
             'main_deflector_params', 'main_deflector_params',
             'main_deflector_params', 'main_deflector_params',
-            'source_params', 'source_params', 'subhalo_params',
-            'subhalo_params', 'subhalo_params'
+            'source_params', 'source_params', 'source_params',
+            'lens_light_params', 'lens_light_params', 'lens_light_params',
+            'lens_light_params', 'subhalo_params', 'subhalo_params',
+            'subhalo_params'
         ],
         [
             'theta_e', 'slope', 'center_x', 'center_y', 'ellip_x', 'ellip_xy',
-            'gamma_one', 'gamma_two', 'center_x', 'center_y', 'sigma_sub',
-            'shmf_plaw_index', 'log_m_hm'
+            'gamma_one', 'gamma_two', 'amp','center_x', 'center_y', 'amp_1',
+            'amp_2', 'center_x', 'center_y', 'sigma_sub', 'shmf_plaw_index',
+            'log_m_hm'
         ],
-        [0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0]
+        [0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     )
 
     return config
