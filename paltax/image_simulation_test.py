@@ -218,7 +218,10 @@ def _prepare_kwargs_source():
         (param, 0.5) for param in all_source_model_parameters
     ])
     kwargs_source['image'] = jnp.load(
-        'test_files/image_simulations_one_test.npy'
+        str(
+            pathlib.Path(__file__).parent /
+            'test_files/image_simulations_one_test.npy'
+        )
     )
     kwargs_source['model_index'] = source_models.__all__.index('Interpol')
     return kwargs_source
@@ -231,7 +234,10 @@ def _prepare_kwargs_source_slice():
     for kwarg in kwargs_source_slice:
         kwargs_source_slice[kwarg] = jnp.ones((2,)) * 0.5
     kwargs_source_slice['image'] = jnp.load(
-        'test_files/image_simulations_two_test.npy'
+        str(
+            pathlib.Path(__file__).parent /
+            'test_files/image_simulations_two_test.npy'
+        )
     )
     kwargs_source_slice['n_sersic'] = jnp.ones((2,)) * 3.0
     kwargs_source_slice['model_index'] = jnp.array([

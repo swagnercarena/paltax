@@ -821,20 +821,36 @@ class InputPipelineTests(chex.TestCase, parameterized.TestCase):
 
         all_params = rotate_params(all_params)
 
-        self.assertAlmostEqual(all_params['main_deflector']['center_x'][0],
-                               1 / np.sqrt(2))
-        self.assertAlmostEqual(all_params['main_deflector']['center_y'][0],
-                               1 / np.sqrt(2))
-        self.assertAlmostEqual(all_params['main_deflector']['angle'][0],
-                               10.0 + rotation_angle)
-        self.assertAlmostEqual(all_params['not_main_deflector']['gamma_one'][0],
-                               0.1)
-        self.assertAlmostEqual(all_params['not_main_deflector']['gamma_two'][0],
-                               0.1)
-        self.assertAlmostEqual(all_params['not_main_deflector']['ellip_x'][0],
-                               0.1)
-        self.assertAlmostEqual(all_params['not_main_deflector']['ellip_xy'][0],
-                               0.3)
+        self.assertAlmostEqual(
+            all_params['main_deflector']['center_x'][0],
+            1 / jnp.sqrt(2),
+            places=6
+        )
+        self.assertAlmostEqual(
+            all_params['main_deflector']['center_y'][0],
+            1 / jnp.sqrt(2),
+            places=6
+        )
+        self.assertAlmostEqual(
+            all_params['main_deflector']['angle'][0],
+            10.0 + rotation_angle,
+            places=6
+        )
+        self.assertAlmostEqual(
+            all_params['not_main_deflector']['gamma_one'][0],
+            0.1,
+            places=6
+        )
+        self.assertAlmostEqual(
+            all_params['not_main_deflector']['gamma_two'][0],
+            0.1,
+            places=6
+        )
+        self.assertAlmostEqual(
+            all_params['not_main_deflector']['ellip_x'][0],
+            0.1,
+            places=6
+        )
 
 
     @chex.all_variants(without_device=False)

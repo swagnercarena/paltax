@@ -12,3 +12,4 @@ optax
 numba
 distrax
 wandb
+tf-keras

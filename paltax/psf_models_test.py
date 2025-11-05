@@ -33,7 +33,12 @@ KERNEL_PATH = (
 
 
 def _prepare_image():
-    return jnp.load('test_files/psf_models_image_test.npy')
+    return jnp.load(
+        str(
+            pathlib.Path(__file__).parent /
+            'test_files/psf_models_image_test.npy'
+        )
+    )
 
 
 def _prepare_gaussian_parameters():

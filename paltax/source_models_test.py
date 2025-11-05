@@ -84,7 +84,9 @@ def _prepare_x_y():
 
 
 def _prepare_image():
-    return jnp.load('test_files/source_image_test.npy')
+    return jnp.load(
+        str(pathlib.Path(__file__).parent / 'test_files/source_image_test.npy')
+    )
 
 
 def _prepare__brightness_expected(sersic_radius, n_sersic):
