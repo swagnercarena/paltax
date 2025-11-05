@@ -109,7 +109,7 @@ class PowerLawTests(chex.TestCase, parameterized.TestCase):
         total_m_7 = 0
         total_m_8 = 0
         rng = jax.random.PRNGKey(0)
-        n_loops = 500
+        n_loops = 1000
         eps = 1e6
         for _ in range(n_loops):
             rng_draw, rng = jax.random.split(rng)

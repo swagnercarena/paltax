@@ -76,18 +76,14 @@ def _prepare_tnfw_parameters():
 
 
 def _prepare_x_y():
-    rng = jax.random.PRNGKey(0)
-    rng_x, rng_y = jax.random.split(rng)
-    x = jax.random.normal(rng_x, shape=(3,))
-    y = jax.random.normal(rng_y, shape=(3,))
+    x = jnp.array([ 0.13893168,  0.509335  , -0.53116107])
+    y = jnp.array([ 1.1378784 , -1.2209548 , -0.59153634])
     return x, y
 
 
 def _prepare_reduced_radii():
-    rng = jax.random.PRNGKey(0)
-    rng_rr, rng_trr = jax.random.split(rng)
-    reduced_radius = jax.random.uniform(rng_rr, shape=(3,))
-    truncated_reduced_radius = jax.random.uniform(rng_trr, shape=(3,))
+    reduced_radius = jnp.array([0.5552479 , 0.69474125, 0.29765356])
+    truncated_reduced_radius = jnp.array([0.87241435, 0.11105156, 0.27708054])
     return reduced_radius, truncated_reduced_radius
 
 
@@ -196,7 +192,7 @@ class EPLTest(chex.TestCase, parameterized.TestCase):
 
     @chex.all_variants
     def test__hypergeometric_series(self):
-        ellip_angle = jax.random.normal(jax.random.PRNGKey(0), shape=(3,))
+        ellip_angle = jnp.array([ 1.8160863 , -0.48262316,  0.33988908])
         ellip_angle *= np.pi
         parameters = _prepare_epl_parameters()
         expected = jnp.array([
@@ -297,7 +293,7 @@ class NFWTest(chex.TestCase, parameterized.TestCase):
 
     @chex.all_variants
     def test__nfw_integral(self):
-        reduced_radius = jax.random.uniform(jax.random.PRNGKey(0), shape=(3,))
+        reduced_radius = jnp.array([0.9653214 , 0.31468165, 0.63302994])
         expected = jnp.array([0.2952541, 0.07187331, 0.18085146])
 
         integral = self.variant(lens_models.NFW._nfw_integral)

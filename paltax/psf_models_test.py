@@ -33,8 +33,7 @@ KERNEL_PATH = (
 
 
 def _prepare_image():
-    rng = jax.random.PRNGKey(0)
-    return jax.random.normal(rng, shape=(32, 32))
+    return jnp.load('test_files/psf_models_image_test.npy')
 
 
 def _prepare_gaussian_parameters():

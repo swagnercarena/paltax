@@ -31,10 +31,8 @@ COSMOLOGY_DICT = {
 
 
 def _prepare_x_y_angular():
-    rng = jax.random.PRNGKey(3)
-    rng_x, rng_y = jax.random.split(rng)
-    x = jax.random.normal(rng_x, shape=(3,))
-    y = jax.random.normal(rng_y, shape=(3,))
+    x = jnp.array([-1.3471873 , -0.5431547 ,  0.37818703])
+    y = jnp.array([ 0.65950656, -1.7432218 ,  1.6562074 ])
     return x, y
 
 
@@ -155,7 +153,14 @@ class UtilsTest(chex.TestCase, parameterized.TestCase):
         np.testing.assert_allclose(downsample(image, 3), jnp.ones((4, 4)) * 9)
         np.testing.assert_allclose(downsample(image, 4), jnp.ones((3, 3)) * 16)
 
-        image = jax.random.normal(jax.random.PRNGKey(0), shape=(4, 4))
+        image = jnp.array(
+            [
+                [ 0.08482574,  1.9097648 ,  0.29561743,  1.120948  ],
+                [ 0.33432344, -0.82606775,  0.6481277 ,  1.0434873 ],
+                [-0.7824839 , -0.4539462 ,  0.6297971 ,  0.81524646],
+                [-0.32787678, -1.1234448 , -1.6607416 ,  0.27290547]
+            ]
+        )
         expected = jnp.array([[0.37571156, 0.7770451],
                               [-0.67193794, 0.014301866]]) * 4
         np.testing.assert_allclose(downsample(image, 2), expected)
