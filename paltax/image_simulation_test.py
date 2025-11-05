@@ -81,10 +81,8 @@ def _prepare_kwargs_psf():
 
 
 def _prepare_x_y():
-    rng = jax.random.PRNGKey(3)
-    rng_x, rng_y = jax.random.split(rng)
-    x = jax.random.normal(rng_x, shape=(3,)) * 1e3
-    y = jax.random.normal(rng_y, shape=(3,)) * 1e3
+    x = jnp.array([-1347.1873 ,  -543.1547 ,   378.18704])
+    y = jnp.array([  659.50653, -1743.2218 ,  1656.2074 ])
     return x, y
 
 
@@ -94,15 +92,20 @@ def _prepare_x_y_angular():
 
 
 def _prepare_alpha_x_alpha_y():
-    rng = jax.random.PRNGKey(2)
-    rng_x, rng_y = jax.random.split(rng)
-    alpha_x = jax.random.normal(rng_x, shape=(3,)) * 2
-    alpha_y = jax.random.normal(rng_y, shape=(3,)) * 2
+    alpha_x = jnp.array([-0.5049887,  3.7687256, -3.0028365])
+    alpha_y = jnp.array([-1.628179  , -0.64633346,  0.7495003 ])
     return alpha_x, alpha_y
 
 
 def _prepare_image():
-    return jax.random.uniform(jax.random.PRNGKey(3), shape=(4, 4))
+    return jnp.array(
+        [
+            [0.9547459 , 0.8413112 , 0.13954484, 0.5248394 ],
+            [0.82432127, 0.79739594, 0.45422375, 0.21128154],
+            [0.7561691 , 0.55743456, 0.2037729 , 0.3627025 ],
+            [0.3970325 , 0.16730261, 0.2958666 , 0.3715701 ]
+        ]
+    )
 
 
 def _prepare_all_psf_models():
@@ -214,8 +217,9 @@ def _prepare_kwargs_source():
     kwargs_source = dict([
         (param, 0.5) for param in all_source_model_parameters
     ])
-    kwargs_source['image'] = jax.random.normal(
-        jax.random.PRNGKey(3), shape=(16, 16))
+    kwargs_source['image'] = jnp.load(
+        'test_files/image_simulations_one_test.npy'
+    )
     kwargs_source['model_index'] = source_models.__all__.index('Interpol')
     return kwargs_source
 
@@ -226,8 +230,9 @@ def _prepare_kwargs_source_slice():
     # profile meaningful brightness.
     for kwarg in kwargs_source_slice:
         kwargs_source_slice[kwarg] = jnp.ones((2,)) * 0.5
-    kwargs_source_slice['image'] = jax.random.uniform(
-        jax.random.PRNGKey(3), shape=(2, 16, 16))
+    kwargs_source_slice['image'] = jnp.load(
+        'test_files/image_simulations_two_test.npy'
+    )
     kwargs_source_slice['n_sersic'] = jnp.ones((2,)) * 3.0
     kwargs_source_slice['model_index'] = jnp.array([
         source_models.__all__.index('Interpol'),
@@ -405,7 +410,8 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         # Noise matches very closely, but numbers are small so use atol.
         np.testing.assert_allclose(
             noise(image, rng_noise, kwargs_detector), expected, rtol=0,
-            atol=1e-7)
+            atol=1e-7
+        )
 
     @chex.all_variants
     def test_lens_light_surface_brightness(self):
@@ -739,7 +745,8 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
 
         add_surface_brightness = self.variant(
             functools.partial(image_simulation._add_surface_brightness,
-            all_source_models=all_source_models))
+            all_source_models=all_source_models)
+        )
 
         # Use x as previous surface brightness.
         tb, b = add_surface_brightness(x, kwargs_source, x, y)
