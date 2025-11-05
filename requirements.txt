@@ -10,3 +10,6 @@ flax
 ml_collections
 optax
 numba
+distrax
+wandb
+tf-keras

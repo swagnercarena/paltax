@@ -545,6 +545,25 @@ def initialize_cosmology_params(
     return cosmology_params
 
 
+def initialize_lookup_tables(
+    config: Mapping[str, Mapping[str, Union[Any,jnp.ndarray]]],
+) -> Dict[str, Union[float, int, jnp.ndarray]]:
+    """Initialize lookup tables from provided models.
+
+    Args:
+        all_models: Tuple of model classes to consider for each component.
+
+    Returns:
+        Lookup tables for all the included models.
+    """
+    lookup_tables = {}
+    for model_group in config['all_models']:
+        for model in config['all_models'][model_group]:
+            lookup_tables = model.add_lookup_tables(lookup_tables)
+
+    return lookup_tables
+
+
 def draw_sample(
         encoded_configuration: Mapping[str, Union[float, Mapping[str, Any]]],
         rng: Sequence[int]
@@ -694,7 +713,8 @@ def extract_truth_values(
         lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
         truth_parameters: Tuple[Sequence[str], Sequence[str], Sequence[int]],
         rotation_angle: Optional[float] = 0.0,
-        normalize_truths: Optional[bool] = True) -> jnp.ndarray:
+        normalize_truths: Optional[bool] = True
+) -> jnp.ndarray:
     """Extract the truth parameters and normalize them according to the config.
 
     Args:
@@ -726,20 +746,228 @@ def extract_truth_values(
         extract_indices))
 
 
-def draw_image_and_truth(
+def replace_truth_values(
+        truth: jnp.ndarray,
+        all_params: Dict[str, Dict[str, jnp.ndarray]],
         lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
-        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-        grid_x: jnp.ndarray, grid_y: jnp.ndarray, rng: Sequence[int],
-        rotation_angle: float,
-        all_models: Mapping[str, Sequence[Any]],
-        principal_model_indices: Mapping[str, int],
-        kwargs_simulation: Mapping[str, int],
-        kwargs_detector:  Mapping[str, Union[int, float]],
-        kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
         truth_parameters: Tuple[Sequence[str], Sequence[str], Sequence[int]],
-        normalize_image: Optional[bool] = True,
-        normalize_truths: Optional[bool] = True,
-        normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
+        normalize_truths: bool) -> jnp.ndarray:
+    """Replace parameters with the unormalized specified truth.
+
+    Args:
+        truth: True values to insert in the parameters.
+        all_params: All of the parameters grouped by object. Must be mutable.
+        lensing_config: Distribution encodings for each of the parameters.
+        truth_parameters: List of the lensing objects, corresponding
+            parameters to extract, and main object index for each parameter.
+        normalize_truths: If true, normalize parameters according to the
+            encoded distribtion.
+
+    Returns:
+        Truth values for each of the requested parameters.
+    """
+    extract_objects, extract_keys, extract_indices = truth_parameters
+
+    # Replace each truth parameter
+    for truth_value, obj, key, index in zip(
+        truth, extract_objects, extract_keys, extract_indices
+    ):
+        # Unnormalize the truth before passing them to parameters.
+        if normalize_truths:
+            truth_value = unnormalize_param(
+                truth_value, lensing_config[obj][key]
+            )
+
+        all_params[obj][key] = all_params[obj][key].at[index].set(truth_value)
+
+    return all_params
+
+
+def _draw_all_params(
+    lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
+    rng: Sequence[int],
+    all_models: Mapping[str, Sequence[Any]],
+    kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
+) -> Dict[str, Dict[str, jnp.ndarray]]:
+    """Draw all of the parameters of lensing simulations.
+
+    Args:
+        lensing_config: Distribution encodings for each of the objects in the
+            lensing system.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        rng: jax PRNG key.
+        all_models: Tuple of model classes to consider for each component.
+        kwargs_psf: Keyword arguments defining the point spread function. The
+            psf is applied in the supersampled space, so the size of pixels
+            should be defined with respect to the supersampled space.
+
+    Returns:
+        Parameters for the source, lens light, los, subhalo, and main deflector
+        models.
+    """
+    # Draw an instance of the parameter values for each object in our lensing
+    # system.
+    rng_md, rng_source, rng_ll, rng_los, rng_sub, rng = jax.random.split(rng, 6)
+    main_deflector_params = extract_multiple_models_angular(
+        lensing_config['main_deflector_params'], rng_md, cosmology_params,
+        all_models['all_main_deflector_models']
+    )
+    source_params = extract_multiple_models_angular(
+        lensing_config['source_params'], rng_source, cosmology_params,
+        all_models['all_source_models']
+    )
+    lens_light_params = extract_multiple_models_angular(
+        lensing_config['lens_light_params'], rng_ll, cosmology_params,
+        all_models['all_lens_light_models']
+    )
+    los_params = extract_multiple_models(
+        lensing_config['los_params'], rng_los,
+        len(all_models['all_los_models'])
+    )
+    subhalo_params = extract_multiple_models(
+        lensing_config['subhalo_params'], rng_sub,
+        len(all_models['all_subhalo_models'])
+    )
+
+    # PSF kwargs are allowed to be random.
+    rng_psf, rng = jax.random.split(rng, 2)
+    psf_params = extract_multiple_models(
+        kwargs_psf, rng_psf, len(all_models['all_psf_models'])
+    )
+
+    # Repackage the parameters.
+    all_params = {
+        'source_params': source_params,
+        'lens_light_params': lens_light_params,
+        'los_params': los_params, 'subhalo_params': subhalo_params,
+        'main_deflector_params': main_deflector_params,
+        'psf_params': psf_params
+    }
+    return all_params
+
+
+def _draw_image_and_truth(
+    all_params: Mapping[str, Mapping[str, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
+    grid_x: jnp.ndarray,
+    grid_y: jnp.ndarray,
+    rng: Sequence[int],
+    rotation_angle: float,
+    all_models: Mapping[str, Sequence[Any]],
+    principal_model_indices: Mapping[str, int],
+    kwargs_simulation: Mapping[str, int],
+    kwargs_detector:  Mapping[str, Union[int, float]],
+    normalize_image: bool,
+    lookup_tables: Dict[str, Union[float, jnp.ndarray]]
+) -> jnp.ndarray:
+    """Draw image for a set of realization parameters.
+
+    Args:
+        all_params: Parameters for simulation.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        grid_x: x-grid in units of arcseconds.
+        grid_y: y-grid in units of arcseconds.
+        rng: jax PRNG key.
+        rotation_angle: Counterclockwise angle by which to rotate images and
+            truths.
+        all_models: Tuple of model classes to consider for each component.
+        principal_model_indices: Indices for the principal model of each
+            lensing component.
+        kwargs_simulation: Keyword arguments for the draws of the substructure.
+        kwargs_detector: Keyword arguments defining the detector configuration.
+        normalize_image: If True, the image will be normalized to have
+            standard deviation 1.
+        lookup_tables: Optional lookup tables for source and derivative
+            functions.
+
+    Returns:
+        Image.
+    """
+    # Get the principal model for each lensing object.
+    all_params_principal = {
+        lens_obj: jax.tree_util.tree_map(
+            lambda x: x[principal_model_indices[lens_obj]], all_params[lens_obj]
+        ) for lens_obj in all_params
+    }
+
+    # Pull out the padding and bins we will use while vmapping our simulation.
+    num_z_bins = kwargs_simulation['num_z_bins']
+    los_pad_length = kwargs_simulation['los_pad_length']
+    subhalos_pad_length = kwargs_simulation['subhalos_pad_length']
+    subhalos_n_chunks = kwargs_simulation.get('subhalos_n_chunks', 1)
+    sampling_pad_length = kwargs_simulation['sampling_pad_length']
+
+    rng_los, rng_sub, rng_noise = jax.random.split(rng, 3)
+    los_before_tuple, los_after_tuple = los.draw_los(
+        main_deflector_params=all_params_principal['main_deflector_params'],
+        source_params=all_params_principal['source_params'],
+        los_params=all_params_principal['los_params'],
+        cosmology_params=cosmology_params, rng=rng_los, num_z_bins=num_z_bins,
+        los_pad_length=los_pad_length
+    )
+    subhalos_z, subhalos_kwargs = subhalos.draw_subhalos(
+        main_deflector_params=all_params_principal['main_deflector_params'],
+        source_params=all_params_principal['source_params'],
+        subhalo_params=all_params_principal['subhalo_params'],
+        cosmology_params=cosmology_params, rng=rng_sub,
+        subhalos_pad_length=subhalos_pad_length,
+        sampling_pad_length=sampling_pad_length
+    )
+
+    kwargs_lens_all = {
+        'z_array_los_before': los_before_tuple[0],
+        'kwargs_los_before': los_before_tuple[1],
+        'z_array_los_after': los_after_tuple[0],
+        'kwargs_los_after': los_after_tuple[1],
+        'kwargs_main_deflector': all_params['main_deflector_params'],
+        'z_array_main_deflector': all_params['main_deflector_params']['z_lens'],
+        'z_array_subhalos': subhalos_z, 'kwargs_subhalos': subhalos_kwargs
+    }
+    z_source = all_params_principal['source_params']['z_source']
+
+    # Apply the rotation angle to the image through the grid. This requires
+    # rotating the coordinates by the negative angle.
+    grid_x, grid_y = utils.rotate_coordinates(grid_x, grid_y, -rotation_angle)
+
+    image_supersampled = image_simulation.generate_image(
+        grid_x, grid_y, kwargs_lens_all, all_params['source_params'],
+        all_params['lens_light_params'], all_params['psf_params'],
+        cosmology_params, z_source, kwargs_detector, all_models, apply_psf=True,
+        lookup_tables=lookup_tables, subhalos_n_chunks=subhalos_n_chunks
+    )
+    image = utils.downsample(
+        image_supersampled, kwargs_detector['supersampling_factor']
+    )
+    image += image_simulation.noise_realization(
+        image, rng_noise, kwargs_detector
+    )
+    # Normalize the image to have standard deviation 1.
+    if normalize_image:
+        image /= jnp.std(image)
+
+    return image
+
+
+def draw_image_and_truth(
+    lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
+    grid_x: jnp.ndarray,
+    grid_y: jnp.ndarray,
+    rng: Sequence[int],
+    rotation_angle: float,
+    all_models: Mapping[str, Sequence[Any]],
+    principal_model_indices: Mapping[str, int],
+    kwargs_simulation: Mapping[str, int],
+    kwargs_detector:  Mapping[str, Union[int, float]],
+    kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
+    truth_parameters: Tuple[Sequence[str], Sequence[str], Sequence[int]],
+    normalize_image: Optional[bool] = True,
+    normalize_truths: Optional[bool] = True,
+    normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None,
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Draw image and truth values for a realization of the lensing config.
 
@@ -769,6 +997,8 @@ def draw_image_and_truth(
             encoded distribtion.
         normalize_config: The lensing config to use for normalization. If None
             will default to the lensing config.
+        lookup_tables: Optional lookup tables for source and derivative
+            functions.
 
     Returns:
         Image and corresponding truth values.
@@ -781,100 +1011,155 @@ def draw_image_and_truth(
     if normalize_config is None:
         normalize_config = lensing_config
 
-    # Pull out the padding and bins we will use while vmapping our simulation.
-    num_z_bins = kwargs_simulation['num_z_bins']
-    los_pad_length = kwargs_simulation['los_pad_length']
-    subhalos_pad_length = kwargs_simulation['subhalos_pad_length']
-    sampling_pad_length = kwargs_simulation['sampling_pad_length']
-
-    # Draw an instance of the parameter values for each object in our lensing
-    # system.
-    rng_md, rng_source, rng_ll, rng_los, rng_sub, rng = jax.random.split(rng, 6)
-    main_deflector_params = extract_multiple_models_angular(
-        lensing_config['main_deflector_params'], rng_md, cosmology_params,
-        all_models['all_main_deflector_models']
-    )
-    source_params = extract_multiple_models_angular(
-        lensing_config['source_params'], rng_source, cosmology_params,
-        all_models['all_source_models']
-    )
-    lens_light_params = extract_multiple_models_angular(
-        lensing_config['lens_light_params'], rng_ll, cosmology_params,
-        all_models['all_lens_light_models']
-    )
-    los_params = extract_multiple_models(
-        lensing_config['los_params'], rng_los,
-        len(all_models['all_los_models'])
-    )
-    subhalo_params = extract_multiple_models(
-        lensing_config['subhalo_params'], rng_sub,
-        len(all_models['all_subhalo_models'])
-    )
-
-    # PSF kwargs are allowed to be random.
-    rng_psf, rng = jax.random.split(rng, 2)
-    kwargs_psf = extract_multiple_models(
-        kwargs_psf, rng_psf, len(all_models['all_psf_models'])
-    )
-
     # Repackage the parameters.
-    all_params = {
-        'source_params': source_params,
-        'lens_light_params': lens_light_params,
-        'los_params': los_params, 'subhalo_params': subhalo_params,
-        'main_deflector_params': main_deflector_params
-    }
-    # Get the principal model for each lensing object.
-    all_params_principal = {
-        lens_obj: jax.tree_util.tree_map(
-            lambda x: x[principal_model_indices[lens_obj]], all_params[lens_obj]
-        ) for lens_obj in all_params
-    }
+    all_params = _draw_all_params(
+        lensing_config, cosmology_params, rng, all_models, kwargs_psf
+    )
 
-    rng_los, rng_sub, rng_noise = jax.random.split(rng, 3)
-    los_before_tuple, los_after_tuple = los.draw_los(
-        main_deflector_params=all_params_principal['main_deflector_params'],
-        source_params=all_params_principal['source_params'],
-        los_params=all_params_principal['los_params'],
-        cosmology_params=cosmology_params, rng=rng_los, num_z_bins=num_z_bins,
-        los_pad_length=los_pad_length)
-    subhalos_z, subhalos_kwargs = subhalos.draw_subhalos(
-        main_deflector_params=all_params_principal['main_deflector_params'],
-        source_params=all_params_principal['source_params'],
-        subhalo_params=all_params_principal['subhalo_params'],
-        cosmology_params=cosmology_params, rng=rng_sub,
-        subhalos_pad_length=subhalos_pad_length,
-        sampling_pad_length=sampling_pad_length)
-
-    kwargs_lens_all = {
-        'z_array_los_before': los_before_tuple[0],
-        'kwargs_los_before': los_before_tuple[1],
-        'z_array_los_after': los_after_tuple[0],
-        'kwargs_los_after': los_after_tuple[1],
-        'kwargs_main_deflector': main_deflector_params,
-        'z_array_main_deflector': main_deflector_params['z_lens'],
-        'z_array_subhalos': subhalos_z, 'kwargs_subhalos': subhalos_kwargs}
-    z_source = all_params_principal['source_params']['z_source']
-
-    # Apply the rotation angle to the image through the grid. This requires
-    # rotating the coordinates by the negative angle.
-    grid_x, grid_y = utils.rotate_coordinates(grid_x, grid_y, -rotation_angle)
-
-    image_supersampled = image_simulation.generate_image(
-        grid_x, grid_y, kwargs_lens_all, source_params,
-        lens_light_params, kwargs_psf, cosmology_params, z_source,
-        kwargs_detector, all_models)
-    image = utils.downsample(image_supersampled,
-                             kwargs_detector['supersampling_factor'])
-    image += image_simulation.noise_realization(image, rng_noise,
-                                                kwargs_detector)
-    # Normalize and the image to have standard deviation 1.
-    if normalize_image:
-        image /= jnp.std(image)
+    image = _draw_image_and_truth(
+        all_params, cosmology_params, grid_x, grid_y, rng, rotation_angle,
+        all_models, principal_model_indices, kwargs_simulation, kwargs_detector,
+        normalize_image, lookup_tables
+    )
 
     # Extract the truth values and normalize them.
     truth = extract_truth_values(
         all_params, normalize_config, truth_parameters,
-        rotation_angle, normalize_truths)
+        rotation_angle, normalize_truths
+    )
 
     return image, truth
+
+
+def draw_truth(
+    lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
+    rng: Sequence[int],
+    rotation_angle: float,
+    all_models: Mapping[str, Sequence[Any]],
+    kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
+    truth_parameters: Tuple[Sequence[str], Sequence[str], Sequence[int]],
+    normalize_truths: Optional[bool] = True,
+    normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
+) -> jnp.ndarray:
+    """Draw truth values for a realization of the lensing config.
+
+    Args:
+        lensing_config: Distribution encodings for each of the objects in the
+            lensing system.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        rng: jax PRNG key.
+        rotation_angle: Counterclockwise angle by which to rotate images and
+            truths.
+        all_models: Tuple of model classes to consider for each component.
+        kwargs_psf: Keyword arguments defining the point spread function. The
+            psf is applied in the supersampled space, so the size of pixels
+            should be defined with respect to the supersampled space.
+        truth_parameters: List of the lensing objects, corresponding
+            parameters to extract, and main object index for each parameter.
+        normalize_truths: If true, normalize parameters according to the
+            encoded distribtion.
+        normalize_config: The lensing config to use for normalization. If None
+            will default to the lensing config.
+
+    Returns:
+        Truth values.
+    """
+    # If no normalization config is specified, assume the input lensing
+    # configuration.
+    if normalize_config is None:
+        normalize_config = lensing_config
+
+    # Repackage the parameters.
+    all_params = _draw_all_params(
+        lensing_config, cosmology_params, rng, all_models, kwargs_psf
+    )
+
+    # Extract the truth values and normalize them.
+    truth = extract_truth_values(
+        all_params, normalize_config, truth_parameters,
+        rotation_angle, normalize_truths
+    )
+
+    return truth
+
+
+def draw_image(
+    lensing_config: Mapping[str, Mapping[str, jnp.ndarray]],
+    truth: jnp.ndarray,
+    cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
+    grid_x: jnp.ndarray,
+    grid_y: jnp.ndarray,
+    rng: Sequence[int],
+    all_models: Mapping[str, Sequence[Any]],
+    principal_model_indices: Mapping[str, int],
+    kwargs_simulation: Mapping[str, int],
+    kwargs_detector:  Mapping[str, Union[int, float]],
+    kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
+    truth_parameters: Tuple[Sequence[str], Sequence[str], Sequence[int]],
+    normalize_image: Optional[bool] = True,
+    normalize_truths: Optional[bool] = True,
+    normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None,
+    lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
+) -> jnp.ndarray:
+    """Draw image from lensing config with fixed truth parameters.
+
+    Args:
+        lensing_config: Distribution encodings for each of the objects in the
+            lensing system.
+        truth: Value of fixed truth parameters to draw simulation from.
+        cosmology_params: Cosmological parameters that define the universe's
+            expansion.
+        grid_x: x-grid in units of arcseconds.
+        grid_y: y-grid in units of arcseconds.
+        rng: jax PRNG key.
+        all_models: Tuple of model classes to consider for each component.
+        principal_model_indices: Indices for the principal model of each
+            lensing component.
+        kwargs_simulation: Keyword arguments for the draws of the substructure.
+        kwargs_detector: Keyword arguments defining the detector configuration.
+        kwargs_psf: Keyword arguments defining the point spread function. The
+            psf is applied in the supersampled space, so the size of pixels
+            should be defined with respect to the supersampled space.
+        truth_parameters: List of the lensing objects, corresponding
+            parameters to extract, and main object index for each parameter.
+        normalize_image: If True, the image will be normalized to have
+            standard deviation 1.
+        normalize_truths: If true, normalize parameters according to the
+            encoded distribtion.
+        normalize_config: The lensing config to use for normalization. If None
+            will default to the lensing config.
+        lookup_tables: Optional lookup tables for source and derivative
+            functions.
+
+    Returns:
+        Image.
+
+    Notes:
+        To jit compile, every parameter after rng must be fixed.
+    """
+    # If no normalization config is specified, assume the input lensing
+    # configuration.
+    if normalize_config is None:
+        normalize_config = lensing_config
+
+    # Repackage the parameters.
+    all_params = _draw_all_params(
+        lensing_config, cosmology_params, rng, all_models, kwargs_psf
+    )
+
+    # Replace the parameters that are fixed by the truth input.
+    all_params = replace_truth_values(
+        truth, all_params, normalize_config, truth_parameters,
+        normalize_truths
+    )
+
+    rotation_angle = 0.0
+    image = _draw_image_and_truth(
+        all_params, cosmology_params, grid_x, grid_y, rng, rotation_angle,
+        all_models, principal_model_indices, kwargs_simulation, kwargs_detector,
+        normalize_image, lookup_tables
+    )
+
+    return image

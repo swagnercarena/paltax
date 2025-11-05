@@ -68,6 +68,7 @@ def draw_nfw_masses(main_deflector_params: Mapping[str, float],
     # Extract the remaining parameters from the dict for readability
     shmf_plaw_index = subhalo_params['shmf_plaw_index']
     m_pivot = subhalo_params['m_pivot']
+    m_hm = 10 ** subhalo_params['log_m_hm'] # Warm dark matter half-mode mass
     m_min = subhalo_params['m_min']
     m_max = subhalo_params['m_max']
     k_one = subhalo_params['k_one']
@@ -85,8 +86,9 @@ def draw_nfw_masses(main_deflector_params: Mapping[str, float],
     norm = f_host * area_elem * sigma_sub * m_pivot ** (-shmf_plaw_index - 1)
 
     # Draw our masses
-    return power_law.power_law_draw(m_min, m_max, shmf_plaw_index, norm, rng,
-        pad_length)
+    return power_law.suppressed_power_law_draw(
+        m_hm, m_min, m_max, shmf_plaw_index, norm, rng, pad_length
+    )
 
 
 def rejection_sampling(radial_coord: jnp.ndarray, r_two_hund: float,

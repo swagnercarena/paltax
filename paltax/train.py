@@ -38,8 +38,8 @@ from paltax import models
 
 
 def initialized(
-        rng: Sequence[int], image_size: int, model: Any
-    ) -> Tuple[Any, Any]:
+    rng: Sequence[int], image_size: int, model: Any
+) -> Tuple[Any, Any]:
     """Initialize the model parameters
 
     Args:
@@ -79,8 +79,8 @@ def gaussian_loss(outputs: jnp.ndarray, truth: jnp.ndarray) -> jnp.ndarray:
 
 
 def _calculate_outputs_comb(
-        mu_post: jnp.ndarray, prec_post: jnp.ndarray, mu_prop: jnp.ndarray,
-        prec_prop: jnp.ndarray, mu_prior: jnp.ndarray, prec_prior: jnp.ndarray
+    mu_post: jnp.ndarray, prec_post: jnp.ndarray, mu_prop: jnp.ndarray,
+    prec_prop: jnp.ndarray, mu_prior: jnp.ndarray, prec_prior: jnp.ndarray
 ) -> jnp.ndarray:
     """Returns the outputs representing the product distribution.
 
@@ -113,8 +113,8 @@ def _calculate_outputs_comb(
 
 
 def snpe_c_loss(
-        outputs: jnp.ndarray, truth: jnp.ndarray, prop_encoding:jnp.ndarray,
-        mu_prior: jnp.ndarray, prec_prior: jnp.ndarray
+    outputs: jnp.ndarray, truth: jnp.ndarray, prop_encoding:jnp.ndarray,
+    mu_prior: jnp.ndarray, prec_prior: jnp.ndarray
 ) -> jnp.ndarray:
     """Gaussian loss weighted by ratio of proposal to prior for SNPE type c.
 
@@ -164,7 +164,8 @@ def snpe_c_loss(
 
 
 def compute_metrics(
-        outputs: jnp.ndarray, truth: jnp.ndarray) -> Dict[str, jnp.ndarray]:
+    outputs: jnp.ndarray, truth: jnp.ndarray
+) -> Dict[str, jnp.ndarray]:
     """Compute the performance metrics of the output.
 
     Args:
@@ -186,8 +187,8 @@ def compute_metrics(
 
 
 def get_learning_rate_schedule(
-        config: ml_collections.ConfigDict,
-        base_learning_rate: float
+    config: ml_collections.ConfigDict,
+    base_learning_rate: float
 ) -> Callable[[Union[int, jnp.ndarray]], float]:
     """Return the learning rate schedule function.
 
@@ -248,9 +249,9 @@ def get_outputs(
         Model output and updated batch stats.
     """
     return state.apply_fn(
-            {'params': state.params, 'batch_stats': state.batch_stats},
-            batch['image'],
-            mutable=['batch_stats'])
+        {'params': state.params, 'batch_stats': state.batch_stats},
+        batch['image'], mutable=['batch_stats']
+    )
 
 
 def train_step(
@@ -340,6 +341,32 @@ def sync_batch_stats(state: TrainState) -> TrainState:
     return state.replace(batch_stats=cross_replica_mean(state.batch_stats))
 
 
+def get_optimizer(
+    optimizer: str,
+    learning_rate_schedule: Callable[[Union[int, jnp.ndarray]], float]
+) -> Any:
+    """Create the optax optimizer instance.
+
+    Args:
+        optimizer: Optimizer to use.
+        learning_rate_schedule: Learning rate schedule.
+
+    Returns:
+        Optimizer instance.
+    """
+    if optimizer == 'adam':
+        tx = optax.adam(
+            learning_rate=learning_rate_schedule
+        )
+    elif optimizer == 'sgd':
+        tx = optax.sgd(
+            learning_rate=learning_rate_schedule
+        )
+    else:
+        raise ValueError(f'Optimizer {optimizer} is not an option.')
+    return tx
+
+
 def create_train_state(
     rng: Sequence[int], config: ml_collections.ConfigDict,
     model: Any, image_size: int,
@@ -359,16 +386,7 @@ def create_train_state(
     """
     params, batch_stats = initialized(rng, image_size, model)
     optimizer = config.get('optimizer', 'adam')
-    if optimizer == 'adam':
-        tx = optax.adam(
-            learning_rate=learning_rate_schedule
-        )
-    elif optimizer == 'sgd':
-        tx = optax.sgd(
-            learning_rate=learning_rate_schedule
-        )
-    else:
-        raise ValueError(f'Optimizer {optimizer} is not an option.')
+    tx = get_optimizer(optimizer, learning_rate_schedule)
     state = TrainState.create(
         apply_fn=model.apply,
         params=params,
@@ -455,6 +473,10 @@ def train_and_evaluate(
     step_offset = int(state.step)
     state = jax_utils.replicate(state)
 
+    # Create the lookup tables used to speed up derivative and function
+    # calculations.
+    lookup_tables = input_pipeline.initialize_lookup_tables(input_config)
+
     p_train_step = jax.pmap(functools.partial(train_step,
         learning_rate_schedule=learning_rate_schedule),
         axis_name='batch')
@@ -467,7 +489,8 @@ def train_and_evaluate(
             kwargs_detector=input_config['kwargs_detector'],
             kwargs_psf=input_config['kwargs_psf'],
             truth_parameters=input_config['truth_parameters'],
-            normalize_config=normalize_config),
+            normalize_config=normalize_config,
+            lookup_tables=lookup_tables),
         in_axes=(None, None, None, None, 0, None))),
         in_axes=(None, None, None, None, 0, None)
     )
@@ -475,8 +498,9 @@ def train_and_evaluate(
         rng_cosmo = next(rng)
     else:
         rng, rng_cosmo = jax.random.split(rng)
-    cosmology_params = input_pipeline.initialize_cosmology_params(input_config,
-                                                                 rng_cosmo)
+    cosmology_params = input_pipeline.initialize_cosmology_params(
+        input_config, rng_cosmo
+    )
     grid_x, grid_y = input_pipeline.generate_grids(input_config)
 
     train_metrics = []

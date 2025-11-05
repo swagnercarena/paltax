@@ -59,9 +59,9 @@ def _prepare_main_deflector_params():
 
 def _prepare_subhalo_params():
     subhalo_params = {'sigma_sub': 5e-4, 'shmf_plaw_index': -2.0,
-        'm_pivot': 1e8, 'm_min': 1e6, 'm_max': 1e9, 'k_one': 0.0, 'k_two': 0.0,
-        'c_zero': 18, 'conc_zeta': -0.2, 'conc_beta': 0.8, 'conc_m_ref': 1e8,
-        'conc_dex_scatter': 0.0}
+        'm_pivot': 1e8, 'm_min': 1e6, 'm_max': 1e9, 'log_m_hm': 0.0,
+        'k_one': 0.0, 'k_two': 0.0, 'c_zero': 18, 'conc_zeta': -0.2,
+        'conc_beta': 0.8, 'conc_m_ref': 1e8, 'conc_dex_scatter': 0.0}
     return subhalo_params
 
 
@@ -95,7 +95,10 @@ class SubhalosTests(chex.TestCase, parameterized.TestCase):
         cosmology_params = _prepare_cosmology_params(COSMOLOGY_PARAMS_INIT,
             main_deflector_params['z_lens'], main_deflector_params['z_lens'])
 
-        pad_length = 1000
+        # Increase the normalization to improve statistics.
+        subhalo_params['sigma_sub'] *= 10
+
+        pad_length = 10000
         draw_nfw_masses = self.variant(functools.partial(
             subhalos.draw_nfw_masses, pad_length=pad_length))
 
@@ -120,7 +123,36 @@ class SubhalosTests(chex.TestCase, parameterized.TestCase):
             rng_draw, rng = jax.random.split(rng)
             total += jnp.sum(draw_nfw_masses(main_deflector_params,
                 subhalo_params, cosmology_params, rng_draw) > 0)
-        self.assertAlmostEqual(total / n_loops, e_total, places = 0)
+        self.assertAlmostEqual(total / n_loops / e_total, 1.0 , places = 2)
+
+        # Check that including half-mode mass created the desired suppression.
+        rng = jax.random.PRNGKey(0)
+        n_loops = 500
+        total_m_7 = 0
+        total_m_8 = 0
+        eps = 1e6
+        subhalo_params['log_m_hm'] = 8
+        for _ in range(n_loops):
+            rng_draw, rng = jax.random.split(rng)
+            draws = draw_nfw_masses(
+                main_deflector_params, subhalo_params, cosmology_params,
+                rng_draw
+            )
+            total_m_7 += jnp.sum(
+                jnp.logical_and(draws > 1e7 - eps, draws < 1e7 + eps)
+            )
+            total_m_8 += jnp.sum(
+                jnp.logical_and(draws > 1e8 - eps, draws < 1e8 + eps)
+            )
+        correct_ratio = (
+            ((1e7 ** subhalo_params['shmf_plaw_index']) *
+                (1 + 10 ** subhalo_params['log_m_hm'] / 1e7) ** (-1.5)) /
+            ((1e8 ** subhalo_params['shmf_plaw_index']) *
+                (1 + 10 ** subhalo_params['log_m_hm'] / 1e8) ** (-1.5))
+        )
+        self.assertAlmostEqual(
+            total_m_7 / total_m_8 / correct_ratio, 1.0, places=0
+        )
 
     @chex.all_variants
     def test_rejection_sampling(self):

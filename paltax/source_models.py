@@ -17,20 +17,19 @@ Implementation of light profiles for lensing closely following implementations
 in lenstronomy: https://github.com/lenstronomy/lenstronomy.
 """
 
-from typing import Dict, Mapping, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import atexit
-import dm_pix
 import h5py
-import jax
 import jax.numpy as jnp
-import numpy as np
+from jax.scipy import ndimage
 
 from paltax import cosmology_utils
 from paltax import utils
 
 __all__ = [
-    'Interpol', 'SersicElliptic', 'CosmosCatalog', 'WeightedCatalog'
+    'Interpol', 'SersicElliptic', 'DoubleSersicElliptic', 'CosmosCatalog',
+    'WeightedCatalog'
 ]
 
 
@@ -81,6 +80,21 @@ class _SourceModelBase():
         _ = cosmology_params
         return all_kwargs
 
+    @staticmethod
+    def add_lookup_tables(
+        lookup_tables: Dict[str, Union[float, jnp.ndarray]]
+    ) ->  Dict[str, jnp.ndarray]:
+        """Add lookup tables used for function calculations.
+
+        Args:
+            lookup_tables: Potentially empty dictionary of current lookup
+                tables. Will be modified.
+
+        Return:
+            Modified lookup tables.
+        """
+        return lookup_tables
+
 
 class Interpol(_SourceModelBase):
     """Interpolated light profile.
@@ -92,9 +106,11 @@ class Interpol(_SourceModelBase):
     parameters = ('image', 'amp', 'center_x', 'center_y', 'angle', 'scale')
 
     @staticmethod
-    def function(x: jnp.ndarray, y: jnp.ndarray, image: jnp.ndarray,
-                 amp: float, center_x: float, center_y: float, angle: float,
-                 scale: float) -> jnp.ndarray:
+    def function(
+        x: jnp.ndarray, y: jnp.ndarray, image: jnp.ndarray, amp: float,
+        center_x: float, center_y: float, angle: float, scale: float,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
+    ) -> jnp.ndarray:
         """Calculate the brightness for the interpolated light profile.
 
         Args:
@@ -107,6 +123,7 @@ class Interpol(_SourceModelBase):
             angle: Clockwise rotation angle of simulated image with respect to
                 simulation grid.
             scale: Pixel scale of the simulated image.
+            lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
             Surface brightness at each coordinate.
@@ -137,11 +154,14 @@ class Interpol(_SourceModelBase):
         # switching x and y in the interpolation input, and by negating y.
         offset = jnp.array([image.shape[0] / 2 - 0.5, image.shape[1] / 2 - 0.5])
         coordinates = jnp.concatenate(
-                [jnp.expand_dims(coord, axis=0) for coord in [-y_image, x_image]],
-                axis=0)
-        coordinates += jnp.reshape(a=offset, newshape=(*offset.shape, 1))
-        return dm_pix.flat_nd_linear_interpolate_constant(
-                image, coordinates, cval=0.0)
+            [jnp.expand_dims(coord, axis=0) for coord in [-y_image, x_image]],
+            axis=0
+        )
+        coordinates += offset[..., None]
+
+        return ndimage.map_coordinates(
+            image, coordinates, order=1, mode='constant', cval=0.0
+        )
 
     @staticmethod
     def _coord_to_image_pixels(
@@ -178,14 +198,17 @@ class SersicElliptic(_SourceModelBase):
     """
 
     parameters = (
-            'amp', 'sersic_radius', 'n_sersic', 'axis_ratio', 'angle',
-            'center_x', 'center_y'
+        'amp', 'sersic_radius', 'n_sersic', 'axis_ratio', 'angle', 'center_x',
+        'center_y'
     )
 
     @staticmethod
-    def function(x: jnp.ndarray, y: jnp.ndarray, amp: float,
-                 sersic_radius: float, n_sersic: float, axis_ratio: float,
-                 angle: float, center_x: float, center_y: float) -> jnp.ndarray:
+    def function(
+        x: jnp.ndarray, y: jnp.ndarray, amp: float, sersic_radius: float,
+        n_sersic: float, axis_ratio: float, angle: float, center_x: float,
+        center_y: float,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
+    ) -> jnp.ndarray:
         """"Calculate the brightness for the elliptical Sersic light profile.
 
         Args:
@@ -198,6 +221,7 @@ class SersicElliptic(_SourceModelBase):
             angle: Clockwise angle of orientation of major axis.
             center_x: X-coordinate center of the Sersic profile.
             center_y: Y-coordinate center of the Sersic profile.
+            lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
             Brightness from elliptical Sersic profile.
@@ -262,6 +286,100 @@ class SersicElliptic(_SourceModelBase):
         return 1.9992 * n_sersic - 0.3271
 
 
+class DoubleSersicElliptic(_SourceModelBase):
+    """Double Sersic light profile with coupled parameters.
+
+    Double Sersic light profile with two Sersic components that have
+    coupled ellipticities and centers controlled by an epsilon parameter.
+    """
+
+    parameters = (
+        'amp_1', 'sersic_radius_1', 'n_sersic_1',
+        'amp_2', 'sersic_radius_2', 'n_sersic_2',
+        'axis_ratio', 'angle', 'epsilon_angle', 'epsilon_ratio', 'center_x',
+        'center_y', 'epsilon_center_x', 'epsilon_center_y'
+    )
+
+    @staticmethod
+    def function(
+        x: jnp.ndarray, y: jnp.ndarray,
+        amp_1: float, sersic_radius_1: float, n_sersic_1: float,
+        amp_2: float, sersic_radius_2: float, n_sersic_2: float,
+        axis_ratio: float, angle: float, epsilon_angle: float,
+        epsilon_ratio: float, center_x: float, center_y: float,
+        epsilon_center_x: float, epsilon_center_y: float,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
+    ) -> jnp.ndarray:
+        """Calculate the brightness for the double elliptical Sersic light profile.
+
+        Args:
+            x: X-coordinates at which to evaluate the brightness.
+            y: Y-coordinates at which to evaluate the derivative.
+            amp_1: Amplitude of first Sersic component.
+            sersic_radius_1: Sersic radius of first component.
+            n_sersic_1: Sersic index of first component.
+            amp_2: Amplitude of second Sersic component.
+            sersic_radius_2: Sersic radius of second component.
+            n_sersic_2: Sersic index of second component.
+            axis_ratio: Base axis ratio of the major and minor axis of
+                ellipticity.
+            angle: Base clockwise angle of orientation of major axis.
+            epsilon_angle: Epsilon offset between the two sersic angles of the
+                two components.
+            epsilon_ratio: Epsilon offset between the axis ratios of the two
+                components.
+            center_x: X-coordinate center of the Sersic profile.
+            center_y: Y-coordinate center of the Sersic profile.
+            epsilon_center_x: Epsilon offset between the x-coordinate of the
+                sersic centers.
+            epsilon_center_y: Epsilon offset between the y-coordinate of the
+                sersic centers.
+            lookup_tables: Optional lookup tables initialized with class.
+
+        Returns:
+            Brightness from double elliptical Sersic profile.
+
+        Notes:
+            The epsilon parameters are used to slightly offset the parameter
+            values of the two components from the base values. The first Sersic
+            will be given a positive epsilon/2 offset and the second will be
+            given a negative epsilon/2 offset. The axis ratios for both
+            components are bounded to the range [0.02, 1.0] after applying the
+             epsilon offsets, to ensure physical validity.
+        """
+        # Calculate brightness from first component
+
+        # Get the offset centers, axis ratios, and angles.
+        center_x_1 = center_x + epsilon_center_x / 2.0
+        center_y_1 = center_y + epsilon_center_y / 2.0
+        center_x_2 = center_x - epsilon_center_x / 2.0
+        center_y_2 = center_y - epsilon_center_y / 2.0
+        # Enforce axis ratio bounds (0 < axis_ratio <= 1.0) after epsilon
+        # offsets
+        axis_ratio_1 = jnp.clip(axis_ratio + epsilon_ratio / 2.0, 2e-2, 1.0)
+        axis_ratio_2 = jnp.clip(axis_ratio - epsilon_ratio / 2.0, 2e-2, 1.0)
+        angle_1 = angle + epsilon_angle / 2.0
+        angle_2 = angle - epsilon_angle / 2.0
+
+        # Brightness from the first component.
+        radius_1 = SersicElliptic._get_distance_from_center(
+            x, y, axis_ratio_1, angle_1, center_x_1, center_y_1
+        )
+        brightness_1 = amp_1 * SersicElliptic._brightness(
+            radius_1, sersic_radius_1, n_sersic_1
+        )
+
+        # Brightness from the second component.
+        radius_2 = SersicElliptic._get_distance_from_center(
+            x, y, axis_ratio_2, angle_2, center_x_2, center_y_2
+        )
+        brightness_2 = amp_2 * SersicElliptic._brightness(
+            radius_2, sersic_radius_2, n_sersic_2
+        )
+
+        return brightness_1 + brightness_2
+
+
 class CosmosCatalog(Interpol):
     """Light profiles of real galaxies from COSMOS.
     """
@@ -272,30 +390,46 @@ class CosmosCatalog(Interpol):
     )
     parameters = ('image', 'amp', 'center_x', 'center_y', 'angle', 'scale')
 
-    def __init__(self, cosmos_path: str, images_per_chunk: Optional[int] = 2048):
+    def __init__(
+        self, cosmos_path: str, images_per_chunk: Optional[int] = 2048,
+        default_redshift: Optional[float] = None,
+        default_pixel_scale: Optional[float] = None,
+        total_num_galaxies: Optional[int] = None
+    ):
         """Initialize the path to the COSMOS galaxies.
 
         Args:
             cosmos_path: Path to the npz file containing the cosmos images,
                 redshift array, and pixel sizes.
+            images_per_chunk: Number of images to load into memory at a time.
+            default_redshift: Default redshift to use for all galaxies.
+            default_pixel_scale: Default pixel scale to use for all galaxies.
+            total_num_galaxies: Total number of galaxies to consider in the
+                catalog. If None, will use all the galaxies in the catalog.
         """
 
         # Opens the hdf5 file and extract the total number of images
         self.hdf5_file = h5py.File(cosmos_path, 'r')
-        self.total_num_galaxies = len(self.hdf5_file['images'])
+        self.total_num_galaxies = (
+            total_num_galaxies or len(self.hdf5_file['images'])
+        )
 
         # Only load one chunk of the hdf5 file into memory at a time
         self.images_per_chunk = images_per_chunk
         self.chunk_number = 0
+
+        # Set the default redshift and pixel scale if provided.
+        self.default_redshift = default_redshift
+        self.default_pixel_scale = default_pixel_scale
 
         # Close the hdf5 file whenever all code is finished executing
         atexit.register(self.cleanup)
 
 
     def modify_cosmology_params(
-            self,
-            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-        ) -> Dict[str, Union[float, int, jnp.ndarray]]:
+        self,
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+    ) -> Dict[str, Union[float, int, jnp.ndarray]]:
         """Modify cosmology params to include information required by model.
 
         Args:
@@ -308,13 +442,20 @@ class CosmosCatalog(Interpol):
 
         # Sets up the chunk of images to be loaded
         start_val = self.chunk_number * self.images_per_chunk
-        end_val = start_val + self.images_per_chunk
+        end_val = min(
+            start_val + self.images_per_chunk, self.total_num_galaxies
+        )
 
-        # Load the chunk of images. Indexing out of range with end_val is not an issue
-        # when loading from hdf5 dataset
-        pixel_sizes = self.hdf5_file['pixel_sizes'][start_val:end_val]
-        redshifts = self.hdf5_file['redshifts'][start_val:end_val]
+        # Load the chunk of images.
         images = self.hdf5_file['images'][start_val:end_val]
+        if self.default_redshift is not None:
+            redshifts = self.default_redshift * jnp.ones(len(images))
+        else:
+            redshifts = self.hdf5_file['redshifts'][start_val:end_val]
+        if self.default_pixel_scale is not None:
+            pixel_sizes = self.default_pixel_scale * jnp.ones(len(images))
+        else:
+            pixel_sizes = self.hdf5_file['pixel_sizes'][start_val:end_val]
         cosmology_params['cosmos_n_images'] = len(images)
 
 
@@ -323,16 +464,21 @@ class CosmosCatalog(Interpol):
         cosmology_params['cosmos_redshifts'] = jnp.array(redshifts)
         cosmology_params['cosmos_images'] = jnp.array(images)
 
-        # Increment the chunk counter; reset to 0 if we've already loaded all chunkes
-        self.chunk_number = jnp.where(end_val >= self.total_num_galaxies, 0, self.chunk_number + 1)
+        # Increment the chunk counter; reset to 0 if we've already loaded all
+        # chunks.
+        self.chunk_number = int(
+            jnp.where(
+                end_val >= self.total_num_galaxies, 0, self.chunk_number + 1
+            )
+        )
 
         return cosmology_params
 
     @staticmethod
     def convert_to_angular(
-            all_kwargs: Dict[str, jnp.ndarray],
-            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
-        ) -> Dict[str, jnp.ndarray]:
+        all_kwargs: Dict[str, jnp.ndarray],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+    ) -> Dict[str, jnp.ndarray]:
         """Convert any parameters in physical units to angular units.
 
         Args:
@@ -356,10 +502,10 @@ class CosmosCatalog(Interpol):
 
     @staticmethod
     def _convert_to_angular(
-            all_kwargs: Dict[str, jnp.ndarray],
-            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
-            galaxy_index: int
-        ) -> Dict[str, jnp.ndarray]:
+        all_kwargs: Dict[str, jnp.ndarray],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
+        galaxy_index: int
+    ) -> Dict[str, jnp.ndarray]:
         """Convert any parameters in physical units to angular units.
 
         Args:
@@ -380,20 +526,21 @@ class CosmosCatalog(Interpol):
         pixel_scale_catalog = (
             cosmology_params['cosmos_pixel_sizes'][galaxy_index]
         )
-        image = (cosmology_params['cosmos_images'][galaxy_index] /
-                 pixel_scale_catalog ** 2)
-
-        # TODO: Do we still need to do this?
-        # Force the image onto the default device (gpu if one is present).
-        image = jax.device_put(image, jax.devices()[0])
+        image = (
+            cosmology_params['cosmos_images'][galaxy_index]
+            / pixel_scale_catalog ** 2
+        )
 
         # Take into account the difference in the magnitude zeropoints
         # of the input survey and the output survey. Note this doesn't
         # take into account the color of the object.
         amp = all_kwargs['amp']
         amp *= 10 ** (
-            (all_kwargs['output_ab_zeropoint'] -
-             all_kwargs['catalog_ab_zeropoint']) / 2.5)
+            (
+                all_kwargs['output_ab_zeropoint'] -
+                all_kwargs['catalog_ab_zeropoint']
+            ) / 2.5
+        )
 
         # Calculate the new pixel scale and amplitude at the given redshift.
         pixel_scale = pixel_scale_catalog * CosmosCatalog.z_scale_factor(
@@ -444,7 +591,7 @@ class CosmosCatalog(Interpol):
         mag_k_correction = utils.get_k_correction(z_new)
         mag_k_correction -= utils.get_k_correction(z_old)
         return 10 ** (-mag_k_correction / 2.5)
-    
+
     def cleanup(self) -> None:
         """Closes the hdf5 file"""
         self.hdf5_file.close()
@@ -454,24 +601,34 @@ class WeightedCatalog(CosmosCatalog):
     """Light profiles from catalog with custom weights
     """
 
-    def __init__(self, cosmos_path: str, parameter: str, images_per_chunk: Optional[int] = 2048):
+    def __init__(
+        self, cosmos_path: str, parameter: str,
+        images_per_chunk: Optional[int] = 2048,
+        total_num_galaxies: Optional[int] = None
+    ):
         """Initialize the path to the catalog galaxies and catalog weights.
 
         Args:
             cosmos_path: Path to the npz file containing the cosmos images,
                 redshift array, and pixel sizes.
-            catalog_weights: Weights for the sources in the catalog. Do not
-                need to be normalized.
+            parameter: Name of the parameter to use for the weights.
+            images_per_chunk: Number of images to load into memory at a time.
+            total_num_galaxies: Total number of galaxies to consider in the
+                catalog. If None, will use all the galaxies in the catalog.
         """
 
         # Saves the cosmos path, chunk size, and opens the hdf5 file
-        super().__init__(cosmos_path=cosmos_path, images_per_chunk=images_per_chunk)
+        super().__init__(
+            cosmos_path=cosmos_path,
+            images_per_chunk=images_per_chunk,
+            total_num_galaxies=total_num_galaxies
+        )
         self.parameter = parameter
 
     def modify_cosmology_params(
-            self,
-            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
-        ) -> Dict[str, Union[float, int, jnp.ndarray]]:
+        self,
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+    ) -> Dict[str, Union[float, int, jnp.ndarray]]:
         """Modify cosmology params to include information required by model.
 
         Args:
@@ -484,10 +641,16 @@ class WeightedCatalog(CosmosCatalog):
 
         # Sets up the chunk of weights to be loaded
         start_val = self.chunk_number * self.images_per_chunk
-        end_val = start_val + self.images_per_chunk
+        end_val = min(
+            start_val + self.images_per_chunk, self.total_num_galaxies
+        )
 
-        catalog_weights = self.hdf5_file[self.parameter + '_weights'][start_val:end_val]
-        catalog_weights_cdf = jnp.cumsum(catalog_weights)/jnp.sum(catalog_weights)
+        catalog_weights = (
+            self.hdf5_file[self.parameter + '_weights'][start_val:end_val]
+        )
+        catalog_weights_cdf = (
+            jnp.cumsum(catalog_weights) / jnp.sum(catalog_weights)
+        )
 
         cosmology_params['catalog_weights_cdf'] = catalog_weights_cdf
 
@@ -499,9 +662,9 @@ class WeightedCatalog(CosmosCatalog):
 
     @staticmethod
     def convert_to_angular(
-            all_kwargs: Dict[str, jnp.ndarray],
-            cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
-        ) -> Dict[str, jnp.ndarray]:
+        all_kwargs: Dict[str, jnp.ndarray],
+        cosmology_params: Dict[str, Union[float, int, jnp.ndarray]]
+    ) -> Dict[str, jnp.ndarray]:
         """Convert any parameters in physical units to angular units.
 
         Args:

@@ -31,10 +31,8 @@ COSMOLOGY_DICT = {
 
 
 def _prepare_x_y_angular():
-    rng = jax.random.PRNGKey(3)
-    rng_x, rng_y = jax.random.split(rng)
-    x = jax.random.normal(rng_x, shape=(3,))
-    y = jax.random.normal(rng_y, shape=(3,))
+    x = jnp.array([-1.3471873 , -0.5431547 ,  0.37818703])
+    y = jnp.array([ 0.65950656, -1.7432218 ,  1.6562074 ])
     return x, y
 
 
@@ -89,24 +87,64 @@ class UtilsTest(chex.TestCase, parameterized.TestCase):
 
     @chex.all_variants
     def test_unpack_parameters_xy(self):
+        # Test that the parameters are unpacked.
         x, y = _prepare_x_y_angular()
         kwargs_lens = {
-                'alpha_rs': 1.0,
-                'scale_radius': 1.0,
-                'center_x': 0.0,
-                'center_y': 0.0,
-                'fake_param': 19.2
+            'alpha_rs': 1.0,
+            'scale_radius': 1.0,
+            'center_x': 0.0,
+            'center_y': 0.0,
+            'fake_param': 19.2
         }
-        expected = jnp.array([[-0.90657, -0.29612964, 0.22304466],
-                              [0.44380534, -0.9504099, 0.97678715]])
+        expected = lens_models.NFW.derivatives(
+            x, y, kwargs_lens['scale_radius'], kwargs_lens['alpha_rs'],
+            kwargs_lens['center_x'], kwargs_lens['center_y']
+        )
 
         unpack_parameters_derivatives = self.variant(
-                utils.unpack_parameters_xy(lens_models.NFW.derivatives,
-                                           lens_models.NFW.parameters))
+            utils.unpack_parameters_xy(
+                lens_models.NFW.derivatives, lens_models.NFW.parameters
+            )
+        )
 
         np.testing.assert_allclose(
-                unpack_parameters_derivatives(x, y, kwargs_lens), expected,
-                rtol=1e-5)
+            unpack_parameters_derivatives(x, y, kwargs_lens), expected,
+            rtol=1e-5
+        )
+
+    @chex.all_variants
+    def test_unpack_parameters_xy_lookup_tables(self):
+        # Test that unpack_parameters_xy successfully passes the lookup_tables.
+        x, y = _prepare_x_y_angular()
+        kwargs_lens = {
+            'alpha_rs': 1.0,
+            'scale_radius': 1.0,
+            'center_x': 0.0,
+            'center_y': 0.0,
+            'trunc_radius': 0.5
+        }
+        expected = lens_models.TNFW.derivatives(
+            x, y, kwargs_lens['scale_radius'], kwargs_lens['alpha_rs'],
+            kwargs_lens['trunc_radius'], kwargs_lens['center_x'],
+            kwargs_lens['center_y']
+        )
+        # Modify the lookup tables from the correct value to make sure
+        # it's being used.
+        lookup_tables = lens_models.TNFW.add_lookup_tables({})
+        lookup_tables['tnfw_lookup_nfw_func'] = jnp.ones(5) * 10
+
+        unpack_parameters_derivatives = self.variant(
+            utils.unpack_parameters_xy(
+                lens_models.TNFW.derivatives, lens_models.TNFW.parameters,
+                lookup_tables
+            )
+        )
+
+        # We can just test the x derivative here.
+        np.testing.assert_array_less(
+            jnp.abs(expected[0]),
+            jnp.abs(unpack_parameters_derivatives(x, y, kwargs_lens)[0])
+        )
 
     def test_downsampling(self):
         downsample = utils.downsample
@@ -115,7 +153,14 @@ class UtilsTest(chex.TestCase, parameterized.TestCase):
         np.testing.assert_allclose(downsample(image, 3), jnp.ones((4, 4)) * 9)
         np.testing.assert_allclose(downsample(image, 4), jnp.ones((3, 3)) * 16)
 
-        image = jax.random.normal(jax.random.PRNGKey(0), shape=(4, 4))
+        image = jnp.array(
+            [
+                [ 0.08482574,  1.9097648 ,  0.29561743,  1.120948  ],
+                [ 0.33432344, -0.82606775,  0.6481277 ,  1.0434873 ],
+                [-0.7824839 , -0.4539462 ,  0.6297971 ,  0.81524646],
+                [-0.32787678, -1.1234448 , -1.6607416 ,  0.27290547]
+            ]
+        )
         expected = jnp.array([[0.37571156, 0.7770451],
                               [-0.67193794, 0.014301866]]) * 4
         np.testing.assert_allclose(downsample(image, 2), expected)

@@ -33,8 +33,12 @@ KERNEL_PATH = (
 
 
 def _prepare_image():
-    rng = jax.random.PRNGKey(0)
-    return jax.random.normal(rng, shape=(32, 32))
+    return jnp.load(
+        str(
+            pathlib.Path(__file__).parent /
+            'test_files/psf_models_image_test.npy'
+        )
+    )
 
 
 def _prepare_gaussian_parameters():
@@ -74,6 +78,14 @@ class PSFModelBaseTest(chex.TestCase):
         new_dict = psf_models._PSFModelBase().modify_cosmology_params(
                 input_dict)
         self.assertDictEqual(input_dict, new_dict)
+
+    def test_add_lookup_tables(self):
+        # Test that the dictionary isn't modified.
+        lookup_tables = {}
+        lookup_tables = psf_models._PSFModelBase.add_lookup_tables(
+            lookup_tables
+        )
+        self.assertEmpty(lookup_tables)
 
 
 class GaussianTest(chex.TestCase):

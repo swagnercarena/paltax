@@ -17,8 +17,9 @@ Implementation of mass profiles for lensing closely following implementations
 in lenstronomy: https://github.com/lenstronomy/lenstronomy.
 """
 
-from typing import Dict, Mapping, Tuple, Union
+from typing import Dict, Mapping, Optional, Tuple, Union
 
+import jax
 import jax.numpy as jnp
 
 from paltax import utils
@@ -73,6 +74,21 @@ class _LensModelBase():
         _ = cosmology_params
         return all_kwargs
 
+    @staticmethod
+    def add_lookup_tables(
+        lookup_tables: Dict[str, Union[float, jnp.ndarray]]
+    ) ->  Dict[str, jnp.ndarray]:
+        """Add lookup tables used for derivative calculations.
+
+        Args:
+            lookup_tables: Potentially empty dictionary of current lookup
+                tables. Will be modified.
+
+        Return:
+            Modified lookup tables.
+        """
+        return lookup_tables
+
 
 class EPL(_LensModelBase):
     """Elliptical Power Law mass profile.
@@ -89,7 +105,8 @@ class EPL(_LensModelBase):
     @staticmethod
     def derivatives(
         x: jnp.ndarray, y: jnp.ndarray, theta_e: float, slope: float,
-        axis_ratio: float, angle: float, center_x: float, center_y: float
+        axis_ratio: float, angle: float, center_x: float, center_y: float,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Calculate the derivative of the potential for the EPL mass profile.
 
@@ -102,6 +119,7 @@ class EPL(_LensModelBase):
             angle: Clockwise angle of orientation of major axis.
             center_x: X-coordinate center of the EPL profile.
             center_y: Y-coordinate cetner of the EPL profile.
+            lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
             X- and y-component of the derivatives.
@@ -182,7 +200,8 @@ class EPLEllip(_LensModelBase):
     @staticmethod
     def derivatives(
         x: jnp.ndarray, y: jnp.ndarray, theta_e: float, slope: float,
-        ellip_x: float, ellip_xy: float, center_x: float, center_y: float
+        ellip_x: float, ellip_xy: float, center_x: float, center_y: float,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Calculate the derivative of the potential for the EPL mass profile.
 
@@ -195,6 +214,7 @@ class EPLEllip(_LensModelBase):
             ellip_xy: XY-componenet of the ellipticity.
             center_x: X-coordinate center of the EPL profile.
             center_y: Y-coordinate cetner of the EPL profile.
+            lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
             X- and y-component of the derivatives.
@@ -217,7 +237,8 @@ class NFW(_LensModelBase):
     @staticmethod
     def derivatives(
         x: jnp.ndarray, y: jnp.ndarray, scale_radius: float, alpha_rs: float,
-        center_x: float, center_y: float
+        center_x: float, center_y: float,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the NFW profile derivatives.
 
@@ -228,6 +249,7 @@ class NFW(_LensModelBase):
             alpha_rs: Derivative at the scale radius
             center_x: X-coordinate center of the NFW profile.
             center_y: Y-coordinate cetner of the NFW profile.
+            lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
             X- and y-component of the derivative.
@@ -256,7 +278,8 @@ class NFW(_LensModelBase):
     @staticmethod
     def _nfw_derivatives(
         radius: jnp.ndarray, scale_radius: float, rho_input: float,
-        x_centered: jnp.ndarray, y_centered: jnp.ndarray
+        x_centered: jnp.ndarray, y_centered: jnp.ndarray,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the NFW profile derivatives.
 
@@ -266,6 +289,7 @@ class NFW(_LensModelBase):
             rho_input: Normalization of the NFW profile.
             x_centered: X-coordinate offset from NFW center.
             y_centered: Y-coordinate offset from NFW center.
+            lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
             X- and y-component of the derivative.
@@ -319,7 +343,8 @@ class ShearCart(_LensModelBase):
     @staticmethod
     def derivatives(
         x: jnp.ndarray, y: jnp.ndarray, gamma_one: float, gamma_two: float,
-        zero_x: float, zero_y: float
+        zero_x: float, zero_y: float,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the shear profile derivatives.
 
@@ -330,6 +355,7 @@ class ShearCart(_LensModelBase):
             gamma_two: Off-diagonal component of shear.
             zero_x: X-coordinate where shear is 0.
             zero_y: Y-coordinate where shear is 0.
+            lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
             X- and y-component of the derivative.
@@ -352,7 +378,8 @@ class Shear(_LensModelBase):
     @staticmethod
     def derivatives(
         x: jnp.ndarray, y: jnp.ndarray, gamma_ext: float, angle: float,
-        zero_x: float, zero_y: float
+        zero_x: float, zero_y: float,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the shear profile derivatives.
 
@@ -364,6 +391,7 @@ class Shear(_LensModelBase):
                 simulation grid.
             zero_x: X-coordinate where shear is 0.
             zero_y: Y-coordinate where shear is 0.
+            lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
             X- and y-component of the derivative.
@@ -402,7 +430,8 @@ class TNFW(NFW):
     @staticmethod
     def derivatives(
         x: jnp.ndarray, y: jnp.ndarray, scale_radius: float, alpha_rs: float,
-        trunc_radius: float, center_x: float, center_y: float
+        trunc_radius: float, center_x: float, center_y: float,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the TNFW profile derivatives.
 
@@ -414,6 +443,7 @@ class TNFW(NFW):
             trunc_radius: Truncation radius for TNFW profile.
             center_x: X-coordinate center of the TNFW profile.
             center_y: Y-coordinate cetner of the TNFW profile.
+            lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
             X- and y-component of the derivative.
@@ -422,13 +452,16 @@ class TNFW(NFW):
         x_centered = x - center_x
         y_centered = y - center_y
         radius = jnp.sqrt(x_centered**2 + y_centered**2)
-        return TNFW._tnfw_derivatives(radius, scale_radius, rho_input,
-                                      trunc_radius, x_centered, y_centered)
+        return TNFW._tnfw_derivatives(
+            radius, scale_radius, rho_input, trunc_radius, x_centered,
+            y_centered, lookup_tables
+        )
 
     @staticmethod
     def _tnfw_derivatives(
         radius: jnp.ndarray, scale_radius: float, rho_input: float,
-        trunc_radius: float, x_centered: jnp.ndarray, y_centered: jnp.ndarray
+        trunc_radius: float, x_centered: jnp.ndarray, y_centered: jnp.ndarray,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> Tuple[jnp.ndarray, jnp.ndarray]:
         """Return the TNFW profile derivatives.
 
@@ -439,14 +472,16 @@ class TNFW(NFW):
             trunc_radius: Truncation radius for TNFW profile.
             x_centered: X-coordinate offset from TNFW center.
             y_centered: Y-coordinate offset from TNFW center.
+            lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
             X- and y-component of the derivative.
         """
         reduced_radius = radius / scale_radius
         reduced_trunc_radius = trunc_radius / scale_radius
-        tnfw_integral = TNFW._tnfw_integral(reduced_radius,
-                                            reduced_trunc_radius)
+        tnfw_integral = TNFW._tnfw_integral(
+            reduced_radius, reduced_trunc_radius, lookup_tables
+        )
         derivative_norm = 4. * rho_input * scale_radius * tnfw_integral
         derivative_norm /= reduced_radius**2
 
@@ -454,20 +489,23 @@ class TNFW(NFW):
 
     @staticmethod
     def _tnfw_integral(
-        reduced_radius: jnp.ndarray, reduced_trunc_radius: float
+        reduced_radius: jnp.ndarray, reduced_trunc_radius: float,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
     ) -> jnp.ndarray:
         """Return analytic solution to integral of TNFW profile.
 
         Args:
             reduced_radius: Upper limits for integrals in reduced units.
             reduced_trunc_radius: Reduced truncation radius for TNFW profile.
+            lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
             Solution to integral for each provided upper limit.
         """
-        solution = (reduced_trunc_radius**2 + 1 + 2 *
-                    (reduced_radius**2 - 1))
-        solution *= TNFW._nfw_function(reduced_radius)
+        solution = (
+            reduced_trunc_radius ** 2 + 1 + 2 * (reduced_radius ** 2 - 1)
+        )
+        solution *= TNFW._nfw_function(reduced_radius, lookup_tables)
         solution += reduced_trunc_radius * jnp.pi + (
                 reduced_trunc_radius**2 - 1) * jnp.log(reduced_trunc_radius)
         solution += jnp.sqrt(reduced_trunc_radius**2 + reduced_radius**2) * (
@@ -478,7 +516,7 @@ class TNFW(NFW):
 
     @staticmethod
     def _tnfw_log(
-        reduced_radius: jnp.ndarray, reduced_trunc_radius: float
+        reduced_radius: jnp.ndarray, reduced_trunc_radius: float,
     ) -> jnp.ndarray:
         """Evaluate log expression that appears in the TNFW calculations.
 
@@ -489,21 +527,51 @@ class TNFW(NFW):
         Returns:
             Log calculation output.
         """
-        return jnp.log(reduced_radius * (reduced_trunc_radius +
-                                         jnp.sqrt(reduced_radius**2 +
-                                                  reduced_trunc_radius**2))**-1)
+        return jnp.log(
+            reduced_radius * (
+                reduced_trunc_radius +
+                jnp.sqrt(reduced_radius**2 + reduced_trunc_radius**2)
+            ) ** -1
+        )
 
     @staticmethod
-    def _nfw_function(reduced_radius: jnp.ndarray) -> jnp.ndarray:
+    def _nfw_function(
+        reduced_radius: jnp.ndarray,
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
+    ) -> jnp.ndarray:
         """Evaluate NFW function.
 
         Args:
             reduced_radius: Upper limits for integrals in reduced units.
+            lookup_tables: Optional lookup tables initialized with class.
 
         Returns:
             NFW function output.
         """
         nfw_function = jnp.zeros_like(reduced_radius)
+
+        # Use the lookup table if it is provided.
+        if lookup_tables and 'tnfw_lookup_nfw_func' in lookup_tables:
+
+            # Conduct a linear interpolation between the static lookup table
+            # values.
+            tnfw_dr = lookup_tables['tnfw_lookup_dr']
+            log_min_radius = lookup_tables['tnfw_lookup_log_min_radius']
+            lookup_values = lookup_tables['tnfw_lookup_nfw_func']
+
+            unrounded_i = (jnp.log10(reduced_radius) - log_min_radius) / tnfw_dr
+
+            lookup_i_upper = jax.lax.min(
+                jnp.ceil(unrounded_i).astype(int), len(lookup_values) - 1
+            )
+            lookup_i_lower = jax.lax.max(jnp.floor(unrounded_i).astype(int), 0)
+            frac_i = unrounded_i % 1
+
+            # Interpolation using the lookup table.
+            interpolated = (1 - frac_i) * lookup_values[lookup_i_lower]
+            interpolated += (frac_i) * lookup_values[lookup_i_upper]
+
+            return jnp.exp(interpolated)
 
         # There are three regimes for the NFW function, which we will calculate
         # with masks to avoid indexing.
@@ -519,3 +587,43 @@ class TNFW(NFW):
             jnp.arctan((reduced_radius**2 - 1)**.5)) * is_above_one
 
         return nfw_function
+
+    @staticmethod
+    def add_lookup_tables(
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]]
+    ) ->  Dict[str, jnp.ndarray]:
+        """Add lookup tables used for derivative calculations.
+
+        Args:
+            lookup_tables: Potentially empty dictionary of current lookup
+                tables. Will be modified.
+
+        Return:
+            Modified lookup tables.
+        """
+        # Initialize if None is passed
+        if lookup_tables is None:
+            lookup_tables = {}
+        # Add the lookup table for the exact nfw integral calculation.
+        log_r_min = -5
+        log_r_max = 5
+        n_dr = 10001
+        lookup_tables['tnfw_lookup_dr'] = (log_r_max - log_r_min) / (n_dr - 1)
+        lookup_tables['tnfw_lookup_log_min_radius'] = log_r_min
+        lookup_tables['tnfw_lookup_nfw_func'] = jnp.log(
+            TNFW._nfw_function(
+                jnp.logspace(log_r_min, log_r_max, n_dr)
+            )
+        )
+
+        # Correct the lookup tables for a mean shift error the results from
+        # the indexing of the power law.
+        lookup_tables['tnfw_lookup_nfw_func'] *= (
+            lookup_tables['tnfw_lookup_nfw_func'] / jnp.log(
+                TNFW._nfw_function(
+                    jnp.logspace(log_r_min, log_r_max, n_dr), lookup_tables
+                )
+            )
+        )
+
+        return lookup_tables

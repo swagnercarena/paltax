@@ -37,6 +37,7 @@ def get_config():
             'r_max': encode_constant(10.0),
             'm_min': encode_constant(1e7),
             'm_max': encode_constant(1e10),
+            'log_m_hm': encode_constant(0.0),
             'dz': encode_constant(0.01),
             'cone_angle': encode_constant(8.0),
             'angle_buffer': encode_constant(0.8),
@@ -65,6 +66,7 @@ def get_config():
             'm_pivot': encode_constant(1e10),
             'm_min': encode_constant(7e7),
             'm_max': encode_constant(1e10),
+            'log_m_hm': encode_constant(0.0),
             'k_one': encode_constant(0.0),
             'k_two': encode_constant(0.0),
             'c_zero': encode_constant(18),
@@ -109,12 +111,14 @@ def get_config():
     # Options for parameter are asymmetry, axial_ratio, concpetro, gini, m20, rhalfreal, rpetroreal
     # This parameter's corresponding weights will be used in the WeightedCatalog class
     parameter = 'gini'
-    
+
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),
         'all_main_deflector_models': (lens_models.EPL(), lens_models.Shear()),
-        'all_source_models': (source_models.WeightedCatalog(cosmos_path, parameter),),
+        'all_source_models': (
+            source_models.WeightedCatalog(cosmos_path, parameter),
+        ),
         'all_lens_light_models': (source_models.SersicElliptic(),),
         'all_psf_models': (psf_models.Gaussian(),)
     }

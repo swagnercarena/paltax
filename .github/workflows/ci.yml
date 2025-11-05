@@ -34,7 +34,7 @@ jobs:
       - name: Test with pytest
         run: |
           cd paltax
-          coverage run --source paltax --omit="*Configs/*,*_test.py,main.py" -m unittest discover -v -p "*_test.py"
+          coverage run --source paltax --omit="**/Configs/**,*_test.py,main.py" -m unittest discover -v -p "*_test.py"
           coverage lcov
       - name: Coveralls
         uses: coverallsapp/github-action@master

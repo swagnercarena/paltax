@@ -37,6 +37,7 @@ def get_config():
             'r_max': encode_constant(10.0),
             'm_min': encode_constant(1e7),
             'm_max': encode_constant(1e10),
+            'log_m_hm': encode_constant(0.0),
             'dz': encode_constant(0.01),
             'cone_angle': encode_constant(8.0),
             'angle_buffer': encode_constant(0.8),
@@ -65,6 +66,7 @@ def get_config():
             'm_pivot': encode_constant(1e10),
             'm_min': encode_constant(7e7),
             'm_max': encode_constant(1e10),
+            'log_m_hm': encode_constant(0.0),
             'k_one': encode_constant(0.0),
             'k_two': encode_constant(0.0),
             'c_zero': encode_constant(18),
@@ -104,7 +106,7 @@ def get_config():
         'magnitude_zero_point': 25, 'read_noise': 3.0
     }
     cosmos_path = str(pathlib.Path(__file__).parent.parent.parent)
-    cosmos_path += '/datasets/cosmos/cosmos_galaxies_train.npz'
+    cosmos_path += '/datasets/cosmos/weighted_catalog_training.h5'
     config['all_models'] = {
         'all_los_models': (lens_models.NFW(),),
         'all_subhalo_models': (lens_models.TNFW(),),

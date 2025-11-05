@@ -36,9 +36,9 @@ from paltax import train
 
 
 def compute_metrics(
-        outputs: jnp.ndarray, truth: jnp.ndarray, prop_encoding: jnp.ndarray,
-        mu_prior: jnp.ndarray, prec_prior: jnp.ndarray
-    ) -> Dict[str, jnp.ndarray]:
+    outputs: jnp.ndarray, truth: jnp.ndarray, prop_encoding: jnp.ndarray,
+    mu_prior: jnp.ndarray, prec_prior: jnp.ndarray
+) -> Dict[str, jnp.ndarray]:
     """Compute the performance metrics of the output.
 
     Args:
@@ -64,8 +64,7 @@ def compute_metrics(
 
 
 def get_learning_rate_schedule(
-        config: ml_collections.ConfigDict,
-        base_learning_rate: float
+    config: ml_collections.ConfigDict, base_learning_rate: float
 ) -> Callable[[Union[int, jnp.ndarray]], float]:
     """Return the learning rate schedule function.
 
@@ -78,23 +77,29 @@ def get_learning_rate_schedule(
     """
 
     # Cosine decay with linear warmup up until refinement begins.
-    warmup_fn = optax.linear_schedule(init_value=0.0,
-        end_value=base_learning_rate,
-        transition_steps=config.warmup_steps)
-    cosine_steps = max(config.num_initial_train_steps - config.warmup_steps,
-                        1)
-    cosine_fn = optax.cosine_decay_schedule(init_value=base_learning_rate,
-        decay_steps=cosine_steps)
+    warmup_fn = optax.linear_schedule(
+        init_value=0.0, end_value=base_learning_rate,
+        transition_steps=config.warmup_steps
+    )
+    cosine_steps = max(
+        config.num_initial_train_steps - config.warmup_steps, 1
+    )
+    cosine_fn = optax.cosine_decay_schedule(
+        init_value=base_learning_rate, decay_steps=cosine_steps
+    )
 
     # After refinment, cosine decay with the base value multiplier.
-    post_steps = max(config.num_train_steps -
-                     config.num_initial_train_steps, 1)
+    post_steps = max(
+        config.num_train_steps - config.num_initial_train_steps, 1
+    )
     cosine_fn_post = optax.cosine_decay_schedule(
         init_value=base_learning_rate * config.refinement_base_value_multiplier,
-        decay_steps=post_steps)
+        decay_steps=post_steps
+    )
     schedule_fn = optax.join_schedules(
         schedules=[warmup_fn, cosine_fn, cosine_fn_post],
-        boundaries=[config.warmup_steps, config.num_initial_train_steps])
+        boundaries=[config.warmup_steps, config.num_initial_train_steps]
+    )
 
     return schedule_fn
 
@@ -108,24 +113,26 @@ def train_step(
 
     Args:
         state: Current TrainState object for the model.
-        batch: Dictionairy of images and truths to be used for training.
+        batch: Dictionary of images and truths to be used for training.
         prop_encoding: Proposal encoding.
         mu_prior: Mean of the prior distribution.
         prec_prior: Precision matrix for the prior distribution.
         learning_rate_schedule: Learning rate schedule to apply.
 
     Returns:
-        Updated TrainState object and metrics for training step."""
+        Updated TrainState object and metrics for training step.
+    """
 
      # Define loss function seperately for use with jax.value_and_grad.
     def loss_fn(params):
         """loss function used for training."""
         outputs, new_model_state = state.apply_fn(
             {'params': params, 'batch_stats': state.batch_stats},
-            batch['image'],
-            mutable=['batch_stats'])
-        loss = train.snpe_c_loss(outputs, batch['truth'], prop_encoding,
-                                 mu_prior, prec_prior)
+            batch['image'], mutable=['batch_stats']
+        )
+        loss = train.snpe_c_loss(
+            outputs, batch['truth'], prop_encoding, mu_prior, prec_prior
+        )
 
         return loss, (new_model_state, outputs)
 
@@ -140,22 +147,24 @@ def train_step(
     # Re-use same axis_name as in the call to `pmap(...train_step...)` below.
     grads = lax.pmean(grads, axis_name='batch')
     new_model_state, outputs = aux[1]
-    metrics = compute_metrics(outputs, batch['truth'], prop_encoding,
-                              mu_prior, prec_prior)
+    metrics = compute_metrics(
+        outputs, batch['truth'], prop_encoding, mu_prior, prec_prior
+    )
     metrics['learning_rate'] = lr
 
     new_state = state.apply_gradients(
-        grads=grads, batch_stats=new_model_state['batch_stats'])
+        grads=grads, batch_stats=new_model_state['batch_stats']
+    )
 
     return new_state, metrics
 
 
 def proposal_distribution_update(
-        current_posterior: jnp.ndarray, mean_norm: jnp.ndarray,
-        std_norm: jnp.ndarray, mu_prop_init: jnp.ndarray,
-        prec_prop_init: jnp.ndarray, prop_encoding: jnp.ndarray,
-        prop_decay_factor: float, input_config: dict
-    ) -> jnp.ndarray:
+    current_posterior: jnp.ndarray, mean_norm: jnp.ndarray,
+    std_norm: jnp.ndarray, mu_prop_init: jnp.ndarray,
+    prec_prop_init: jnp.ndarray, prop_encoding: jnp.ndarray,
+    prop_decay_factor: float, input_config: dict
+) -> jnp.ndarray:
     """Update the input configuration and return new proposl distribution.
 
     Args:
@@ -186,27 +195,27 @@ def proposal_distribution_update(
     # overwritten to the initial proposal distirbution.
     log_var_bound = jnp.log(1 / jnp.diag(prec_prop_init))
     overwrite_prop_bool = log_var_prop > log_var_bound
-    mu_prop = (mu_prop_init * overwrite_prop_bool +
-               mu_prop * jnp.logical_not(overwrite_prop_bool))
-    log_var_prop = (log_var_bound * overwrite_prop_bool +
-                    log_var_prop * jnp.logical_not(overwrite_prop_bool))
-    std_prop = jnp.exp(log_var_prop/2)
+    mu_prop = (
+        mu_prop_init * overwrite_prop_bool +
+        mu_prop * jnp.logical_not(overwrite_prop_bool)
+    )
+    log_var_prop = (
+        log_var_bound * overwrite_prop_bool +
+        log_var_prop * jnp.logical_not(overwrite_prop_bool)
+    )
+    std_prop = jnp.exp(log_var_prop / 2)
 
-    # Modify the proposal encoding
+    # Modify the proposal encoding with the correct function
     if prop_decay_factor >= 0.0:
-        add_normal_to_encoding_vmap = jax.vmap(
-            input_pipeline.add_normal_to_encoding, in_axes=[0, 0, 0, None]
-        )
-        prop_encoding = add_normal_to_encoding_vmap(
-            prop_encoding, mu_prop, std_prop, prop_decay_factor
+        modify_encoding_func = functools.partial(
+            input_pipeline.add_normal_to_encoding,
+            decay_factor=prop_decay_factor
         )
     else:
-        average_normal_to_encoding_vmap = jax.vmap(
-            input_pipeline.average_normal_to_encoding, in_axes=[0, 0, 0]
-        )
-        prop_encoding = average_normal_to_encoding_vmap(
-            prop_encoding, mu_prop, std_prop
-        )
+        modify_encoding_func = input_pipeline.average_normal_to_encoding
+
+    modify_encoding_vmap = jax.vmap(modify_encoding_func, in_axes=[0, 0, 0])
+    prop_encoding = modify_encoding_vmap(prop_encoding, mu_prop, std_prop)
 
     # Modify the input config.
     mu_prop_unormalized = mu_prop * std_norm + mean_norm
@@ -216,10 +225,10 @@ def proposal_distribution_update(
         rewrite_object = input_config['truth_parameters'][0][truth_i]
         rewrite_key = input_config['truth_parameters'][1][truth_i]
         input_config['lensing_config'][rewrite_object][rewrite_key] = (
-            input_pipeline.add_normal_to_encoding(
+            modify_encoding_func(
                 input_config['lensing_config'][rewrite_object][rewrite_key],
-                mu_prop_unormalized[truth_i], std_prop_unormalized[truth_i],
-                prop_decay_factor)
+                mu_prop_unormalized[truth_i], std_prop_unormalized[truth_i]
+            )
         )
 
     return prop_encoding
@@ -249,12 +258,10 @@ def _get_refinement_step_list(config: ml_collections.ConfigDict
 
 
 def train_and_evaluate_snpe(
-        config: ml_collections.ConfigDict,
-        input_config: dict,
-        workdir: str,
-        rng: Union[Iterator[Sequence[int]], Sequence[int]],
-        target_image: jnp.ndarray,
-        normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
+    config: ml_collections.ConfigDict, input_config: dict, workdir: str,
+    rng: Union[Iterator[Sequence[int]], Sequence[int]],
+    target_image: jnp.ndarray,
+    normalize_config: Optional[Mapping[str, Mapping[str, jnp.ndarray]]] = None
 ):
     """Train model specified by configuration files.
 
@@ -316,6 +323,10 @@ def train_and_evaluate_snpe(
         axis_name='batch', in_axes=(0, 0, None, None, None))
     p_get_outputs = jax.pmap(train.get_outputs, axis_name='batch')
 
+    # Create the lookup tables used to speed up derivative and function
+    # calculations.
+    lookup_tables = input_pipeline.initialize_lookup_tables(input_config)
+
     draw_image_and_truth_pmap = jax.pmap(jax.jit(jax.vmap(
         functools.partial(
             input_pipeline.draw_image_and_truth,
@@ -325,15 +336,17 @@ def train_and_evaluate_snpe(
             kwargs_detector=input_config['kwargs_detector'],
             kwargs_psf=input_config['kwargs_psf'],
             truth_parameters=input_config['truth_parameters'],
-            normalize_config=normalize_config),
+            normalize_config=normalize_config,
+            lookup_tables=lookup_tables),
         in_axes=(None, None, None, None, 0, None))),
         in_axes=(None, None, None, None, 0, None)
     )
 
     # Set the cosmology prameters and the simulation grid.
     rng, rng_cosmo = jax.random.split(rng)
-    cosmology_params = input_pipeline.initialize_cosmology_params(input_config,
-                                                                 rng_cosmo)
+    cosmology_params = input_pipeline.initialize_cosmology_params(
+        input_config, rng_cosmo
+    )
     grid_x, grid_y = input_pipeline.generate_grids(input_config)
 
     train_metrics = []
@@ -409,15 +422,16 @@ def train_and_evaluate_snpe(
             rng_images, num=jax.device_count() * config.batch_size).reshape(
                 (jax.device_count(), config.batch_size, -1)
             )
-        image, truth = draw_image_and_truth_pmap(input_config['lensing_config'],
-                                                 cosmology_params, grid_x,
-                                                 grid_y, rng_images,
-                                                 rotation_angle)
+        image, truth = draw_image_and_truth_pmap(
+            input_config['lensing_config'], cosmology_params, grid_x, grid_y,
+            rng_images, rotation_angle
+        )
         image = jnp.expand_dims(image, axis=-1)
 
         batch = {'image': image, 'truth': truth}
-        state, metrics = p_train_step(state, batch, prop_encoding, mu_prior,
-                                      prec_prior)
+        state, metrics = p_train_step(
+            state, batch, prop_encoding, mu_prior, prec_prior
+        )
         for h in hooks:
             h(step)
         if step == step_offset:
@@ -428,7 +442,9 @@ def train_and_evaluate_snpe(
             train_metrics = common_utils.get_metrics(train_metrics)
             summary = {
                 f'train_{k}': v
-                for k, v in jax.tree_util.tree_map(lambda x: x.mean(), train_metrics).items()
+                for k, v in jax.tree_util.tree_map(
+                    lambda x: x.mean(), train_metrics
+                ).items()
             }
             summary['steps_per_second'] = steps_per_epoch / (
                 time.time() - train_metrics_last_t)

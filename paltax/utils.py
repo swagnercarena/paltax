@@ -14,7 +14,7 @@
 """Strong lensing utility functions."""
 
 import functools
-from typing import Any, Protocol, Sequence, Tuple
+from typing import Any, Dict, Optional, Protocol, Sequence, Tuple, Union
 
 import jax
 import jax.numpy as jnp
@@ -57,24 +57,28 @@ def coordinates_evaluate(
 def unpack_parameters_xy(
         func: Callback,
         parameters:Sequence[str],
+        lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
 ) -> Callback:
     """Returns function wrapper that unpacks parameters for grid functions.
 
-    Returns function wrapper that unpacks required parameters for functions whose
-    first two parameters are the x- and y-coordinates at which they should be
-    evaluated.
+    Returns function wrapper that unpacks required parameters for functions
+    whose first two parameters are the x- and y-coordinates at which they should
+    be evaluated.
 
     Args:
-        func: Function that takes x- and y-coordinates as well as additional args.
+        func: Function that takes x- and y-coordinates as well as additional
+            args.
         parameters: Parameters to unpack.
 
     Returns:
-        Wrapper for func that unpacks keyword parameters, passes them to func, and
-        returns the output.
+        Wrapper for func that unpacks keyword parameters, passes them to func,
+        and returns the output.
     """
 
     def derivative_wrapper(x, y, kwargs, parameters):
-        return func(x, y, *[kwargs[param] for param in parameters])
+        return func(
+            x, y, *[kwargs[param] for param in parameters], lookup_tables
+        )
 
     return functools.partial(derivative_wrapper, parameters=parameters)
 
@@ -127,8 +131,8 @@ def get_k_correction(z_light: float) -> float:
 
 
 def rotate_coordinates(
-        grid_x: jnp.ndarray, grid_y: jnp.ndarray, angle: float
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    grid_x: jnp.ndarray, grid_y: jnp.ndarray, angle: float
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Rotate grid by rotation angle.
 
     Args:
@@ -144,8 +148,8 @@ def rotate_coordinates(
 
 
 def random_permutation_iterator(
-        array_to_cycle: jnp.ndarray, rng: Sequence[int]
-    ) -> Any:
+    array_to_cycle: jnp.ndarray, rng: Sequence[int]
+) -> Any:
     """Yield a generator that cycles through random permutation of an array.
 
     Args:
@@ -166,8 +170,8 @@ def random_permutation_iterator(
 
 
 def ellip_to_angle(
-        ellip_x: jnp.ndarray, ellip_xy: jnp.ndarray
-    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    ellip_x: jnp.ndarray, ellip_xy: jnp.ndarray
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Convert from complex ellipticity moduli to angle and axis ratio.
 
     Args:

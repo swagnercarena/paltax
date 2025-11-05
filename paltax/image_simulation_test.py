@@ -81,10 +81,8 @@ def _prepare_kwargs_psf():
 
 
 def _prepare_x_y():
-    rng = jax.random.PRNGKey(3)
-    rng_x, rng_y = jax.random.split(rng)
-    x = jax.random.normal(rng_x, shape=(3,)) * 1e3
-    y = jax.random.normal(rng_y, shape=(3,)) * 1e3
+    x = jnp.array([-1347.1873 ,  -543.1547 ,   378.18704])
+    y = jnp.array([  659.50653, -1743.2218 ,  1656.2074 ])
     return x, y
 
 
@@ -94,15 +92,20 @@ def _prepare_x_y_angular():
 
 
 def _prepare_alpha_x_alpha_y():
-    rng = jax.random.PRNGKey(2)
-    rng_x, rng_y = jax.random.split(rng)
-    alpha_x = jax.random.normal(rng_x, shape=(3,)) * 2
-    alpha_y = jax.random.normal(rng_y, shape=(3,)) * 2
+    alpha_x = jnp.array([-0.5049887,  3.7687256, -3.0028365])
+    alpha_y = jnp.array([-1.628179  , -0.64633346,  0.7495003 ])
     return alpha_x, alpha_y
 
 
 def _prepare_image():
-    return jax.random.uniform(jax.random.PRNGKey(3), shape=(4, 4))
+    return jnp.array(
+        [
+            [0.9547459 , 0.8413112 , 0.13954484, 0.5248394 ],
+            [0.82432127, 0.79739594, 0.45422375, 0.21128154],
+            [0.7561691 , 0.55743456, 0.2037729 , 0.3627025 ],
+            [0.3970325 , 0.16730261, 0.2958666 , 0.3715701 ]
+        ]
+    )
 
 
 def _prepare_all_psf_models():
@@ -214,8 +217,12 @@ def _prepare_kwargs_source():
     kwargs_source = dict([
         (param, 0.5) for param in all_source_model_parameters
     ])
-    kwargs_source['image'] = jax.random.normal(
-        jax.random.PRNGKey(3), shape=(16, 16))
+    kwargs_source['image'] = jnp.load(
+        str(
+            pathlib.Path(__file__).parent /
+            'test_files/image_simulations_one_test.npy'
+        )
+    )
     kwargs_source['model_index'] = source_models.__all__.index('Interpol')
     return kwargs_source
 
@@ -226,8 +233,12 @@ def _prepare_kwargs_source_slice():
     # profile meaningful brightness.
     for kwarg in kwargs_source_slice:
         kwargs_source_slice[kwarg] = jnp.ones((2,)) * 0.5
-    kwargs_source_slice['image'] = jax.random.uniform(
-        jax.random.PRNGKey(3), shape=(2, 16, 16))
+    kwargs_source_slice['image'] = jnp.load(
+        str(
+            pathlib.Path(__file__).parent /
+            'test_files/image_simulations_two_test.npy'
+        )
+    )
     kwargs_source_slice['n_sersic'] = jnp.ones((2,)) * 3.0
     kwargs_source_slice['model_index'] = jnp.array([
         source_models.__all__.index('Interpol'),
@@ -286,10 +297,19 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         cosmology_params = _prepare_cosmology_params(
             COSMOLOGY_PARAMS_LENSTRONOMY, z_source, 0.1
         )
-        # Modify the cosmology_params as required by each model.
+        # Modify the cosmology_params as required by each model and add lookup
+        # tables.
+        lookup_tables = {}
         for model_group in all_models.values():
             for model in model_group:
-                cosmology_params = model.modify_cosmology_params(cosmology_params)
+                cosmology_params = model.modify_cosmology_params(
+                    cosmology_params
+                )
+                lookup_tables = model.add_lookup_tables(lookup_tables)
+
+        # Chunk subhalos non-trivially to make sure it doesn't cause any errors.
+        subhalos_n_chunks = 2
+
         # Need to evaluate on coordinate grid to match lenstronomy.
         grid_x, grid_y = utils.coordinates_evaluate(
             kwargs_detector['n_x'], kwargs_detector['n_y'],
@@ -303,14 +323,43 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
             functools.partial(
                 image_simulation.generate_image,
                 kwargs_detector=kwargs_detector,
-                all_models=all_models))
+                all_models=all_models, lookup_tables=lookup_tables,
+                subhalos_n_chunks=subhalos_n_chunks
+            )
+        )
 
         result = utils.downsample(
-        g_image(grid_x, grid_y, kwargs_lens_all, kwargs_source_slice,
+            g_image(
+                grid_x, grid_y, kwargs_lens_all, kwargs_source_slice,
                 kwargs_lens_light_slice, kwargs_psf, cosmology_params,
-                z_source),
-        kwargs_detector['supersampling_factor'])
+                z_source
+            ),
+            kwargs_detector['supersampling_factor']
+        )
         np.testing.assert_allclose(result, expected, rtol=1e-3)
+
+        # Repeat with corrupted lookup_tables to make sure they're being used.
+        lookup_tables['tnfw_lookup_nfw_func'] = jnp.ones(5) * 10
+        g_image = self.variant(
+            functools.partial(
+                image_simulation.generate_image,
+                kwargs_detector=kwargs_detector,
+                all_models=all_models, lookup_tables=lookup_tables,
+                subhalos_n_chunks=subhalos_n_chunks
+            )
+        )
+        new_result = utils.downsample(
+            g_image(
+                grid_x, grid_y, kwargs_lens_all, kwargs_source_slice,
+                kwargs_lens_light_slice, kwargs_psf, cosmology_params,
+                z_source
+            ),
+            kwargs_detector['supersampling_factor']
+        )
+        np.testing.assert_array_less(
+            jnp.ones_like(expected) * 1e-4,
+            jnp.abs(result - new_result)
+        )
 
     @chex.all_variants
     def test_psf_convolution(self):
@@ -367,7 +416,8 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         # Noise matches very closely, but numbers are small so use atol.
         np.testing.assert_allclose(
             noise(image, rng_noise, kwargs_detector), expected, rtol=0,
-            atol=1e-7)
+            atol=1e-7
+        )
 
     @chex.all_variants
     def test_lens_light_surface_brightness(self):
@@ -520,12 +570,12 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
             image_simulation._ray_shooting_group,
             all_lens_models=all_lens_models))
 
-        new_state, new_state_copy = ray_shooting_group(
-            state, kwargs_lens_slice, cosmology_params, z_source, z_lens)
+        new_state = ray_shooting_group(
+            state, kwargs_lens_slice, cosmology_params, z_source, z_lens
+        )
 
-        for si in range(len(new_state)):
-            np.testing.assert_allclose(new_state[si], expected_state[si],
-                                       rtol=1e-5)
+        for si, ns in enumerate(new_state):
+            np.testing.assert_allclose(ns, expected_state[si], rtol=1e-5)
 
     @chex.all_variants
     @parameterized.named_parameters([
@@ -561,11 +611,8 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
             z_source,
         )
 
-        for si in range(len(new_state)):
-            np.testing.assert_allclose(new_state[si], expected[si],
-                                       rtol=1e-2)
-            np.testing.assert_allclose(new_state_copy[si], expected[si],
-                                       rtol=1e-2)
+        for si, ns in enumerate(new_state):
+            np.testing.assert_allclose(ns, expected[si], rtol=1e-2)
 
     @chex.all_variants
     def test__ray_step_add(self):
@@ -601,6 +648,10 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
         kwargs_lens['model_index'] = 0
         kwargs_lens_slice['model_index'] = jnp.array([0] * 4)
 
+        # Chunk subhalos to make sure that doesn't break the computation.
+        n_vmap_chunks = 2
+
+
         cosmology_params = _prepare_cosmology_params(
             COSMOLOGY_PARAMS_LENSTRONOMY, z_source, z_lens
         )
@@ -614,8 +665,11 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
                     cosmology_params, z_lens, z_source, all_lens_models))
 
         add_deflection_group = self.variant(
-            functools.partial(image_simulation._add_deflection_group,
-            all_lens_models=all_lens_models))
+            functools.partial(
+                image_simulation._add_deflection_group,
+                all_lens_models=all_lens_models, n_vmap_chunks=n_vmap_chunks
+            )
+        )
 
         np.testing.assert_allclose(
             jnp.array(
@@ -697,7 +751,8 @@ class ImageSimulationTest(chex.TestCase, parameterized.TestCase):
 
         add_surface_brightness = self.variant(
             functools.partial(image_simulation._add_surface_brightness,
-            all_source_models=all_source_models))
+            all_source_models=all_source_models)
+        )
 
         # Use x as previous surface brightness.
         tb, b = add_surface_brightness(x, kwargs_source, x, y)

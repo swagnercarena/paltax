@@ -69,18 +69,14 @@ def _prepare_cosmology_params(
 
 
 def _prepare_x_y():
-    rng = jax.random.PRNGKey(3)
-    rng_x, rng_y = jax.random.split(rng)
-    x = jax.random.normal(rng_x, shape=(3,)) * 1e3
-    y = jax.random.normal(rng_y, shape=(3,)) * 1e3
+    x = jnp.array([-1347.1873 , -543.1547 , 378.18704])
+    y = jnp.array([659.50653, -1743.2218 , 1656.2074 ])
     return x, y
 
 
 def _prepare_alpha_x_alpha_y():
-    rng = jax.random.PRNGKey(2)
-    rng_x, rng_y = jax.random.split(rng)
-    alpha_x = jax.random.normal(rng_x, shape=(3,)) * 2
-    alpha_y = jax.random.normal(rng_y, shape=(3,)) * 2
+    alpha_x = jnp.array([-0.5049887,  3.7687256, -3.0028365])
+    alpha_y = jnp.array([-1.628179  , -0.64633346,  0.7495003 ])
     return alpha_x, alpha_y
 
 
