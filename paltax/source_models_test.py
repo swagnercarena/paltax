@@ -78,16 +78,13 @@ def _prepare_cosmology_params(
 
 
 def _prepare_x_y():
-    rng = jax.random.PRNGKey(0)
-    rng_x, rng_y = jax.random.split(rng)
-    x = jax.random.normal(rng_x, shape=(3,))
-    y = jax.random.normal(rng_y, shape=(3,))
+    x = jnp.array([ 0.13893168,  0.509335  , -0.53116107])
+    y = jnp.array([ 1.1378784 , -1.2209548 , -0.59153634])
     return x, y
 
 
 def _prepare_image():
-    rng = jax.random.PRNGKey(0)
-    return jax.random.normal(rng, shape=(62, 64))
+    return jnp.load('test_files/source_image_test.npy')
 
 
 def _prepare__brightness_expected(sersic_radius, n_sersic):
@@ -235,10 +232,12 @@ class InterpolTest(chex.TestCase, parameterized.TestCase):
         expected = jnp.array([0.31192497, 0.64870896, 1.48134785])
 
         image_interpolation = self.variant(
-                source_models.Interpol._image_interpolation)
+            source_models.Interpol._image_interpolation
+        )
 
         np.testing.assert_allclose(
-                image_interpolation(x, y, image), expected, rtol=1e-5)
+            image_interpolation(x, y, image), expected, rtol=1e-5
+        )
 
     @chex.all_variants
     def test__coord_to_image_pixels(self):
@@ -578,7 +577,6 @@ class CosmosCatalogTest(chex.TestCase, parameterized.TestCase):
         cosmos_catalog.cleanup()
 
         # Test that the hdf5 file is closed
-        print(cosmos_catalog.hdf5_file)
         self.assertTrue(cosmos_catalog.hdf5_file.id.valid == 0)
 
 

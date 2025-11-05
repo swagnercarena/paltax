@@ -20,9 +20,9 @@ in lenstronomy: https://github.com/lenstronomy/lenstronomy.
 from typing import Dict, Optional, Tuple, Union
 
 import atexit
-import dm_pix
 import h5py
 import jax.numpy as jnp
+from jax.scipy import ndimage
 
 from paltax import cosmology_utils
 from paltax import utils
@@ -154,11 +154,14 @@ class Interpol(_SourceModelBase):
         # switching x and y in the interpolation input, and by negating y.
         offset = jnp.array([image.shape[0] / 2 - 0.5, image.shape[1] / 2 - 0.5])
         coordinates = jnp.concatenate(
-                [jnp.expand_dims(coord, axis=0) for coord in [-y_image, x_image]],
-                axis=0)
+            [jnp.expand_dims(coord, axis=0) for coord in [-y_image, x_image]],
+            axis=0
+        )
         coordinates += offset[..., None]
-        return dm_pix.flat_nd_linear_interpolate_constant(
-                image, coordinates, cval=0.0)
+
+        return ndimage.map_coordinates(
+            image, coordinates, order=1, mode='constant', cval=0.0
+        )
 
     @staticmethod
     def _coord_to_image_pixels(
