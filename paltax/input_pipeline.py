@@ -789,7 +789,7 @@ def _draw_all_params(
     rng: Sequence[int],
     all_models: Mapping[str, Sequence[Any]],
     kwargs_psf: Mapping[str, Union[float, int, jnp.ndarray]],
-) -> Mapping[str, Mapping[str, jnp.ndarray]]:
+) -> Dict[str, Dict[str, jnp.ndarray]]:
     """Draw all of the parameters of lensing simulations.
 
     Args:

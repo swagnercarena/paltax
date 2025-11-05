@@ -321,14 +321,14 @@ def get_flow_weight_schedule(
 
 def get_refinement_step_list(
     config: ml_collections.ConfigDict
-) -> Tuple[Sequence[int], int]:
+) -> Sequence[int]:
     """Get the sequential refinement step list from the config.
 
     Args:
         config: Configuration specifying training and model parameters.
 
     Returns:
-        Sequential refinment step list and total number of steps.
+        Sequential refinment step list.
     """
     num_initial_steps = config.num_initial_train_steps
     num_steps_per_refinement = config.num_steps_per_refinement

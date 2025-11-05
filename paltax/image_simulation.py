@@ -408,7 +408,7 @@ def _ray_shooting_group(
     z_source: float, z_lens: float, all_lens_models: Sequence[Any],
     lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None,
     n_vmap_chunks: Optional[int] = 1
-) -> Tuple[Tuple, Tuple]:
+) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, float]:
     """Conduct ray shooting for a group of coplanar lens models.
 
     Args:
@@ -456,7 +456,7 @@ def _ray_shooting_step(
     cosmology_params: Dict[str, Union[float, int, jnp.ndarray]],
     z_source: float, all_lens_models: Sequence[Any],
     lookup_tables: Optional[Dict[str, Union[float, jnp.ndarray]]] = None
-) -> Tuple[Tuple, Tuple]:
+) -> Tuple[Tuple, None]:
     """Conduct ray shooting between two lens models.
 
     Args:

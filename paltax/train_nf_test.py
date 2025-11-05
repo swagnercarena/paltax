@@ -140,7 +140,7 @@ class TrainNFTests(chex.TestCase, parameterized.TestCase):
     def test_get_optimizer(self):
         # Test that an optimizer is returned that forks on the parameter type.
         optimizer = 'adam'
-        learning_rate_schedule = 1e-3
+        learning_rate_schedule = lambda step: 1e-3
         params = {
             'train_param': jnp.ones((5,5)),
             'freeze_param': jnp.zeros(2, dtype=int)

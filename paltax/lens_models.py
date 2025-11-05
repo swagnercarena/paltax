@@ -601,6 +601,9 @@ class TNFW(NFW):
         Return:
             Modified lookup tables.
         """
+        # Initialize if None is passed
+        if lookup_tables is None:
+            lookup_tables = {}
         # Add the lookup table for the exact nfw integral calculation.
         log_r_min = -5
         log_r_max = 5
