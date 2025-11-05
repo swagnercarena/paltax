@@ -18,7 +18,11 @@ This module contains the tools to conduct hierarchical inference on our
 network posteriors. This code is modified from the inference code in the
 paltas package.
 """
-from typing import Any, Callable, Self
+from typing import Any, Callable
+try:
+    from typing import Self  # Python 3.11+
+except ImportError:
+    from typing_extensions import Self
 import warnings
 
 import numpy as np
