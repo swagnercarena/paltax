@@ -93,11 +93,11 @@ def get_optimizer(
             return 'freeze'
         return 'train'
 
-    opt_mask = jax.tree_map(_find_int, params)
+    opt_mask = jax.tree_util.tree_map(_find_int, params)
 
     if update_embedding is False:
         # For all the embedding module parameters, set the gradient to zero.
-        opt_mask['embedding_module'] = jax.tree_map(
+        opt_mask['embedding_module'] = jax.tree_util.tree_map(
             lambda x: 'embedding', opt_mask['embedding_module']
         )
 
@@ -127,7 +127,7 @@ def get_optimizer(
         param_labels=opt_mask
     )
 
-    return optimizer, jax.tree_map(lambda x: x == 'freeze', opt_mask)
+    return optimizer, jax.tree_util.tree_map(lambda x: x == 'freeze', opt_mask)
 
 
 class TrainState(train.TrainState):
@@ -475,7 +475,7 @@ def train_step(
         if freeze_grad:
             return grad
         return jax.lax.pmean(grad, axis_name='batch')
-    grads = jax.tree_map(_pmean_if_not_freeze, grads, opt_mask)
+    grads = jax.tree_util.tree_map(_pmean_if_not_freeze, grads, opt_mask)
 
     metrics = {'learning_rate' : lr, 'loss': loss}
 
@@ -682,7 +682,10 @@ def train_and_evaluate_nf(
 
         # Log training metrics.
         train_metrics.append(metrics)
-        wandb.log(jax.tree_map(lambda x: jnp.mean(x), metrics), step=step + 1)
+        wandb.log(
+            jax.tree_util.tree_map(lambda x: jnp.mean(x), metrics),
+            step=step + 1
+        )
         wandb.log({'flow_weight': flow_weight_schedule(step)}, step=step + 1)
 
         # Log additional metrics every epoch.

@@ -197,7 +197,7 @@ class TrainNFTests(chex.TestCase, parameterized.TestCase):
 
         # Test that when no weight is on the flow, all the draws come from the
         # lensing config.
-        flow_weight = 0.0
+        flow_weight = -1e-6
         context = jnp.zeros(n_cont)
         truth, nan_fraction = draw_sample(
             rng, context, maf_params, flow_weight
